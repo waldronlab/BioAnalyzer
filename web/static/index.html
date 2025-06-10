@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BugSigDB Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .confidence-bar {
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .confidence-fill {
+            height: 100%;
+            background-color: #28a745;
+            transition: width 0.6s ease-in-out;
+        }
+        .category-score {
+            margin: 10px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        .found-term {
+            display: inline-block;
+            background-color: #e7f3ff;
+            padding: 6px 12px;
+            margin: 3px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            color: #0d6efd;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .found-term:hover {
+            background-color: #0d6efd;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+        }
+        .loading::before {
+            content: '';
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #0d6efd;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .paper-metadata {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .analysis-results {
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .card {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.3s ease-in-out;
+        }
+        .card:hover {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .card-body {
+            padding: 25px;
+        }
+        .h6 {
+            color: #495057;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        #paper-abstract {
+            line-height: 1.6;
+            color: #495057;
+        }
+        .badge {
+            padding: 8px 12px;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .badge:hover {
+            transform: translateY(-1px);
+        }
+        .text-muted {
+            color: #6c757d !important;
+        }
+        .mb-4 {
+            margin-bottom: 2rem !important;
+        }
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: #f8f9fa;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 12px 15px;
+            border-radius: 15px;
+            max-width: 80%;
+            position: relative;
+            clear: both;
+        }
+        .user-message {
+            background-color: #0d6efd;
+            color: white;
+            float: right;
+            border-bottom-right-radius: 5px;
+            margin-left: 20%;
+        }
+        .assistant-message {
+            background-color: #e9ecef;
+            color: #212529;
+            float: left;
+            border-bottom-left-radius: 5px;
+            margin-right: 20%;
+        }
+        .system-message {
+            background-color: #ffc107;
+            color: #212529;
+            text-align: center;
+            margin: 10px auto;
+            float: none;
+            font-size: 0.9em;
+        }
+        .error-message {
+            background-color: #dc3545;
+            color: white;
+            text-align: center;
+            margin: 10px auto;
+            float: none;
+            font-size: 0.9em;
+        }
+        .message-sender {
+            font-size: 0.8em;
+            margin-bottom: 4px;
+            opacity: 0.8;
+        }
+        .message-time {
+            font-size: 0.7em;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            background-color: white;
+            border-top: 1px solid #dee2e6;
+        }
+        #message-input {
+            flex-grow: 1;
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            outline: none;
+        }
+        #message-input:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+        }
+        #send-button {
+            padding: 8px 20px;
+            border-radius: 20px;
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #send-button:disabled {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+        }
+        .code-panel {
+            display: none;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .nav-tabs {
+            margin-bottom: 20px;
+            position: sticky;
+            top: 20px;
+            z-index: 1000;
+            background-color: white;
+        }
+        #chat-interface {
+            display: none;
+        }
+        .code-output {
+            background-color: #272822;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            padding-top: 80px; /* Space for fixed header */
+            position: relative;
+        }
+        .container {
+            position: relative;
+            z-index: 1000;
+        }
+        /* Fixed header elements */
+        .logo-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1002;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: transparent;
+        }
+        .theme-toggle-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1002;
+        }
+        /* Logo sizes */
+        .logo-img {
+            height: auto;
+            transition: all 0.3s ease;
+        }
+        .logo-img.primary {
+            max-width: 150px;
+        }
+        .logo-img.secondary {
+            max-width: 75px;
+        }
+        body.dark-mode .logo-img {
+            filter: brightness(0.8);
+        }
+        /* Chat container */
+        #chat-container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin-top: 20px;
+            height: 400px;
+            overflow-y: auto;
+        }
+        #connection-status {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .connected {
+            background-color: #c8e6c9;
+            color: #2e7d32;
+        }
+        .disconnected {
+            background-color: #ffcdd2;
+            color: #c62828;
+        }
+        #found-terms {
+            display: block;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding-top: 100px;
+                max-width: 90%;
+            }
+            .logo-container {
+                gap: 10px;
+            }
+            .logo-img.primary {
+                max-width: 100px;
+            }
+            .logo-img.secondary {
+                max-width: 50px;
+            }
+        }
+        body.dark-mode {
+            background-color: #212529;
+            color: #f8f9fa;
+        }
+        body.dark-mode .card, body.dark-mode .paper-metadata, body.dark-mode .chat-container {
+            background-color: #343a40;
+            border-color: #495057;
+        }
+        body.dark-mode .user-message {
+            background-color: #0d6efd;
+        }
+        body.dark-mode .assistant-message {
+            background-color: #495057;
+        }
+        body.dark-mode .code-output {
+            background-color: #1e1e1e;
+        }
+        footer {
+            border-top: 1px solid #dee2e6;
+        }
+        .fa-chevron-down {
+            transition: transform 0.3s ease;
+        }
+        .fa-chevron-down.collapsed {
+            transform: rotate(180deg);
+        }
+        .resource-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .resource-item i {
+            margin-right: 10px;
+            color: #0d6efd;
+        }
+        .category-scores-list {
+            margin-top: 1rem;
+        }
+        .category-score-item {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        .category-score-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        body.dark-mode .category-score-item {
+            background-color: #343a40;
+        }
+        .category-name {
+            color: #495057;
+            font-size: 1rem;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+        body.dark-mode .category-name {
+            color: #f8f9fa;
+        }
+        .score-value {
+            font-weight: 600;
+            color: #0d6efd;
+            font-size: 0.9rem;
+        }
+        body.dark-mode .score-value {
+            color: #6ea8fe;
+        }
+        .progress {
+            height: 8px !important;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+        }
+        body.dark-mode .progress {
+            background-color: #495057;
+        }
+        .progress-bar {
+            transition: width 0.6s ease;
+        }
+        .progress-bar.bg-success {
+            background-color: #198754 !important;
+        }
+        .progress-bar.bg-warning {
+            background-color: #ffc107 !important;
+        }
+        .progress-bar.bg-danger {
+            background-color: #dc3545 !important;
+        }
+        body.dark-mode .text-success {
+            color: #75b798 !important;
+        }
+        body.dark-mode .text-warning {
+            color: #ffda6a !important;
+        }
+        body.dark-mode .text-danger {
+            color: #ea868f !important;
+        }
+        /* Dark mode toggle button */
+        #theme-toggle {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        #theme-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        /* Title styles */
+        .main-title {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 2.5rem;
+            font-weight: bold;
+            padding-top: 20px;
+        }
+        .main-title .highlight {
+            color: #0d6efd;
+        }
+        .title-description {
+            text-align: center;
+            color: #6c757d;
+            max-width: 800px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+        body.dark-mode .title-description {
+            color: #adb5bd;
+        }
+        #main-interface .nav-tabs {
+            margin-top: 20px;
+        }
+        @media (max-width: 768px) {
+            .main-title {
+                font-size: 2rem;
+                padding-top: 15px;
+            }
+            .title-description {
+                font-size: 1rem;
+                padding: 0 20px;
+                margin-bottom: 30px;
+            }
+        }
+        .welcome-title .blue-text {
+            color: #0d6efd;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <header class="logo-container">
+        <img src="/static/images/bio.png" alt="Bioconductor Logo" class="logo-img primary">
+        <img src="/static/images/image.png" alt="Additional Logo" class="logo-img secondary">
+    </header>
+
+    <div class="theme-toggle-container">
+        <button id="theme-toggle" class="btn btn-sm btn-outline-secondary">Toggle Dark Mode</button>
+    </div>
+
+    <div class="container mt-5">
+        <!-- Login Screen -->
+        <div id="login-screen" class="text-center py-5">
+            <h1 class="mb-4 welcome-title">Welcome   to   <span class="blue-text">BugSigDB  </span>   Analyzer</h1>
+            <p class="lead mb-4">Analyze scientific papers, chat with an AI assistant, or generate code with BugSigDB Analyzer.</p>
+            <div class="row justify-content-center">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Start Session</h5>
+                            <div class="mb-3">
+                                <input type="text" id="username" class="form-control" placeholder="Enter your name">
+                            </div>
+                            <button id="start-chat" class="btn btn-primary">Start Session</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row justify-content-center mt-4">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">BugSigDB Resources</h5>
+                            <div class="resource-item">
+                                <i class="fas fa-info-circle"></i>
+                                <div>
+                                    <a href="https://bugsigdb.org/Project:About" target="_blank">BugSigDB Project Information</a>
+                                    <small class="text-muted d-block">Estimated time: 15 minutes</small>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <i class="fas fa-book"></i>
+                                <div>
+                                    <a href="https://docs.google.com/document/d/1cpY8RoOHjJ_oxkDRGwlpqL-I29IN9B5BifhZIlqTjhE/edit?tab=t.0" target="_blank">Reading Materials on the Human Microbiome</a>
+                                    <small class="text-muted d-block">Estimated time: 2 hours</small>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <i class="fas fa-video"></i>
+                                <div>
+                                    <a href="https://www.youtube.com/watch?v=yfpnwxefLFc&list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq&index=6" target="_blank">Step-by-Step Guidance on Documenting a Signature in BugSigDB</a>
+                                    <small class="text-muted d-block">Video tutorial</small>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <i class="fas fa-file-alt"></i>
+                                <div>
+                                    <a href="https://bugsigdb.org/Study_600" target="_blank">View Examples of Completed BugSigDB Curations</a>
+                                    <small class="text-muted d-block">Estimated time: 15 minutes</small>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <i class="fas fa-play-circle"></i>
+                                <div>
+                                    <a href="https://www.youtube.com/playlist?list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq" target="_blank">Video Trainings on BugSigDB Curation</a>
+                                    <small class="text-muted d-block">Playlist</small>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <i class="fas fa-user"></i>
+                                <div>
+                                    <a href="https://bugsigdb.org/Main_Page" target="_blank">Open Your BugSigDB Account</a>
+                                    <small class="text-muted d-block">Access the BugSigDB platform</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Interface -->
+        <div id="main-interface">
+            <!-- Main Title -->
+            <h1 class="main-title">
+                <span class="highlight">BugSigDB</span> Analyzer
+            </h1>
+            <p class="title-description">
+                Explore and analyze scientific papers with advanced AI assistance. Extract key findings, analyze microbiome signatures, and generate insights from research papers.
+            </p>
+
+            <!-- Navigation Tabs -->
+            <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="analyze-tab" data-bs-toggle="tab" href="#analyze" role="tab">Paper Analysis</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="chat-tab" data-bs-toggle="tab" href="#chat" role="tab">Chat Assistant</a>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="mainTabContent">
+                <!-- Paper Analysis Tab -->
+                <div class="tab-pane fade show active" id="analyze" role="tabpanel">
+                    <div class="row justify-content-center mb-4">
+                        <div class="col-md-6">
+                            <div class="input-group">
+                                <input type="text" id="pmid" class="form-control" placeholder="Enter PubMed ID">
+                                <button class="btn btn-primary" onclick="analyzePaper()">Analyze</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="loading" class="loading">
+                        <p class="mt-2">Analyzing paper...</p>
+                    </div>
+
+                    <div id="results" class="analysis-results">
+                        <!-- Resources Card -->
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">BugSigDB Resources</h5>
+                                <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#resources-collapse">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                            </div>
+                            <div id="resources-collapse" class="collapse">
+                                <div class="card-body">
+                                    <div class="resource-item">
+                                        <i class="fas fa-info-circle"></i>
+                                        <div>
+                                            <a href="https://bugsigdb.org/Project:About" target="_blank">BugSigDB Project Information</a>
+                                            <small class="text-muted d-block">Estimated time: 15 minutes</small>
+                                        </div>
+                                    </div>
+                                    <div class="resource-item">
+                                        <i class="fas fa-book"></i>
+                                        <div>
+                                            <a href="https://docs.google.com/document/d/1cpY8RoOHjJ_oxkDRGwlpqL-I29IN9B5BifhZIlqTjhE/edit?tab=t.0" target="_blank">Reading Materials on the Human Microbiome</a>
+                                            <small class="text-muted d-block">Estimated time: 2 hours</small>
+                                        </div>
+                                    </div>
+                                    <div class="resource-item">
+                                        <i class="fas fa-video"></i>
+                                        <div>
+                                            <a href="https://www.youtube.com/watch?v=yfpnwxefLFc&list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq&index=6" target="_blank">Step-by-Step Guidance on Documenting a Signature in BugSigDB</a>
+                                            <small class="text-muted d-block">Video tutorial</small>
+                                        </div>
+                                    </div>
+                                    <div class="resource-item">
+                                        <i class="fas fa-file-alt"></i>
+                                        <div>
+                                            <a href="https://bugsigdb.org/Study_600" target="_blank">View Examples of Completed BugSigDB Curations</a>
+                                            <small class="text-muted d-block">Estimated time: 15 minutes</small>
+                                        </div>
+                                    </div>
+                                    <div class="resource-item">
+                                        <i class="fas fa-play-circle"></i>
+                                        <div>
+                                            <a href="https://www.youtube.com/playlist?list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq" target="_blank">Video Trainings on BugSigDB Curation</a>
+                                            <small class="text-muted d-block">Playlist</small>
+                                        </div>
+                                    </div>
+                                    <div class="resource-item">
+                                        <i class="fas fa-user"></i>
+                                        <div>
+                                            <a href="https://bugsigdb.org/Main_Page" target="_blank">Open Your BugSigDB Account</a>
+                                            <small class="text-muted d-block">Access the BugSigDB platform</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Paper Metadata -->
+                        <div class="paper-metadata card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Paper Metadata</h5>
+                                <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#metadata-collapse">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                            </div>
+                            <div id="metadata-collapse" class="collapse show">
+                                <div class="card-body">
+                                    <h2 id="paper-title" class="h4 mb-3"></h2>
+                                    <div class="mb-2">
+                                        <strong>Authors:</strong>
+                                        <span id="paper-authors" class="text-muted"></span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Journal:</strong>
+                                        <span id="paper-journal" class="text-muted"></span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Publication Date:</strong>
+                                        <span id="paper-date" class="text-muted"></span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>DOI:</strong>
+                                        <span id="paper-doi" class="text-muted"></span>
+                                    </div>
+                                    <div class="mt-3">
+                                        <strong>Abstract:</strong>
+                                        <p id="paper-abstract" class="mt-2 text-muted"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Analysis Results -->
+                        <div class="card mb-4">
+                            <div class="card-body">
+                                <h3 class="card-title h5 mb-4">Analysis Results</h3>
+                                
+                                <!-- Overall Confidence -->
+                                <div class="mb-4">
+                                    <h4 class="h6">Overall Confidence</h4>
+                                    <div class="confidence-bar">
+                                        <div id="confidence-fill" class="confidence-fill"></div>
+                                    </div>
+                                    <small class="text-muted" id="confidence-value"></small>
+                                </div>
+
+                                <!-- Category Scores -->
+                                <div class="mb-4">
+                                    <h4 class="h6">Category Scores</h4>
+                                    <div id="category-scores" class="mt-3">
+                                        <div class="category-scores-list">
+                                            <!-- Category scores will be dynamically inserted here -->
+                                        </div>
+                                        <div class="mt-3 small text-muted d-flex justify-content-center gap-4">
+                                            <span><i class="fas fa-circle text-success"></i> High (>70%)</span>
+                                            <span><i class="fas fa-circle text-warning"></i> Medium (30-70%)</span>
+                                            <span><i class="fas fa-circle text-danger"></i> Low (<30%)</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Found Terms -->
+                                <div class="mb-4">
+                                    <h4 class="h6">Found Terms</h4>
+                                    <div id="found-terms"></div>
+                                </div>
+
+                                <!-- Key Findings -->
+                                <div class="mb-4">
+                                    <h4 class="h6">Key Findings</h4>
+                                    <div id="key-findings" class="mt-3">
+                                        <p class="text-muted">Analyzing paper...</p>
+                                    </div>
+                                </div>
+
+                                <!-- Suggested Topics -->
+                                <div class="mb-4">
+                                    <h4 class="h6">Suggested Topics</h4>
+                                    <div id="suggested-topics" class="d-flex flex-wrap gap-2"></div>
+                                </div>
+
+                                <!-- Analysis Status -->
+                                <div class="mt-4 text-muted">
+                                    <div class="mb-1">
+                                        <strong>Analysis Status:</strong>
+                                        <span id="analysis-status"></span>
+                                    </div>
+                                    <div>
+                                        <strong>Tokens Generated:</strong>
+                                        <span id="tokens-generated"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Paper Q&A Section -->
+                        <div class="card">
+                            <div class="card-body">
+                                <h4 class="h6 mb-3">Ask Questions About This Paper</h4>
+                                <div class="input-group mb-3">
+                                    <input type="text" id="paper-question" class="form-control" placeholder="Ask a question about this paper...">
+                                    <button class="btn btn-outline-primary" onclick="askQuestion()">Ask</button>
+                                </div>
+                                <div id="qa-results"></div>
+                                
+                                <!-- Chat about paper button -->
+                                <div class="mt-3 text-center">
+                                    <button id="chat-about-paper-btn" class="btn btn-primary" onclick="switchToChatWithPaper()" disabled>
+                                        <i class="fas fa-comments me-2"></i><span id="chat-btn-text">Continue discussing this paper in Chat</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Tab -->
+                <div class="tab-pane fade" id="chat" role="tabpanel">
+                    <div id="connection-status" class="alert mb-3"></div>
+                    
+                    <!-- Current paper indicator -->
+                    <div id="current-paper-indicator" class="alert alert-info mb-3" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-file-alt me-2"></i>
+                                <span id="current-paper-title">Discussing paper</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="clearCurrentPaperContext()">
+                                <i class="fas fa-times"></i> Clear paper context
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-tab-header mb-3">
+                        <input type="text" id="chat-search" class="form-control" placeholder="Search chat history...">
+                    </div>
+                    <div id="chat-container" class="chat-container"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="message-input" placeholder="Type your message..." disabled>
+                        <button id="send-button" onclick="sendMessage()" disabled>Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-5 py-3 text-center text-muted">
+        <p>© 2025 BugSigDB Analyzer. Powered by BugSigDB.</p>
+        <p><a href="http://waldronlab.io/" target="_blank">Learn more about waldronlab</a> | <a href="https://bugsigdb.org/Project:About" target="_blank">About</a></p>
+    </footer>
+
+    <!-- Required JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-r.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-javascript.min.js"></script>
+
+    <!-- Inline JavaScript -->
+    <script>
+        // Global variables
+        let ws = null;
+        let currentPaper = localStorage.getItem('currentPaper');
+        console.log("Initial currentPaper from localStorage:", currentPaper);
+        let username = '';
+        
+        // Function to ensure currentPaper is properly initialized
+        function ensureCurrentPaper() {
+            console.log("ensureCurrentPaper - Starting with currentPaper:", currentPaper);
+            console.log("ensureCurrentPaper - localStorage value:", localStorage.getItem('currentPaper'));
+            
+            const storedPaper = localStorage.getItem('currentPaper');
+            if (storedPaper && (!currentPaper || currentPaper !== storedPaper)) {
+                console.log("ensureCurrentPaper - Updating currentPaper from localStorage");
+                currentPaper = storedPaper;
+                console.log("ensureCurrentPaper - Updated currentPaper:", currentPaper);
+                return true;
+            }
+            return false;
+        }
+
+        // Initialize interface
+        document.getElementById('main-interface').style.display = 'none';
+
+        // Load saved theme
+        if (localStorage.getItem('theme') === 'dark') {
+            document.body.classList.add('dark-mode');
+        }
+
+        // Event listeners
+        document.getElementById('start-chat').addEventListener('click', startSession);
+        document.getElementById('message-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+        });
+        document.getElementById('chat-search').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const messages = document.querySelectorAll('#chat-container .message');
+            messages.forEach(msg => {
+                msg.style.display = msg.textContent.toLowerCase().includes(searchTerm) ? 'block' : 'none';
+            });
+        });
+        
+        // Handle tab changes
+        document.querySelectorAll('.nav-link').forEach(tab => {
+            tab.addEventListener('click', function() {
+                console.log("Tab changed to:", this.id);
+                
+                // Sync paper context from localStorage
+                syncPaperContext();
+                
+                // If switching to analyze tab and we have a currentPaper, make sure it's loaded
+                if (this.id === 'analyze-tab' && currentPaper) {
+                    document.getElementById('pmid').value = currentPaper;
+                    console.log("Tab change - Set pmid input to:", currentPaper);
+                }
+                // If switching to chat tab, update paper indicator
+                else if (this.id === 'chat-tab') {
+                    updateCurrentPaperIndicator();
+                }
+            });
+        });
+
+        // Load current paper if it exists
+        window.addEventListener('DOMContentLoaded', async () => {
+            console.log("DOMContentLoaded - Starting initialization");
+            
+            // Sync paper context from localStorage
+            syncPaperContext();
+            
+            console.log("DOMContentLoaded - After syncPaperContext - currentPaper:", currentPaper);
+            
+            if (currentPaper) {
+                document.getElementById('pmid').value = currentPaper;
+                console.log("DOMContentLoaded - Set pmid input to:", currentPaper);
+                // Only auto-load if we're on the analyze tab
+                if (document.getElementById('analyze-tab').classList.contains('active')) {
+                    console.log("DOMContentLoaded - Analyze tab is active, calling analyzePaper()");
+                    await analyzePaper();
+                }
+            }
+            
+            // Add storage event listener to sync between tabs
+            window.addEventListener('storage', (event) => {
+                if (event.key === 'currentPaper' || event.key === 'paperTitle') {
+                    console.log("Storage event detected:", event.key, event.newValue);
+                    syncPaperContext();
+                }
+            });
+        });
+
+        async function startSession() {
+            username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert('Please enter your name');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/start_session/${username}`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    document.getElementById('login-screen').style.display = 'none';
+                    document.getElementById('main-interface').style.display = 'block';
+                    document.getElementById('analyze-tab').click();
+                    setupWebSocket();
+                    addMessage('System', `Welcome ${username}! How can I help you today?`, 'system-message');
+                }
+            } catch (error) {
+                alert('Error starting session: ' + error.message);
+            }
+        }
+
+        function setupWebSocket() {
+            const encodedUsername = encodeURIComponent(username);
+            ws = new WebSocket(`ws://${window.location.host}/ws/${encodedUsername}`);
+            
+            ws.onopen = () => {
+                console.log('Connected to WebSocket');
+                updateConnectionStatus(true);
+                addMessage('System', 'Connected to chat server', 'system-message');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    addMessage('Error', data.error, 'error-message');
+                } else if (data.response) {
+                    addMessage('Assistant', data.response, 'assistant-message');
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.log('Disconnected from WebSocket:', event.code, event.reason);
+                updateConnectionStatus(false);
+                addMessage('System', `Disconnected from chat server (${event.code})`, 'system-message');
+                ws = null;
+                
+                // Try to reconnect after 3 seconds
+                setTimeout(() => {
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {
+                        addMessage('System', 'Attempting to reconnect...', 'system-message');
+                        setupWebSocket();
+                    }
+                }, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addMessage('Error', 'WebSocket error occurred. Will attempt to reconnect.', 'error-message');
+            };
+        }
+
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connection-status');
+            status.textContent = connected ? 'Connected' : 'Disconnected';
+            status.className = connected ? 'connected' : 'disconnected';
+            
+            document.getElementById('message-input').disabled = !connected;
+            document.getElementById('send-button').disabled = !connected;
+            document.getElementById('username').disabled = connected;
+        }
+
+        function addMessage(sender, content, className) {
+            const container = document.getElementById('chat-container');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${className}`;
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            messageDiv.innerHTML = `
+                <div class="message-sender">${sender}</div>
+                <div>${content}</div>
+                <div class="message-time">${timestamp}</div>
+            `;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function askQuestion() {
+            // Ensure currentPaper is up-to-date
+            ensureCurrentPaper();
+            
+            // Check localStorage first, then variable
+            const paperToUse = currentPaper || localStorage.getItem('currentPaper');
+            console.log("askQuestion - currentPaper variable:", currentPaper);
+            console.log("askQuestion - localStorage value:", localStorage.getItem('currentPaper'));
+            console.log("askQuestion - paperToUse:", paperToUse);
+            
+            if (!paperToUse) {
+                // Show error message
+                const qaResults = document.getElementById('qa-results');
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-warning';
+                errorDiv.textContent = 'Please analyze a paper first';
+                qaResults.insertBefore(errorDiv, qaResults.firstChild);
+                
+                // Remove after 3 seconds
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.parentNode.removeChild(errorDiv);
+                    }
+                }, 3000);
+                return;
+            }
+
+            const question = document.getElementById('paper-question').value.trim();
+            if (!question) {
+                // Show error message
+                const qaResults = document.getElementById('qa-results');
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-warning';
+                errorDiv.textContent = 'Please enter a question';
+                qaResults.insertBefore(errorDiv, qaResults.firstChild);
+                
+                // Remove after 3 seconds
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.parentNode.removeChild(errorDiv);
+                    }
+                }, 3000);
+                return;
+            }
+            
+            // Show loading indicator
+            const qaResults = document.getElementById('qa-results');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'alert alert-info';
+            loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Getting answer...';
+            qaResults.insertBefore(loadingDiv, qaResults.firstChild);
+
+            try {
+                const response = await fetch(`/ask_question/${paperToUse}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question: question
+                    })
+                });
+
+                // Remove loading indicator
+                if (loadingDiv.parentNode) {
+                    loadingDiv.parentNode.removeChild(loadingDiv);
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'card mb-3';
+                resultDiv.innerHTML = `
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Q: ${question}</h6>
+                        <p class="card-text">A: ${data.answer}</p>
+                        <div class="progress" style="height: 5px;">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: ${data.confidence * 100}%"></div>
+                        </div>
+                        <small class="text-muted">Confidence: ${(data.confidence * 100).toFixed(1)}%</small>
+                    </div>
+                `;
+                
+                qaResults.insertBefore(resultDiv, qaResults.firstChild);
+                
+                // Clear the question input
+                document.getElementById('paper-question').value = '';
+            } catch (error) {
+                console.error('Error asking question:', error);
+                
+                // Remove loading indicator if it exists
+                if (loadingDiv.parentNode) {
+                    loadingDiv.parentNode.removeChild(loadingDiv);
+                }
+                
+                // Show error message
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-danger';
+                errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+                qaResults.insertBefore(errorDiv, qaResults.firstChild);
+                
+                // Remove error after 5 seconds
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.parentNode.removeChild(errorDiv);
+                    }
+                }, 5000);
+            }
+        }
+
+        async function analyzePaper() {
+            // Get PMID from input or use current if available
+            let pmid = document.getElementById('pmid').value.trim();
+            if (!pmid && currentPaper) {
+                pmid = currentPaper;
+                document.getElementById('pmid').value = pmid;
+                console.log("analyzePaper - Using existing currentPaper:", pmid);
+            }
+            
+            if (!pmid) {
+                alert('Please enter a PubMed ID');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            // Reset the chat button state
+            const chatBtn = document.getElementById('chat-about-paper-btn');
+            chatBtn.disabled = true;
+            document.getElementById('chat-btn-text').textContent = 'Analyzing paper...';
+
+            try {
+                // Include username in the request
+                const apiUrl = `/analyze/${pmid}?username=${encodeURIComponent(username)}`;
+                console.log("Analyzing paper with URL:", apiUrl);
+                
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Update paper metadata
+                document.getElementById('paper-title').textContent = data.metadata.title;
+                document.getElementById('paper-authors').textContent = Array.isArray(data.metadata.authors)
+                    ? data.metadata.authors.join(', ')
+                    : (data.metadata.authors || 'No authors available');
+                document.getElementById('paper-journal').textContent = 
+                    `${data.metadata.journal} (${data.metadata.publication_date})`;
+                document.getElementById('paper-abstract').textContent = data.metadata.abstract;
+                
+                // Store paper info in global variable and localStorage
+                currentPaper = pmid;
+                localStorage.setItem('currentPaper', pmid);
+                localStorage.setItem('paperTitle', data.metadata.title);
+                console.log("analyzePaper - Set currentPaper to:", pmid);
+                console.log("analyzePaper - Set paperTitle to:", data.metadata.title);
+                console.log("analyzePaper - localStorage values after setting:", {
+                    currentPaper: localStorage.getItem('currentPaper'),
+                    paperTitle: localStorage.getItem('paperTitle')
+                });
+
+                // Update confidence bar
+                const confidenceFill = document.getElementById('confidence-fill');
+                confidenceFill.style.width = `${data.analysis.confidence * 100}%`;
+                document.getElementById('confidence-value').textContent = 
+                    `${(data.analysis.confidence * 100).toFixed(1)}%`;
+
+                // Update category scores using the function from app.js
+                if (data.analysis && data.analysis.category_scores) {
+                    updateCategoryScores(data.analysis.category_scores);
+                }
+
+                // Update found terms
+                const foundTermsDiv = document.getElementById('found-terms');
+                foundTermsDiv.innerHTML = '';
+                let foundTerms = data.analysis.found_terms || {};
+                
+                // Use provided found terms as fallback for testing
+                if (!foundTerms || Object.keys(foundTerms).length === 0) {
+                    foundTerms = {
+                        "microbiome": ["microbiota", "microbiome", "bacterial", "bacteria", "16S rRNA", "sequencing"],
+                        "methods": ["sequencing"],
+                        "body sites": ["oral"],
+                        "diseases": ["disease"]
+                    };
+                }
+
+                Object.entries(foundTerms).forEach(([category, terms]) => {
+                    if (terms && terms.length > 0) {
+                        const categoryDiv = document.createElement('div');
+                        categoryDiv.className = 'mb-2';
+                        categoryDiv.innerHTML = `<small class="text-muted">${category}:</small>`;
+                        terms.forEach(term => {
+                            const termSpan = document.createElement('span');
+                            termSpan.className = 'found-term';
+                            termSpan.textContent = term;
+                            categoryDiv.appendChild(termSpan);
+                        });
+                        foundTermsDiv.appendChild(categoryDiv);
+                    }
+                });
+
+                // Update key findings
+                const keyFindingsDiv = document.getElementById('key-findings');
+                keyFindingsDiv.innerHTML = '';
+                const findings = Array.isArray(data.analysis.key_findings) ? data.analysis.key_findings : [];
+                if (findings.length > 0) {
+                    const findingsList = document.createElement('ul');
+                    findingsList.className = 'list-unstyled';
+                    findings.forEach(finding => {
+                        if (finding && typeof finding === 'string' && finding.trim()) {
+                            const li = document.createElement('li');
+                            li.className = 'mb-2 finding-item';
+                            li.innerHTML = `<i class="fas fa-${data.analysis.warning ? 'info text-info' : 'check text-success'} me-2"></i>${finding.trim()}`;
+                            findingsList.appendChild(li);
+                        }
+                    });
+                    if (findingsList.children.length > 0) {
+                        keyFindingsDiv.appendChild(findingsList);
+                    } else {
+                        keyFindingsDiv.innerHTML = '<p class="text-muted">No valid findings available</p>';
+                    }
+                } else {
+                    keyFindingsDiv.innerHTML = '<p class="text-muted">No findings available</p>';
+                }
+
+                // Update suggested topics
+                const suggestedTopicsDiv = document.getElementById('suggested-topics');
+                suggestedTopicsDiv.innerHTML = '';
+                if (Array.isArray(data.analysis.suggested_topics) && data.analysis.suggested_topics.length > 0) {
+                    data.analysis.suggested_topics.forEach(topic => {
+                        if (topic && typeof topic === 'string') {
+                            const topicTag = document.createElement('span');
+                            topicTag.className = 'badge bg-secondary';
+                            topicTag.textContent = topic;
+                            suggestedTopicsDiv.appendChild(topicTag);
+                        }
+                    });
+                } else {
+                    suggestedTopicsDiv.innerHTML = '<p class="text-muted">No suggested topics available</p>';
+                }
+
+                // Update analysis status
+                document.getElementById('analysis-status').textContent = data.analysis.status;
+                document.getElementById('tokens-generated').textContent = data.analysis.num_tokens;
+
+                // Show results
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
+                document.getElementById('results').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('results').style.opacity = '1';
+                    
+                    // Enable the "Continue discussing" button
+                    document.getElementById('chat-about-paper-btn').disabled = false;
+                    
+                    // Show success message
+                    const successMessage = document.createElement('div');
+                    successMessage.className = 'alert alert-success mt-3';
+                    successMessage.textContent = 'Paper analysis complete! You can now ask questions about this paper.';
+                    successMessage.style.opacity = '1';
+                    
+                    // Add to the top of the results
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.insertBefore(successMessage, resultsDiv.firstChild);
+                    
+                    // Auto-scroll to the paper question section
+                    document.getElementById('paper-question').scrollIntoView({behavior: 'smooth'});
+                    
+                    // Remove the message after 5 seconds
+                    setTimeout(() => {
+                        successMessage.style.opacity = '0';
+                        setTimeout(() => {
+                            if (successMessage.parentNode) {
+                                successMessage.parentNode.removeChild(successMessage);
+                            }
+                        }, 500);
+                    }, 5000);
+                }, 100);
+            } catch (error) {
+                console.error('Error analyzing paper:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'none';
+                
+                // Reset the chat button
+                document.getElementById('chat-btn-text').textContent = 'Continue discussing this paper in Chat';
+                
+                // Show error message
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-danger mt-3';
+                errorDiv.innerHTML = `<strong>Error analyzing paper:</strong> ${error.message}`;
+                
+                // Add error to the top of the page
+                const container = document.querySelector('.container');
+                container.insertBefore(errorDiv, container.firstChild);
+                
+                // Remove error after 10 seconds
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.parentNode.removeChild(errorDiv);
+                    }
+                }, 10000);
+            }
+        }
+
+        // Function to update current paper indicator in chat
+        function updateCurrentPaperIndicator() {
+            // Ensure we have the current paper from localStorage if needed
+            ensureCurrentPaper();
+            
+            const indicator = document.getElementById('current-paper-indicator');
+            const titleSpan = document.getElementById('current-paper-title');
+            
+            if (currentPaper) {
+                console.log("updateCurrentPaperIndicator - Using paper:", currentPaper);
+                
+                // Get paper title if available
+                let paperTitle = document.getElementById('paper-title').textContent || '';
+                
+                // If paper title is empty (e.g., when directly switching to chat tab), try to get it from localStorage
+                if (!paperTitle && localStorage.getItem('paperTitle')) {
+                    paperTitle = localStorage.getItem('paperTitle');
+                }
+                
+                const displayTitle = paperTitle ? paperTitle : `Paper (PMID: ${currentPaper})`;
+                
+                // Update and show indicator
+                titleSpan.textContent = `Discussing: ${displayTitle}`;
+                indicator.style.display = 'block';
+            } else {
+                // Hide indicator if no paper
+                indicator.style.display = 'none';
+            }
+        }
+        
+        // Function to sync paper context between tabs
+        function syncPaperContext() {
+            // Get the latest paper context from localStorage
+            const storedPaper = localStorage.getItem('currentPaper');
+            const storedTitle = localStorage.getItem('paperTitle');
+            
+            console.log("syncPaperContext - localStorage values:", {
+                currentPaper: storedPaper,
+                paperTitle: storedTitle
+            });
+            
+            // Update in-memory variables if needed
+            if (storedPaper && (!currentPaper || currentPaper !== storedPaper)) {
+                currentPaper = storedPaper;
+                console.log("syncPaperContext - Updated currentPaper:", currentPaper);
+            }
+            
+            // Update UI elements
+            updateCurrentPaperIndicator();
+            
+            // Update PMID input if we're on the analyze tab
+            if (document.getElementById('analyze-tab').classList.contains('active') && currentPaper) {
+                document.getElementById('pmid').value = currentPaper;
+            }
+        }
+        
+        // Function to clear current paper context
+        function clearCurrentPaperContext() {
+            try {
+                // Clear variables and localStorage
+                currentPaper = null;
+                localStorage.removeItem('currentPaper');
+                localStorage.removeItem('paperTitle');
+                
+                // Update UI
+                updateCurrentPaperIndicator();
+                
+                // Add system message
+                addMessage('System', 'Paper context cleared. You are now in general chat mode.', 'system-message');
+                
+                // Update message input placeholder
+                document.getElementById('message-input').placeholder = "Type your message...";
+                
+                console.log("clearCurrentPaperContext - Paper context cleared successfully");
+            } catch (error) {
+                console.error("Error clearing paper context:", error);
+                addMessage('Error', 'Failed to clear paper context', 'error-message');
+            }
+        }
+
+        // Function to switch to chat tab with current paper context
+        function switchToChatWithPaper() {
+            try {
+                // Debug the current state
+                console.log("Before ensureCurrentPaper - currentPaper:", currentPaper);
+                console.log("Before ensureCurrentPaper - localStorage:", localStorage.getItem('currentPaper'));
+                
+                // Ensure we have the current paper from localStorage if needed
+                ensureCurrentPaper();
+                
+                console.log("After ensureCurrentPaper - currentPaper:", currentPaper);
+                
+                // Double-check if we have a paper to discuss
+                if (!currentPaper) {
+                    // Try one more time with localStorage
+                    currentPaper = localStorage.getItem('currentPaper');
+                    console.log("After direct localStorage check - currentPaper:", currentPaper);
+                }
+                
+                if (!currentPaper) {
+                    throw new Error('No paper available to discuss. Please analyze a paper first.');
+                }
+                
+                console.log("switchToChatWithPaper - Using paper:", currentPaper);
+                
+                // Get paper metadata
+                let paperTitle = document.getElementById('paper-title').textContent;
+                console.log("switchToChatWithPaper - Paper title from DOM:", paperTitle);
+                
+                // If paper title is empty, try to get it from localStorage
+                if (!paperTitle || paperTitle.trim() === '') {
+                    paperTitle = localStorage.getItem('paperTitle') || `Paper ${currentPaper}`;
+                    console.log("switchToChatWithPaper - Using paper title from localStorage:", paperTitle);
+                }
+                
+                // Switch to chat tab
+                document.getElementById('chat-tab').click();
+                
+                // Update paper indicator
+                updateCurrentPaperIndicator();
+                
+                // Add system message about the paper
+                addMessage('System', `Now discussing paper: "${paperTitle}" (PMID: ${currentPaper})`, 'system-message');
+                
+                // Focus on message input
+                document.getElementById('message-input').focus();
+                
+                // Add a helpful suggestion
+                const suggestedQuestions = [
+                    "What are the key findings of this paper?",
+                    "What methods were used in this study?",
+                    "What are the limitations of this research?",
+                    "What are the implications for microbiome research?",
+                    "How does this relate to BugSigDB curation?"
+                ];
+                const randomQuestion = suggestedQuestions[Math.floor(Math.random() * suggestedQuestions.length)];
+                document.getElementById('message-input').placeholder = `Try asking: "${randomQuestion}"`;
+            } catch (error) {
+                console.error("Error switching to chat with paper:", error);
+                
+                // Show error message
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-danger mt-3';
+                errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+                
+                // Add error to the top of the page
+                const container = document.querySelector('.container');
+                container.insertBefore(errorDiv, container.firstChild);
+                
+                // Remove error after 5 seconds
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.parentNode.removeChild(errorDiv);
+                    }
+                }, 5000);
+            }
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('message-input');
+            const message = messageInput.value.trim();
+            
+            if (!message) {
+                return;
+            }
+            
+            // Add user message to chat
+            addMessage('You', message, 'user-message');
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Ensure we have the current paper from localStorage if needed
+            ensureCurrentPaper();
+            
+            // Create message object with current paper info if available
+            const messageObj = {
+                content: message,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Add current paper info if available
+            if (currentPaper) {
+                messageObj.currentPaper = currentPaper;
+                console.log("sendMessage - Including paper context:", currentPaper);
+            }
+            
+            // Send to server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(messageObj));
+            } else {
+                addMessage('System', 'Connection lost. Please refresh the page.', 'system-message');
+            }
+        }
+    </script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

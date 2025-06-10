@@ -1,0 +1,29 @@
+## Analyze the first paper in the dataset:
+python3 scripts/analyze_bugsigdb_paper.py
+
+## Analyze a specific paper:
+python3 scripts/analyze_bugsigdb_paper.py --pmid YOUR_PMID
+
+## Analyze a random paper:
+python3 scripts/analyze_bugsigdb_paper.py --random
+
+## Analyze the structure of the csv fils
+head -n 1 full_dump.csv
+
+Let's try to read a few more lines to see the actual data structure:
+head -n 5 full_dump.csv
+
+pip install -r requirements.txt
+
+python -m Miner.web.app
+
+chmod +x scripts/analyze_papers.py
+
+python3 scripts/analyze_papers.py --pmid_list data/sample_pmids.txt --output results.json --verbose
+
+python3 web/app_test.py
+http://localhost:8000/analyze/27742762
+http://localhost:8000/analyze/35918716
+
+
+python -m web.app_test

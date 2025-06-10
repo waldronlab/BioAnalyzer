@@ -6,12 +6,12 @@ import pandas as pd
 from typing import Optional
 from retrieve.data_retrieval import PubMedRetriever
 from models.unified_qa import UnifiedQA
-from utils.utils import config
 import os
-from dotenv import load_dotenv
+import sys
 
-# Load environment variables
-load_dotenv()
+# Add parent directory to path to allow importing utils.config
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.config import NCBI_API_KEY, GEMINI_API_KEY, SUPERSTUDIO_API_KEY, EMAIL
 
 # Configure logging
 logging.basicConfig(
@@ -74,13 +74,13 @@ async def analyze_bugsigdb_paper(
     logger.info(f"Analyzing paper with PMID: {pmid}")
     
     # Initialize components
-    retriever = PubMedRetriever()
+    retriever = PubMedRetriever(api_key=NCBI_API_KEY)
     qa_system = UnifiedQA(
-        use_superstudio=bool(os.getenv('SUPERSTUDIO_API_KEY')),
-        use_gemini=bool(os.getenv('GEMINI_API_KEY')),
+        use_superstudio=bool(SUPERSTUDIO_API_KEY),
+        use_gemini=bool(GEMINI_API_KEY),
         use_biobert=True,
-        superstudio_api_key=os.getenv('SUPERSTUDIO_API_KEY'),
-        gemini_api_key=os.getenv('GEMINI_API_KEY')
+        superstudio_api_key=SUPERSTUDIO_API_KEY,
+        gemini_api_key=GEMINI_API_KEY
     )
     
     try:

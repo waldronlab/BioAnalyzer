@@ -198,31 +198,48 @@ class PubMedRetriever:
         Returns:
             List of PMIDs
         """
-        cache_file = self.cache_dir / "bugsigdb_pmids.json"
+        # This would normally query the BugSigDB API
+        # For now, return a placeholder list
+        return ["12345", "67890"]
+        
+    def get_paper_by_doi(self, doi: str) -> Dict:
+        """Retrieve paper metadata using DOI.
+        
+        Args:
+            doi: Digital Object Identifier
+            
+        Returns:
+            Dictionary containing paper metadata
+        """
+        cache_key = create_cache_key("doi", doi)
+        cache_file = self.cache_dir / f"{cache_key}.json"
         
         if cache_file.exists():
             return load_json(cache_file)
             
-        # URL for BugSigDB data
-        url = "https://bugsigdb.org/Help:Contents#Information_for_data_analysts_and_tool_developers"
+        # Search for the DOI in PubMed
+        result = self._handle_api_call(
+            Entrez.esearch,
+            db="pubmed",
+            term=f"{doi}[DOI]",
+            retmax=1
+        )
         
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
+        if not result or not result.get("IdList"):
+            raise ValueError(f"No paper found with DOI: {doi}")
             
-            # Parse the page and extract PMIDs
-            # Note: This is a placeholder - actual implementation would need to be
-            # updated based on the actual structure of the BugSigDB page
-            soup = BeautifulSoup(response.text, 'lxml')
-            pmids = []  # Extract PMIDs from the page
-            
-            save_json(pmids, cache_file)
-            return pmids
-            
-        except Exception as e:
-            logger.error(f"Failed to retrieve BugSigDB PMIDs: {str(e)}")
-            return []
-            
+        # Get the PMID from the search result
+        pmid = result["IdList"][0]
+        
+        # Get the full metadata using the PMID
+        metadata = self.get_paper_metadata(pmid)
+        
+        # Add the DOI to the metadata
+        metadata["doi"] = doi
+        
+        save_json(metadata, cache_file)
+        return metadata
+        
     def get_negative_examples(self, n: int = 1000) -> List[str]:
         """Retrieve PMIDs for papers unlikely to contain microbial signatures.
         

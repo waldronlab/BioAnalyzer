@@ -34,11 +34,29 @@ source venv/bin/activate  # On Windows, use: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Create a `.env` file with your NCBI API key:
-```
-NCBI_API_KEY=your_api_key_here
-EMAIL=your_email@example.com
-```
+4. Set up environment variables:
+   - Copy the example environment file: `cp .env.example .env`
+   - Edit the `.env` file and add your API keys:
+     ```
+     EMAIL=your_email@example.com
+     NCBI_API_KEY=your_ncbi_api_key_here
+     GEMINI_API_KEY=your_gemini_api_key_here
+     SUPERSTUDIO_API_KEY=your_superstudio_api_key_here
+     ```
+
+## API Keys
+
+This project requires the following API keys:
+
+1. **NCBI API Key**: For accessing PubMed and PMC data
+   - Register at: https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/
+
+2. **Gemini API Key**: For Google's Gemini AI model
+   - Get API key at: https://ai.google.dev/
+
+3. **SuperStudio API Key** (optional): For additional AI capabilities
+
+These keys should be stored in your `.env` file, not hardcoded in the source code.
 
 ## Project Structure
 
@@ -54,6 +72,7 @@ EMAIL=your_email@example.com
 ├── tests/            # Test suite
 ├── utils/            # Utility functions
 │   └── bugsigdb_analyzer.py  # Main analyzer class
+│   └── config.py     # Configuration and environment variables
 └── web/              # Web interface components
 ```
 

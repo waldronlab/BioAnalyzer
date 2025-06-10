@@ -6,6 +6,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
 from tqdm import tqdm
+from Bio import Entrez
+import sys
+import os
+
+# Add parent directory to path to allow importing utils.config
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.config import NCBI_API_KEY, GEMINI_API_KEY, EMAIL
 
 from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor
@@ -20,7 +27,7 @@ logger = logging.getLogger(__name__)
 class PubMedDataCollector:
     """Collect and preprocess PubMed data for training."""
     
-    def __init__(self, api_key: str, output_dir: str, max_papers: int = 1000):
+    def __init__(self, api_key: Optional[str] = None, output_dir: str = "data", max_papers: int = 1000):
         """Initialize the data collector.
         
         Args:
@@ -28,11 +35,19 @@ class PubMedDataCollector:
             output_dir: Directory to save processed data
             max_papers: Maximum number of papers to collect
         """
-        self.retriever = PubMedRetriever(api_key=api_key)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.max_papers = max_papers
         self.text_processor = AdvancedTextProcessor()
+        
+        # Use provided API key or fall back to environment variable
+        self.api_key = api_key or NCBI_API_KEY
+        self.retriever = PubMedRetriever(api_key=self.api_key)
+        
+        # Set up Entrez
+        Entrez.email = EMAIL
+        
+        logger.info(f"Initialized PubMedDataCollector with output_dir={output_dir}, max_papers={max_papers}")
         
     def search_relevant_papers(self, query: str, max_results: int = 100) -> List[str]:
         """Search for relevant papers using a query.
@@ -45,10 +60,6 @@ class PubMedDataCollector:
             List of PMIDs
         """
         logger.info(f"Searching PubMed with query: {query}")
-        
-        from Bio import Entrez
-        Entrez.email = "your.email@example.com"
-        Entrez.api_key = self.retriever.api_key
         
         try:
             # Search for papers
@@ -168,8 +179,8 @@ class PubMedDataCollector:
         
         logger.info("Filling responses with Gemini API")
         
-        # Initialize Gemini QA
-        gemini = GeminiQA(api_key="AIzaSyD-B2XQrXgsn-YZarxZcz5jHCTI-g3nugI")
+        # Initialize Gemini QA with API key from environment
+        gemini = GeminiQA(api_key=GEMINI_API_KEY)
         
         async def process_conversations():
             completed = []
@@ -267,7 +278,7 @@ class PubMedDataCollector:
 
 def main():
     parser = argparse.ArgumentParser(description="Collect PubMed data for training")
-    parser.add_argument("--api-key", required=True, help="NCBI API key")
+    parser.add_argument("--api-key", help="NCBI API key (optional, will use environment variable if not provided)")
     parser.add_argument("--output-dir", default="data", help="Output directory")
     parser.add_argument("--max-papers", type=int, default=1000, help="Maximum number of papers to collect")
     args = parser.parse_args()
@@ -282,7 +293,7 @@ def main():
     ]
     
     collector = PubMedDataCollector(
-        api_key=args.api_key,
+        api_key=args.api_key,  # Will use environment variable if None
         output_dir=args.output_dir,
         max_papers=args.max_papers
     )

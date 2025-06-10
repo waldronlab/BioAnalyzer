@@ -67,10 +67,7 @@ qa_system = UnifiedQA(
 from models.gemini_qa import GeminiQA
 gemini_chat = GeminiQA(
     api_key=GEMINI_API_KEY,
-    model="gemini-pro",
-    base_url="https://generativelanguage.googleapis.com/v1beta",
-    use_superstudio=True,
-    superstudio_url=SUPERSTUDIO_URL
+    model="gemini-pro"
 )
 
 class Message(BaseModel):
@@ -347,4 +344,4 @@ async def ask_question(pmid: str, question: Question):
 if __name__ == "__main__":
     import uvicorn
     print("Starting BugSigDB Analyzer API...")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")

@@ -717,18 +717,24 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
     try:
         while True:
             # Wait for message from client
+            print(f"Waiting for message from {name}...")
             data = await websocket.receive_text()
+            print(f"Received raw data from {name}: {data[:100]}...")
             
             try:
                 # Parse message data
                 message_data = json.loads(data)
-                user_message = message_data.get("message", "")
+                print(f"Parsed JSON data: {message_data}")
+                user_message = message_data.get("content", "")
                 
-                if not user_message.strip():
+                if not user_message or not isinstance(user_message, str) or not user_message.strip():
+                    print(f"Empty or invalid message received: {message_data}")
                     await websocket.send_json({
-                        "error": "Empty message received"
+                        "error": "Empty or invalid message received"
                     })
                     continue
+                
+                print(f"Received message from {name}: {user_message[:50]}...")
                 
                 # Add message to history
                 active_sessions[name]["messages"].append({
@@ -955,5 +961,40 @@ def generate_fallback_answer(question: str, context: str) -> str:
 
 if __name__ == "__main__":
     import uvicorn
+    import ssl
+    import os
+    import argparse
+    from pathlib import Path
+    
+    parser = argparse.ArgumentParser(description="Run BugSigDB Analyzer")
+    parser.add_argument("--https", action="store_true", help="Run with HTTPS")
+    parser.add_argument("--port", type=int, default=None, help="Port to run on (default: 8443 for HTTPS, 8000 for HTTP)")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run on (default: 127.0.0.1)")
+    
+    args = parser.parse_args()
+    
     print("Starting BugSigDB Analyzer API...")
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    
+    if args.https:
+        # Set default HTTPS port if not specified
+        port = args.port or 8443
+        
+        # Check if SSL certificates exist, if not, create self-signed certificates
+        cert_dir = Path("./certs")
+        cert_file = cert_dir / "cert.pem"
+        key_file = cert_dir / "key.pem"
+        
+        if not cert_dir.exists():
+            cert_dir.mkdir(exist_ok=True)
+        
+        if not cert_file.exists() or not key_file.exists():
+            print("Generating self-signed SSL certificates...")
+            os.system(f'openssl req -x509 -newkey rsa:4096 -nodes -out {cert_file} -keyout {key_file} -days 365 -subj "/CN=localhost"')
+        
+        print(f"Running with HTTPS on {args.host}:{port}")
+        uvicorn.run(app, host=args.host, port=port, ssl_certfile=str(cert_file), ssl_keyfile=str(key_file), log_level="info")
+    else:
+        # Set default HTTP port if not specified
+        port = args.port or 8000
+        print(f"Running with HTTP on {args.host}:{port}")
+        uvicorn.run(app, host=args.host, port=port, log_level="info")

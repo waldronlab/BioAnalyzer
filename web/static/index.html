@@ -1075,6 +1075,7 @@
             console.log("ensureCurrentPaper - Starting with currentPaper:", currentPaper);
             console.log("ensureCurrentPaper - localStorage value:", localStorage.getItem('currentPaper'));
             
+            // First check localStorage
             const storedPaper = localStorage.getItem('currentPaper');
             if (storedPaper && (!currentPaper || currentPaper !== storedPaper)) {
                 console.log("ensureCurrentPaper - Updating currentPaper from localStorage");
@@ -1082,6 +1083,29 @@
                 console.log("ensureCurrentPaper - Updated currentPaper:", currentPaper);
                 return true;
             }
+            
+            // If still no currentPaper, check if we have a PMID in the table
+            if (!currentPaper) {
+                const tablePmid = document.getElementById('paper-pmid').textContent;
+                if (tablePmid && tablePmid !== 'N/A') {
+                    console.log("ensureCurrentPaper - Updating currentPaper from table PMID:", tablePmid);
+                    currentPaper = tablePmid;
+                    localStorage.setItem('currentPaper', tablePmid);
+                    return true;
+                }
+            }
+            
+            // If still no currentPaper, check if we have a value in the PMID input field
+            if (!currentPaper) {
+                const inputPmid = document.getElementById('pmid').value.trim();
+                if (inputPmid) {
+                    console.log("ensureCurrentPaper - Updating currentPaper from PMID input:", inputPmid);
+                    currentPaper = inputPmid;
+                    localStorage.setItem('currentPaper', inputPmid);
+                    return true;
+                }
+            }
+            
             return false;
         }
 
@@ -1186,7 +1210,9 @@
 
         function setupWebSocket() {
             const encodedUsername = encodeURIComponent(username);
-            ws = new WebSocket(`ws://${window.location.host}/ws/${encodedUsername}`);
+            // Use secure WebSocket (wss://) if the page is loaded over HTTPS
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/${encodedUsername}`);
             
             ws.onopen = () => {
                 console.log('Connected to WebSocket');
@@ -1252,11 +1278,31 @@
             // Ensure currentPaper is up-to-date
             ensureCurrentPaper();
             
-            // Check localStorage first, then variable
-            const paperToUse = currentPaper || localStorage.getItem('currentPaper');
-            console.log("askQuestion - currentPaper variable:", currentPaper);
-            console.log("askQuestion - localStorage value:", localStorage.getItem('currentPaper'));
-            console.log("askQuestion - paperToUse:", paperToUse);
+            // Try multiple sources to find the paper ID
+            let paperToUse = currentPaper;
+            
+            // If not found in currentPaper, check localStorage
+            if (!paperToUse) {
+                paperToUse = localStorage.getItem('currentPaper');
+            }
+            
+            // If still not found, check the table
+            if (!paperToUse) {
+                const tablePmid = document.getElementById('paper-pmid').textContent;
+                if (tablePmid && tablePmid !== 'N/A') {
+                    paperToUse = tablePmid;
+                }
+            }
+            
+            // If still not found, check the input field
+            if (!paperToUse) {
+                const inputPmid = document.getElementById('pmid').value.trim();
+                if (inputPmid) {
+                    paperToUse = inputPmid;
+                }
+            }
+            
+            console.log("askQuestion - paperToUse final:", paperToUse);
             
             if (!paperToUse) {
                 // Show error message
@@ -1410,6 +1456,26 @@
                 document.getElementById('paper-journal').textContent = 
                     `${data.metadata.journal} (${data.metadata.publication_date})`;
                 document.getElementById('paper-abstract').textContent = data.metadata.abstract;
+                
+                // Update paper analysis details table
+                document.getElementById('paper-pmid').textContent = pmid;
+                document.getElementById('paper-journal-short').textContent = data.metadata.journal || 'N/A';
+                document.getElementById('paper-title-short').textContent = data.metadata.title || 'N/A';
+                
+                // Extract year from publication date
+                const yearMatch = data.metadata.publication_date ? data.metadata.publication_date.match(/\d{4}/) : null;
+                document.getElementById('paper-year').textContent = yearMatch ? yearMatch[0] : 'N/A';
+                
+                // Update other fields in the table
+                document.getElementById('paper-host').textContent = data.analysis.host || 'N/A';
+                document.getElementById('paper-body-site').textContent = data.analysis.body_site || 'N/A';
+                document.getElementById('paper-condition').textContent = data.analysis.condition || 'N/A';
+                document.getElementById('paper-sequencing-type').textContent = data.analysis.sequencing_type || 'N/A';
+                document.getElementById('paper-in-bugsigdb').textContent = data.analysis.in_bugsigdb || 'No';
+                document.getElementById('paper-signature-prob').textContent = data.analysis.signature_probability || `${(data.analysis.confidence * 100).toFixed(1)}%`;
+                document.getElementById('paper-sample-size').textContent = data.analysis.sample_size || 'N/A';
+                document.getElementById('paper-taxa-level').textContent = data.analysis.taxa_level || 'N/A';
+                document.getElementById('paper-statistical-method').textContent = data.analysis.statistical_method || 'N/A';
                 
                 // Store paper info in global variable and localStorage
                 currentPaper = pmid;
@@ -1658,16 +1724,39 @@
                 
                 console.log("After ensureCurrentPaper - currentPaper:", currentPaper);
                 
-                // Double-check if we have a paper to discuss
-                if (!currentPaper) {
-                    // Try one more time with localStorage
-                    currentPaper = localStorage.getItem('currentPaper');
-                    console.log("After direct localStorage check - currentPaper:", currentPaper);
+                // Try multiple sources to find the paper ID
+                let paperToUse = currentPaper;
+                
+                // If not found in currentPaper, check localStorage
+                if (!paperToUse) {
+                    paperToUse = localStorage.getItem('currentPaper');
                 }
                 
-                if (!currentPaper) {
+                // If still not found, check the table
+                if (!paperToUse) {
+                    const tablePmid = document.getElementById('paper-pmid').textContent;
+                    if (tablePmid && tablePmid !== 'N/A') {
+                        paperToUse = tablePmid;
+                    }
+                }
+                
+                // If still not found, check the input field
+                if (!paperToUse) {
+                    const inputPmid = document.getElementById('pmid').value.trim();
+                    if (inputPmid) {
+                        paperToUse = inputPmid;
+                    }
+                }
+                
+                console.log("switchToChatWithPaper - paperToUse final:", paperToUse);
+                
+                if (!paperToUse) {
                     throw new Error('No paper available to discuss. Please analyze a paper first.');
                 }
+                
+                // Update the global variable
+                currentPaper = paperToUse;
+                localStorage.setItem('currentPaper', currentPaper);
                 
                 console.log("switchToChatWithPaper - Using paper:", currentPaper);
                 
@@ -1753,9 +1842,16 @@
                 console.log("sendMessage - Including paper context:", currentPaper);
             }
             
-            // Send to server
+            // Send to server - ensure the message is properly formatted
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify(messageObj));
+                try {
+                    const messageString = JSON.stringify(messageObj);
+                    console.log("Sending message:", messageString);
+                    ws.send(messageString);
+                } catch (error) {
+                    console.error("Error sending message:", error);
+                    addMessage('System', 'Error sending message. Please try again.', 'system-message');
+                }
             } else {
                 addMessage('System', 'Connection lost. Please refresh the page.', 'system-message');
             }
@@ -2209,6 +2305,87 @@
                 // Hide loading indicator
                 document.getElementById('curation-loading').style.display = 'none';
             }
+        }
+        
+        // Function to get score color based on value
+        function getScoreColor(score) {
+            const percentage = score * 100;
+            if (percentage >= 70) return 'bg-success';
+            if (percentage >= 30) return 'bg-warning';
+            return 'bg-danger';
+        }
+        
+        // Function to update category scores
+        function updateCategoryScores(scores) {
+            console.log('updateCategoryScores called with:', scores);
+            
+            const categoryScoresDiv = document.getElementById('category-scores');
+            if (!categoryScoresDiv) {
+                console.log('Category scores div not found');
+                return;
+            }
+            
+            categoryScoresDiv.innerHTML = '';
+            
+            if (!scores || typeof scores !== 'object' || Object.keys(scores).length === 0) {
+                console.log('No valid scores provided');
+                categoryScoresDiv.innerHTML = '<p class="text-muted">No category scores available</p>';
+                return;
+            }
+            
+            const scoresList = document.createElement('div');
+            scoresList.className = 'category-scores-list';
+            
+            // Sort categories alphabetically
+            const sortedCategories = Object.entries(scores)
+                .filter(([_, score]) => score !== null && !isNaN(score))
+                .sort((a, b) => a[0].localeCompare(b[0]));
+            
+            if (sortedCategories.length === 0) {
+                categoryScoresDiv.innerHTML = '<p class="text-muted">No valid category scores available</p>';
+                return;
+            }
+            
+            sortedCategories.forEach(([category, score]) => {
+                const scorePercentage = (parseFloat(score) || 0) * 100;
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category-score-item';
+                
+                const formattedCategory = category
+                    .split('_')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+                
+                const scoreLevel = getScoreColor(score);
+                
+                categoryDiv.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="category-name">${formattedCategory}</span>
+                        <span class="score-value">${scorePercentage.toFixed(1)}%</span>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar ${scoreLevel}" role="progressbar" 
+                             style="width: ${scorePercentage}%"
+                             aria-valuenow="${scorePercentage}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                        </div>
+                    </div>
+                `;
+                scoresList.appendChild(categoryDiv);
+            });
+            
+            categoryScoresDiv.appendChild(scoresList);
+            
+            // Add a legend
+            const legendDiv = document.createElement('div');
+            legendDiv.className = 'mt-3 small text-muted d-flex justify-content-center gap-4';
+            legendDiv.innerHTML = `
+                <span><i class="fas fa-circle text-success"></i> High (>70%)</span>
+                <span><i class="fas fa-circle text-warning"></i> Medium (30-70%)</span>
+                <span><i class="fas fa-circle text-danger"></i> Low (<30%)</span>
+            `;
+            categoryScoresDiv.appendChild(legendDiv);
         }
     </script>
     <script src="/static/js/app.js"></script>

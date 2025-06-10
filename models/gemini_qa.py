@@ -118,6 +118,85 @@ class GeminiQA:
             
         return results
     
+    async def get_answer(self, question: str, context: str) -> Dict[str, Union[str, float]]:
+        """Get an answer to a question using Gemini API.
+        
+        Args:
+            question: The question to answer
+            context: Context information to help answer the question
+            
+        Returns:
+            Dictionary containing the answer and confidence score
+        """
+        try:
+            # This is a placeholder implementation
+            # TODO: Implement actual Gemini API call
+            logger.info(f"Processing question: {question[:50]}...")
+            
+            # For now, return a placeholder response
+            return {
+                "answer": f"This is a placeholder answer to your question: '{question}'. The actual Gemini API integration is pending.",
+                "confidence": 0.5
+            }
+        except Exception as e:
+            logger.error(f"Error in get_answer: {str(e)}")
+            return {
+                "error": str(e),
+                "answer": "Sorry, I couldn't process your question due to an error.",
+                "confidence": 0.0
+            }
+    
+    async def chat_with_context(
+        self, 
+        message: str, 
+        chat_history: Optional[List[Dict]] = None,
+        paper_context: Optional[Dict] = None
+    ) -> Dict[str, str]:
+        """Chat with context using Gemini API.
+        
+        Args:
+            message: User message
+            chat_history: Optional chat history
+            paper_context: Optional paper context
+            
+        Returns:
+            Dictionary containing response
+        """
+        try:
+            # This is a placeholder implementation
+            # TODO: Implement actual Gemini API call
+            logger.info(f"Processing chat message: {message[:50]}...")
+            
+            # Prepare context from chat history and paper context
+            context_text = ""
+            
+            if chat_history:
+                # Format chat history
+                history_text = "\n".join([
+                    f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                    for msg in chat_history[-5:] if msg.get('content')
+                ])
+                context_text += f"Chat history:\n{history_text}\n\n"
+            
+            if paper_context:
+                # Format paper context
+                paper_text = f"Paper PMID: {paper_context.get('pmid', 'unknown')}\n"
+                paper_text += f"Title: {paper_context.get('title', '')}\n"
+                paper_text += f"Abstract: {paper_context.get('abstract', '')}"
+                context_text += f"Paper context:\n{paper_text}\n\n"
+            
+            # For now, return a placeholder response
+            return {
+                "response": f"This is a placeholder response to your message: '{message}'. The actual Gemini API integration is pending.",
+                "context_used": bool(context_text)
+            }
+        except Exception as e:
+            logger.error(f"Error in chat_with_context: {str(e)}")
+            return {
+                "error": str(e),
+                "response": "Sorry, I couldn't process your message due to an error."
+            }
+    
     def _save_results(self, paper_title: str, results: Dict) -> None:
         """Save analysis results to disk.
         

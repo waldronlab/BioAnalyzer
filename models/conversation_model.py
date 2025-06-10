@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from typing import Dict, Optional, List
 from .attention_model import MicrobialSignatureModel
-from ..utils.conversation_memory import ConversationMemory
+from utils.conversation_memory import ConversationMemory
 
 class ConversationalBugSigModel(nn.Module):
     def __init__(self, base_model: MicrobialSignatureModel, config):

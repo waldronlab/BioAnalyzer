@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, HTTPException, Request
+from fastapi import FastAPI, WebSocket, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocketDisconnect
@@ -17,6 +17,7 @@ from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor
 from utils.user_manager import UserManager
 from utils.config import NCBI_API_KEY, GEMINI_API_KEY, SUPERSTUDIO_API_KEY, SUPERSTUDIO_URL
+import re
 
 app = FastAPI(title="BugSigDB Analyzer")
 
@@ -59,8 +60,9 @@ retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 qa_system = UnifiedQA(
     use_biobert=True, 
     use_superstudio=True,
-    use_gemini=False,
-    superstudio_api_key=SUPERSTUDIO_API_KEY
+    use_gemini=True,
+    superstudio_api_key=SUPERSTUDIO_API_KEY,
+    gemini_api_key=GEMINI_API_KEY
 )
 
 # Initialize Gemini for chat using SuperStudio
@@ -145,6 +147,97 @@ async def analyze_paper(pmid: str, request: Request):
         
         # Prefer Gemini results if available, otherwise use biobert
         analysis_results = results.get("gemini", results.get("biobert", {}))
+        
+        # Add additional fields for the paper analysis details table
+        # Extract these from the analysis if possible, or set defaults
+        found_terms = analysis_results.get("found_terms", {})
+        
+        # Add host information
+        if "host" not in analysis_results and "host" in found_terms and found_terms["host"]:
+            analysis_results["host"] = found_terms["host"][0]
+            
+        # Add body site information
+        if "body_site" not in analysis_results and "body site" in found_terms and found_terms["body site"]:
+            analysis_results["body_site"] = found_terms["body site"][0]
+            
+        # Add condition information
+        if "condition" not in analysis_results and "condition" in found_terms and found_terms["condition"]:
+            analysis_results["condition"] = found_terms["condition"][0]
+            
+        # Add sequencing type information
+        if "sequencing_type" not in analysis_results and "sequencing type" in found_terms and found_terms["sequencing type"]:
+            analysis_results["sequencing_type"] = found_terms["sequencing type"][0]
+        
+        # Add sample size information
+        if "sample_size" not in analysis_results:
+            # Try to extract from found terms
+            if "sample size" in found_terms and found_terms["sample size"]:
+                analysis_results["sample_size"] = found_terms["sample size"][0]
+            else:
+                # Try to extract from key findings or abstract
+                sample_size_pattern = r'(\d+)\s+(?:subjects|participants|samples|patients)'
+                key_findings = analysis_results.get("key_findings", [])
+                for finding in key_findings:
+                    if isinstance(finding, str):
+                        match = re.search(sample_size_pattern, finding, re.IGNORECASE)
+                        if match:
+                            analysis_results["sample_size"] = match.group(1)
+                            break
+                
+                # If not found in key findings, try abstract
+                if "sample_size" not in analysis_results and "abstract" in paper_content:
+                    match = re.search(sample_size_pattern, paper_content["abstract"], re.IGNORECASE)
+                    if match:
+                        analysis_results["sample_size"] = match.group(1)
+        
+        # Add taxa level information
+        if "taxa_level" not in analysis_results:
+            # Try to extract from found terms
+            for term_key in ["taxa level", "taxonomic level"]:
+                if term_key in found_terms and found_terms[term_key]:
+                    analysis_results["taxa_level"] = found_terms[term_key][0]
+                    break
+            
+            # If not found in found terms, look for common taxonomic levels
+            if "taxa_level" not in analysis_results:
+                taxa_levels = ["phylum", "class", "order", "family", "genus", "species", "strain"]
+                for level in taxa_levels:
+                    if level in found_terms and found_terms[level]:
+                        analysis_results["taxa_level"] = level
+                        break
+        
+        # Add statistical method information
+        if "statistical_method" not in analysis_results:
+            # Try to extract from found terms
+            for term_key in ["statistical method", "statistics", "analysis method"]:
+                if term_key in found_terms and found_terms[term_key]:
+                    analysis_results["statistical_method"] = found_terms[term_key][0]
+                    break
+            
+            # If not found, look for common statistical methods
+            if "statistical_method" not in analysis_results:
+                stat_methods = ["PERMANOVA", "ANOVA", "t-test", "Wilcoxon", "LEfSe", "DESeq2", "random forest"]
+                for method in stat_methods:
+                    method_pattern = re.compile(r'\b' + re.escape(method) + r'\b', re.IGNORECASE)
+                    if "abstract" in paper_content and method_pattern.search(paper_content["abstract"]):
+                        analysis_results["statistical_method"] = method
+                        break
+        
+        # Check if paper is in BugSigDB (this would need actual integration with BugSigDB)
+        if "in_bugsigdb" not in analysis_results:
+            # This is a placeholder - in a real implementation, you would check against the BugSigDB database
+            analysis_results["in_bugsigdb"] = "No"
+            
+        # Calculate signature probability if not already present
+        if "signature_probability" not in analysis_results:
+            # Use confidence as a proxy if available, or calculate based on other metrics
+            confidence = analysis_results.get("confidence", 0)
+            category_scores = analysis_results.get("category_scores", {})
+            signature_score = category_scores.get("signature_presence", 0)
+            
+            # Use the higher of confidence or signature_score
+            signature_probability = max(confidence, signature_score)
+            analysis_results["signature_probability"] = f"{signature_probability * 100:.1f}%"
         
         # If we have a valid username, update the user session
         if username:
@@ -340,6 +433,147 @@ async def ask_question(pmid: str, question: Question):
     except Exception as e:
         print(f"Error in ask_question endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error answering question: {str(e)}")
+
+@app.post("/upload_paper")
+async def upload_paper(file: UploadFile = File(...), username: str = Form(None)):
+    """Upload a paper file (PDF or text) and extract information for curation"""
+    try:
+        # Check file type
+        if file.content_type not in ["application/pdf", "text/plain"]:
+            raise HTTPException(status_code=400, detail="Only PDF and text files are supported")
+        
+        # Read file content
+        content = await file.read()
+        
+        # Process the file based on type
+        if file.content_type == "application/pdf":
+            # For PDF files, we would use a PDF parser here
+            # This is a placeholder for actual PDF parsing
+            paper_content = {
+                "title": "Extracted from PDF",
+                "abstract": "Abstract would be extracted from the PDF",
+                "full_text": "Full text would be extracted from the PDF"
+            }
+        else:
+            # For text files, use the content directly
+            text_content = content.decode("utf-8")
+            paper_content = {
+                "title": file.filename,
+                "abstract": text_content[:500] + "...",  # Use first 500 chars as abstract
+                "full_text": text_content
+            }
+        
+        # Use QA system to analyze the paper
+        results = await qa_system.analyze_paper(paper_content)
+        
+        # Prefer Gemini results if available, otherwise use biobert
+        analysis_results = results.get("gemini", results.get("biobert", {}))
+        
+        # Add additional fields for curation
+        analysis_results["taxa"] = extract_taxa(paper_content["full_text"])
+        
+        # Create response with metadata and analysis
+        response = {
+            "metadata": {
+                "title": paper_content["title"],
+                "abstract": paper_content["abstract"],
+                "pmid": "",  # No PMID for uploaded files
+                "doi": "",   # No DOI for uploaded files
+                "publication_date": ""  # No date for uploaded files
+            },
+            "analysis": analysis_results
+        }
+        
+        # If username is provided, update user session
+        if username:
+            try:
+                session = user_manager.get_session(username)
+                if not session:
+                    session = user_manager.start_session(username)
+                session.set_current_paper(file.filename)  # Use filename as identifier
+                user_manager.save_session(username)
+            except Exception as e:
+                print(f"Error updating user session for {username}: {str(e)}")
+        
+        return response
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error processing uploaded file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+
+@app.get("/fetch_by_doi")
+async def fetch_by_doi(doi: str, request: Request):
+    """Fetch paper by DOI for curation"""
+    try:
+        # Extract username from request cookies or query params
+        username = None
+        if "username" in request.cookies:
+            username = request.cookies["username"]
+        elif "username" in request.query_params:
+            username = request.query_params["username"]
+        
+        # Use PubMed retriever to get paper by DOI
+        metadata = retriever.get_paper_by_doi(doi)
+        if not metadata:
+            raise HTTPException(status_code=404, detail=f"Paper with DOI {doi} not found")
+        
+        # Get PMID from metadata
+        pmid = metadata.get("pmid")
+        if not pmid:
+            raise HTTPException(status_code=404, detail=f"PMID not found for DOI {doi}")
+        
+        # Use the analyze_paper function to get full analysis
+        return await analyze_paper(pmid, request)
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error fetching paper by DOI: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching paper: {str(e)}")
+
+@app.post("/submit_curation")
+async def submit_curation(request: Request):
+    """Submit paper curation to BugSigDB"""
+    try:
+        # Parse request body
+        data = await request.json()
+        
+        # Validate required fields
+        required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing_fields)}")
+        
+        # In a real implementation, this would submit to BugSigDB API
+        # For now, just log the submission
+        print(f"Curation submitted: {data}")
+        
+        # Return success response
+        return {"status": "success", "message": "Curation submitted successfully"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error submitting curation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error submitting curation: {str(e)}")
+
+def extract_taxa(text):
+    """Extract potential taxa from text"""
+    # This is a simplified implementation
+    # In a real system, this would use a more sophisticated approach
+    
+    # Common bacterial genera
+    common_genera = [
+        "Bacteroides", "Prevotella", "Faecalibacterium", "Bifidobacterium",
+        "Lactobacillus", "Escherichia", "Streptococcus", "Staphylococcus",
+        "Clostridium", "Ruminococcus", "Akkermansia", "Pseudomonas"
+    ]
+    
+    found_taxa = []
+    for genus in common_genera:
+        if re.search(r'\b' + genus + r'\b', text, re.IGNORECASE):
+            found_taxa.append(genus)
+    
+    return found_taxa
 
 if __name__ == "__main__":
     import uvicorn

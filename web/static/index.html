@@ -198,11 +198,56 @@
             cursor: not-allowed;
         }
         .code-panel {
-            display: none;
             background-color: #f8f9fa;
             padding: 15px;
             border-radius: 8px;
             margin-top: 15px;
+        }
+        .paper-analysis-table {
+            font-size: 0.9rem;
+            width: 100% !important;
+            table-layout: auto;
+        }
+        .paper-analysis-table th {
+            background-color: #f0f2f5;
+            font-weight: 600;
+            text-align: center;
+            vertical-align: middle;
+            white-space: nowrap;
+            padding: 0.5rem;
+        }
+        .paper-analysis-table td {
+            vertical-align: middle;
+            padding: 0.5rem;
+        }
+        .paper-analysis-table .yes-value {
+            color: #28a745;
+            font-weight: 600;
+        }
+        .paper-analysis-table .no-value {
+            color: #dc3545;
+        }
+        .paper-analysis-table .high-prob {
+            color: #28a745;
+            font-weight: 600;
+        }
+        .paper-analysis-table .medium-prob {
+            color: #fd7e14;
+            font-weight: 600;
+        }
+        .paper-analysis-table .low-prob {
+            color: #dc3545;
+        }
+        .analysis-row {
+            transition: background-color 0.2s ease;
+        }
+        .analysis-row:hover {
+            background-color: rgba(13, 110, 253, 0.1);
+        }
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            max-width: 100%;
         }
         .nav-tabs {
             margin-bottom: 20px;
@@ -455,6 +500,19 @@
             color: #0d6efd;
             font-weight: bold;
         }
+        /* Responsive table styles for mobile */
+        @media (max-width: 768px) {
+            .paper-analysis-table {
+                font-size: 0.75rem;
+            }
+            .paper-analysis-table th,
+            .paper-analysis-table td {
+                padding: 0.25rem;
+            }
+            .table-responsive {
+                max-width: 100vw;
+            }
+        }
     </style>
 </head>
 <body>
@@ -555,6 +613,9 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" id="chat-tab" data-bs-toggle="tab" href="#chat" role="tab">Chat Assistant</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="curation-tab" data-bs-toggle="tab" href="#curation" role="tab">Curation Assistant</a>
                 </li>
             </ul>
 
@@ -662,6 +723,63 @@
                                     <div class="mt-3">
                                         <strong>Abstract:</strong>
                                         <p id="paper-abstract" class="mt-2 text-muted"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Paper Analysis Details Table -->
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Paper Analysis Details</h5>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-primary me-2" onclick="exportTableToCSV()">
+                                        <i class="fas fa-download me-1"></i>Export CSV
+                                    </button>
+                                    <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#analysis-details-collapse">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="analysis-details-collapse" class="collapse show">
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered paper-analysis-table w-100">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>PMID</th>
+                                                    <th>Journal</th>
+                                                    <th>Title</th>
+                                                    <th>Year</th>
+                                                    <th>Host</th>
+                                                    <th>Body Site</th>
+                                                    <th>Condition</th>
+                                                    <th>Sequencing Type</th>
+                                                    <th>In BugSigDB?</th>
+                                                    <th>Predicted Prob of Signature</th>
+                                                    <th>Sample Size</th>
+                                                    <th>Taxa Level</th>
+                                                    <th>Statistical Method</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr id="paper-analysis-details" class="analysis-row" style="cursor: pointer;" onclick="toggleDetailedView()">
+                                                    <td id="paper-pmid"></td>
+                                                    <td id="paper-journal-short"></td>
+                                                    <td id="paper-title-short"></td>
+                                                    <td id="paper-year"></td>
+                                                    <td id="paper-host"></td>
+                                                    <td id="paper-body-site"></td>
+                                                    <td id="paper-condition"></td>
+                                                    <td id="paper-sequencing-type"></td>
+                                                    <td id="paper-in-bugsigdb"></td>
+                                                    <td id="paper-signature-prob"></td>
+                                                    <td id="paper-sample-size"></td>
+                                                    <td id="paper-taxa-level"></td>
+                                                    <td id="paper-statistical-method"></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -775,6 +893,157 @@
                     <div class="chat-input-container">
                         <input type="text" id="message-input" placeholder="Type your message..." disabled>
                         <button id="send-button" onclick="sendMessage()" disabled>Send</button>
+                    </div>
+                </div>
+
+                <!-- Curation Tab -->
+                <div class="tab-pane fade" id="curation" role="tabpanel">
+                    <div class="row justify-content-center mb-4">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Paper Upload & Curation Assistant</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted mb-4">Upload a scientific paper (PDF or text) and get AI-assisted curation for BugSigDB.</p>
+                                    
+                                    <div class="mb-4">
+                                        <h6>Upload Paper</h6>
+                                        <div class="input-group mb-3">
+                                            <input type="file" class="form-control" id="paper-file" accept=".pdf,.txt">
+                                            <button class="btn btn-primary" id="upload-paper-btn" onclick="uploadPaper()">Upload</button>
+                                        </div>
+                                        <div class="form-text">Supported formats: PDF, TXT (max 10MB)</div>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <h6>Or Enter Paper Details</h6>
+                                        <div class="mb-3">
+                                            <label for="paper-pmid-input" class="form-label">PubMed ID</label>
+                                            <div class="input-group">
+                                                <input type="text" class="form-control" id="paper-pmid-input" placeholder="Enter PMID">
+                                                <button class="btn btn-outline-primary" onclick="fetchPaperByPMID()">Fetch</button>
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="paper-doi-input" class="form-label">DOI</label>
+                                            <div class="input-group">
+                                                <input type="text" class="form-control" id="paper-doi-input" placeholder="Enter DOI">
+                                                <button class="btn btn-outline-primary" onclick="fetchPaperByDOI()">Fetch</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="curation-loading" class="loading" style="display: none;">
+                                        <p class="mt-2">Processing paper...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="curation-results" style="display: none;">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">Curation Form</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="curation-form">
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label for="curation-pmid" class="form-label">PMID</label>
+                                            <input type="text" class="form-control" id="curation-pmid" readonly>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="curation-year" class="form-label">Year</label>
+                                            <input type="text" class="form-control" id="curation-year">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="curation-title" class="form-label">Title</label>
+                                        <input type="text" class="form-control" id="curation-title">
+                                    </div>
+                                    
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label for="curation-host" class="form-label">Host</label>
+                                            <select class="form-select" id="curation-host">
+                                                <option value="">Select host...</option>
+                                                <option value="human">Human</option>
+                                                <option value="mouse">Mouse</option>
+                                                <option value="rat">Rat</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="curation-body-site" class="form-label">Body Site</label>
+                                            <select class="form-select" id="curation-body-site">
+                                                <option value="">Select body site...</option>
+                                                <option value="gut">Gut</option>
+                                                <option value="oral">Oral</option>
+                                                <option value="skin">Skin</option>
+                                                <option value="vaginal">Vaginal</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label for="curation-condition" class="form-label">Condition</label>
+                                            <input type="text" class="form-control" id="curation-condition">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="curation-seq-type" class="form-label">Sequencing Type</label>
+                                            <select class="form-select" id="curation-seq-type">
+                                                <option value="">Select sequencing type...</option>
+                                                <option value="16S rRNA">16S rRNA</option>
+                                                <option value="shotgun">Shotgun Metagenomics</option>
+                                                <option value="metatranscriptomics">Metatranscriptomics</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="curation-taxa" class="form-label">Signature Taxa</label>
+                                        <textarea class="form-control" id="curation-taxa" rows="3" placeholder="Enter taxa separated by commas"></textarea>
+                                        <div class="form-text">Enter the microbial taxa that form the signature</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="curation-notes" class="form-label">Curation Notes</label>
+                                        <textarea class="form-control" id="curation-notes" rows="3"></textarea>
+                                    </div>
+                                    
+                                    <div class="d-flex justify-content-between">
+                                        <button type="button" class="btn btn-outline-secondary" onclick="resetCurationForm()">Reset</button>
+                                        <button type="button" class="btn btn-primary" onclick="submitCuration()">Submit to BugSigDB</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">AI Curation Suggestions</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="ai-suggestions">
+                                    <p class="text-muted">AI suggestions will appear here after processing the paper.</p>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <h6>Ask for Curation Help</h6>
+                                    <div class="input-group mb-3">
+                                        <input type="text" class="form-control" id="curation-question" placeholder="Ask a question about curating this paper...">
+                                        <button class="btn btn-outline-primary" onclick="askCurationQuestion()">Ask</button>
+                                    </div>
+                                    <div id="curation-qa-results"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1489,6 +1758,456 @@
                 ws.send(JSON.stringify(messageObj));
             } else {
                 addMessage('System', 'Connection lost. Please refresh the page.', 'system-message');
+            }
+        }
+
+        // Function to toggle detailed view of paper analysis
+        function toggleDetailedView() {
+            // Get the current paper ID
+            const pmid = document.getElementById('paper-pmid').textContent;
+            if (!pmid || pmid === 'N/A') return;
+            
+            // Toggle the collapse state of the paper metadata and analysis results sections
+            const metadataCollapse = document.getElementById('metadata-collapse');
+            const analysisResultsCard = document.querySelector('.card-body h3.card-title').closest('.card');
+            
+            if (metadataCollapse.classList.contains('show')) {
+                // If metadata is showing, collapse it and show analysis results
+                const bsCollapse = new bootstrap.Collapse(metadataCollapse);
+                bsCollapse.hide();
+                // Scroll to analysis results
+                analysisResultsCard.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                // If metadata is collapsed, show it
+                const bsCollapse = new bootstrap.Collapse(metadataCollapse);
+                bsCollapse.show();
+                // Scroll to metadata
+                metadataCollapse.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function exportTableToCSV() {
+            // Get the table headers
+            const table = document.querySelector('.paper-analysis-table');
+            const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent);
+            
+            // Get the table data
+            const rowData = [];
+            const row = document.getElementById('paper-analysis-details');
+            const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent);
+            rowData.push(cells);
+            
+            // Create CSV content
+            let csvContent = headers.join(',') + '\n';
+            rowData.forEach(row => {
+                csvContent += row.join(',') + '\n';
+            });
+            
+            // Create a download link
+            const encodedUri = encodeURI('data:text/csv;charset=utf-8,' + csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            
+            // Get PMID for filename
+            const pmid = document.getElementById('paper-pmid').textContent || 'paper';
+            link.setAttribute('download', `paper_analysis_${pmid}.csv`);
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // Curation Assistant Functions
+        async function uploadPaper() {
+            const fileInput = document.getElementById('paper-file');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Please select a file to upload');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            if (file.size > 10 * 1024 * 1024) { // 10MB limit
+                alert('File size exceeds the 10MB limit');
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('curation-loading').style.display = 'block';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Add username if available
+                if (username) {
+                    formData.append('username', username);
+                }
+                
+                const response = await fetch('/upload_paper', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Process the response
+                handleCurationResponse(data);
+            } catch (error) {
+                console.error('Error uploading paper:', error);
+                alert('Error uploading paper: ' + error.message);
+            } finally {
+                // Hide loading indicator
+                document.getElementById('curation-loading').style.display = 'none';
+            }
+        }
+        
+        async function fetchPaperByPMID() {
+            const pmidInput = document.getElementById('paper-pmid-input');
+            const pmid = pmidInput.value.trim();
+            
+            if (!pmid) {
+                alert('Please enter a PubMed ID');
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('curation-loading').style.display = 'block';
+            
+            try {
+                // Reuse the existing analyze endpoint
+                const response = await fetch(`/analyze/${pmid}?format=curation`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Process the response
+                handleCurationResponse(data);
+            } catch (error) {
+                console.error('Error fetching paper by PMID:', error);
+                alert('Error fetching paper: ' + error.message);
+            } finally {
+                // Hide loading indicator
+                document.getElementById('curation-loading').style.display = 'none';
+            }
+        }
+        
+        async function fetchPaperByDOI() {
+            const doiInput = document.getElementById('paper-doi-input');
+            const doi = doiInput.value.trim();
+            
+            if (!doi) {
+                alert('Please enter a DOI');
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('curation-loading').style.display = 'block';
+            
+            try {
+                const response = await fetch(`/fetch_by_doi?doi=${encodeURIComponent(doi)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Process the response
+                handleCurationResponse(data);
+            } catch (error) {
+                console.error('Error fetching paper by DOI:', error);
+                alert('Error fetching paper: ' + error.message);
+            } finally {
+                // Hide loading indicator
+                document.getElementById('curation-loading').style.display = 'none';
+            }
+        }
+        
+        function handleCurationResponse(data) {
+            // Show the curation results section
+            document.getElementById('curation-results').style.display = 'block';
+            
+            // Fill in the curation form with data
+            document.getElementById('curation-pmid').value = data.metadata?.pmid || '';
+            document.getElementById('curation-title').value = data.metadata?.title || '';
+            
+            // Extract year from publication date
+            if (data.metadata?.publication_date) {
+                const yearMatch = data.metadata.publication_date.match(/\d{4}/);
+                if (yearMatch) {
+                    document.getElementById('curation-year').value = yearMatch[0];
+                }
+            }
+            
+            // Fill in other fields if available in the analysis
+            if (data.analysis) {
+                // Set host
+                const hostSelect = document.getElementById('curation-host');
+                const hostValue = data.analysis.host || '';
+                setSelectValue(hostSelect, hostValue);
+                
+                // Set body site
+                const bodySiteSelect = document.getElementById('curation-body-site');
+                const bodySiteValue = data.analysis.body_site || '';
+                setSelectValue(bodySiteSelect, bodySiteValue);
+                
+                // Set condition
+                document.getElementById('curation-condition').value = data.analysis.condition || '';
+                
+                // Set sequencing type
+                const seqTypeSelect = document.getElementById('curation-seq-type');
+                const seqTypeValue = data.analysis.sequencing_type || '';
+                setSelectValue(seqTypeSelect, seqTypeValue);
+                
+                // Set taxa if available
+                if (data.analysis.found_terms && data.analysis.found_terms.taxa) {
+                    document.getElementById('curation-taxa').value = data.analysis.found_terms.taxa.join(', ');
+                }
+                
+                // Display AI suggestions
+                displayAISuggestions(data.analysis);
+            }
+            
+            // Scroll to the curation form
+            document.getElementById('curation-form').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function setSelectValue(selectElement, value) {
+            if (!value) return;
+            
+            // Try to find an exact match first
+            for (let i = 0; i < selectElement.options.length; i++) {
+                if (selectElement.options[i].value.toLowerCase() === value.toLowerCase()) {
+                    selectElement.selectedIndex = i;
+                    return;
+                }
+            }
+            
+            // If no exact match, try to find a partial match
+            for (let i = 0; i < selectElement.options.length; i++) {
+                if (value.toLowerCase().includes(selectElement.options[i].value.toLowerCase()) ||
+                    selectElement.options[i].value.toLowerCase().includes(value.toLowerCase())) {
+                    selectElement.selectedIndex = i;
+                    return;
+                }
+            }
+            
+            // If still no match and the value is not empty, select "other"
+            if (value) {
+                for (let i = 0; i < selectElement.options.length; i++) {
+                    if (selectElement.options[i].value.toLowerCase() === 'other') {
+                        selectElement.selectedIndex = i;
+                        return;
+                    }
+                }
+            }
+        }
+        
+        function displayAISuggestions(analysis) {
+            const suggestionsDiv = document.getElementById('ai-suggestions');
+            suggestionsDiv.innerHTML = '';
+            
+            // Create a list of suggestions
+            const suggestionsList = document.createElement('ul');
+            suggestionsList.className = 'list-group';
+            
+            // Add suggestions based on analysis data
+            if (analysis.key_findings && analysis.key_findings.length > 0) {
+                const findingsItem = document.createElement('li');
+                findingsItem.className = 'list-group-item';
+                findingsItem.innerHTML = `<strong>Key Findings:</strong> ${analysis.key_findings.join('<br>')}`;
+                suggestionsList.appendChild(findingsItem);
+            }
+            
+            // Add suggestion for taxa if available
+            if (analysis.found_terms && analysis.found_terms.taxa) {
+                const taxaItem = document.createElement('li');
+                taxaItem.className = 'list-group-item';
+                taxaItem.innerHTML = `<strong>Suggested Taxa:</strong> ${analysis.found_terms.taxa.join(', ')}`;
+                suggestionsList.appendChild(taxaItem);
+            }
+            
+            // Add suggestion for condition
+            if (analysis.condition) {
+                const conditionItem = document.createElement('li');
+                conditionItem.className = 'list-group-item';
+                conditionItem.innerHTML = `<strong>Suggested Condition:</strong> ${analysis.condition}`;
+                suggestionsList.appendChild(conditionItem);
+            }
+            
+            // Add curation tips
+            const tipsItem = document.createElement('li');
+            tipsItem.className = 'list-group-item';
+            tipsItem.innerHTML = `
+                <strong>Curation Tips:</strong>
+                <ul>
+                    <li>Verify that all required fields are filled correctly</li>
+                    <li>Check that taxa names follow proper nomenclature</li>
+                    <li>Ensure the condition is clearly defined</li>
+                    <li>Add any relevant notes about the study design</li>
+                </ul>
+            `;
+            suggestionsList.appendChild(tipsItem);
+            
+            // Add the list to the suggestions div
+            suggestionsDiv.appendChild(suggestionsList);
+        }
+        
+        async function askCurationQuestion() {
+            const questionInput = document.getElementById('curation-question');
+            const question = questionInput.value.trim();
+            
+            if (!question) {
+                alert('Please enter a question');
+                return;
+            }
+            
+            // Get the current paper PMID
+            const pmid = document.getElementById('curation-pmid').value;
+            if (!pmid) {
+                alert('No paper is currently loaded for curation');
+                return;
+            }
+            
+            // Show a loading message
+            const resultsDiv = document.getElementById('curation-qa-results');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'alert alert-info';
+            loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Getting answer...';
+            resultsDiv.insertBefore(loadingDiv, resultsDiv.firstChild);
+            
+            try {
+                // Call the ask_question endpoint
+                const response = await fetch(`/ask_question/${pmid}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        context: 'curation' // Add context to indicate this is for curation
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Remove loading message
+                if (loadingDiv.parentNode) {
+                    loadingDiv.parentNode.removeChild(loadingDiv);
+                }
+                
+                // Display the answer
+                const answerDiv = document.createElement('div');
+                answerDiv.className = 'card mb-3';
+                answerDiv.innerHTML = `
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Q: ${question}</h6>
+                        <p class="card-text">A: ${data.answer}</p>
+                    </div>
+                `;
+                
+                resultsDiv.insertBefore(answerDiv, resultsDiv.firstChild);
+                
+                // Clear the question input
+                questionInput.value = '';
+            } catch (error) {
+                console.error('Error asking question:', error);
+                
+                // Remove loading message
+                if (loadingDiv.parentNode) {
+                    loadingDiv.parentNode.removeChild(loadingDiv);
+                }
+                
+                // Show error message
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-danger';
+                errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+                resultsDiv.insertBefore(errorDiv, resultsDiv.firstChild);
+                
+                // Remove error after 5 seconds
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.parentNode.removeChild(errorDiv);
+                    }
+                }, 5000);
+            }
+        }
+        
+        function resetCurationForm() {
+            document.getElementById('curation-form').reset();
+            document.getElementById('ai-suggestions').innerHTML = '<p class="text-muted">AI suggestions will appear here after processing the paper.</p>';
+            document.getElementById('curation-qa-results').innerHTML = '';
+        }
+        
+        async function submitCuration() {
+            // Get form data
+            const formData = {
+                pmid: document.getElementById('curation-pmid').value,
+                year: document.getElementById('curation-year').value,
+                title: document.getElementById('curation-title').value,
+                host: document.getElementById('curation-host').value,
+                body_site: document.getElementById('curation-body-site').value,
+                condition: document.getElementById('curation-condition').value,
+                sequencing_type: document.getElementById('curation-seq-type').value,
+                taxa: document.getElementById('curation-taxa').value,
+                notes: document.getElementById('curation-notes').value,
+                username: username || 'anonymous'
+            };
+            
+            // Validate required fields
+            const requiredFields = ['pmid', 'title', 'host', 'body_site', 'condition', 'sequencing_type'];
+            const missingFields = requiredFields.filter(field => !formData[field]);
+            
+            if (missingFields.length > 0) {
+                alert(`Please fill in the following required fields: ${missingFields.join(', ')}`);
+                return;
+            }
+            
+            try {
+                // Show loading indicator
+                document.getElementById('curation-loading').style.display = 'block';
+                
+                // Submit the form data
+                const response = await fetch('/submit_curation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Show success message
+                alert('Curation submitted successfully!');
+                
+                // Reset the form
+                resetCurationForm();
+                
+                // Hide the curation results
+                document.getElementById('curation-results').style.display = 'none';
+            } catch (error) {
+                console.error('Error submitting curation:', error);
+                alert('Error submitting curation: ' + error.message);
+            } finally {
+                // Hide loading indicator
+                document.getElementById('curation-loading').style.display = 'none';
             }
         }
     </script>

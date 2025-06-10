@@ -22,7 +22,21 @@ document.addEventListener('DOMContentLoaded', () => {
             'key-findings',
             'suggested-topics',
             'analysis-status',
-            'tokens-generated'
+            'tokens-generated',
+            // New paper analysis details table elements
+            'paper-pmid',
+            'paper-journal-short',
+            'paper-title-short',
+            'paper-year',
+            'paper-host',
+            'paper-body-site',
+            'paper-condition',
+            'paper-sequencing-type',
+            'paper-in-bugsigdb',
+            'paper-signature-prob',
+            'paper-sample-size',
+            'paper-taxa-level',
+            'paper-statistical-method'
         ];
 
         const missingElements = requiredElements.filter(id => {
@@ -354,6 +368,145 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('paper-date').textContent = data.metadata.publication_date || 'Not available';
             document.getElementById('paper-doi').textContent = data.metadata.doi || 'Not available';
             document.getElementById('paper-abstract').textContent = data.metadata.abstract || 'No abstract available';
+
+            // Update paper analysis details table
+            document.getElementById('paper-pmid').textContent = pmid || 'N/A';
+            document.getElementById('paper-journal-short').textContent = data.metadata.journal || 'N/A';
+            
+            // Set title with tooltip for full text
+            const titleElement = document.getElementById('paper-title-short');
+            const fullTitle = data.metadata.title || 'N/A';
+            const shortTitle = fullTitle.length > 50 ? fullTitle.substring(0, 50) + '...' : fullTitle;
+            titleElement.textContent = shortTitle;
+            if (fullTitle.length > 50) {
+                titleElement.title = fullTitle; // Add tooltip with full title
+                titleElement.style.cursor = 'help'; // Change cursor to indicate tooltip
+            }
+            
+            // Extract year from publication date if available
+            let year = 'N/A';
+            if (data.metadata.publication_date) {
+                const dateMatch = data.metadata.publication_date.match(/\d{4}/);
+                if (dateMatch) {
+                    year = dateMatch[0];
+                }
+            }
+            document.getElementById('paper-year').textContent = year;
+            
+            // Extract analysis details from the analysis results
+            const analysisData = data.analysis || {};
+            
+            // Set host with tooltip
+            const hostElement = document.getElementById('paper-host');
+            const hostValue = analysisData.host || analysisData.found_terms?.host?.[0] || 'N/A';
+            hostElement.textContent = hostValue;
+            if (hostValue.length > 20) {
+                hostElement.title = hostValue;
+                hostElement.style.cursor = 'help';
+            }
+            
+            // Set body site with tooltip
+            const bodySiteElement = document.getElementById('paper-body-site');
+            const bodySiteValue = analysisData.body_site || analysisData.found_terms?.['body site']?.[0] || 'N/A';
+            bodySiteElement.textContent = bodySiteValue;
+            if (bodySiteValue.length > 20) {
+                bodySiteElement.title = bodySiteValue;
+                bodySiteElement.style.cursor = 'help';
+            }
+            
+            // Set condition with tooltip
+            const conditionElement = document.getElementById('paper-condition');
+            const conditionValue = analysisData.condition || analysisData.found_terms?.condition?.[0] || 'N/A';
+            conditionElement.textContent = conditionValue;
+            if (conditionValue.length > 20) {
+                conditionElement.title = conditionValue;
+                conditionElement.style.cursor = 'help';
+            }
+            
+            // Set sequencing type with tooltip
+            const sequencingElement = document.getElementById('paper-sequencing-type');
+            const sequencingValue = analysisData.sequencing_type || analysisData.found_terms?.['sequencing type']?.[0] || 'N/A';
+            sequencingElement.textContent = sequencingValue;
+            if (sequencingValue.length > 20) {
+                sequencingElement.title = sequencingValue;
+                sequencingElement.style.cursor = 'help';
+            }
+            
+            // Check if paper is in BugSigDB
+            const inBugSigDB = analysisData.in_bugsigdb || 'No';
+            const inBugSigDBElement = document.getElementById('paper-in-bugsigdb');
+            inBugSigDBElement.textContent = inBugSigDB;
+            if (inBugSigDB.toLowerCase() === 'yes') {
+                inBugSigDBElement.className = 'yes-value';
+            } else {
+                inBugSigDBElement.className = 'no-value';
+            }
+            
+            // Display signature probability
+            const signatureProbRaw = analysisData.signature_probability || 
+                                   (analysisData.confidence ? (analysisData.confidence * 100).toFixed(1) + '%' : 'N/A');
+            const signatureProbElement = document.getElementById('paper-signature-prob');
+            signatureProbElement.textContent = signatureProbRaw;
+            
+            // Apply appropriate class based on probability value
+            if (signatureProbRaw !== 'N/A') {
+                // Extract numeric value from string that may contain a percentage sign
+                const probMatch = signatureProbRaw.match(/(\d+(\.\d+)?)/);
+                if (probMatch) {
+                    const probValue = parseFloat(probMatch[1]);
+                    if (probValue >= 70) {
+                        signatureProbElement.className = 'high-prob';
+                    } else if (probValue >= 30) {
+                        signatureProbElement.className = 'medium-prob';
+                    } else {
+                        signatureProbElement.className = 'low-prob';
+                    }
+                }
+            }
+
+            // Populate new columns
+            // Sample Size with tooltip
+            const sampleSizeElement = document.getElementById('paper-sample-size');
+            const sampleSizeValue = analysisData.sample_size || 
+                (analysisData.found_terms?.['sample size']?.[0] || 'N/A');
+            sampleSizeElement.textContent = sampleSizeValue;
+            if (sampleSizeValue !== 'N/A') {
+                sampleSizeElement.title = `Sample size: ${sampleSizeValue}`;
+                sampleSizeElement.style.cursor = 'help';
+                // Apply styling based on sample size
+                const numericSize = parseInt(sampleSizeValue, 10);
+                if (!isNaN(numericSize)) {
+                    if (numericSize > 100) {
+                        sampleSizeElement.className = 'high-prob'; // Large sample size (green)
+                    } else if (numericSize > 30) {
+                        sampleSizeElement.className = 'medium-prob'; // Medium sample size (orange)
+                    } else {
+                        sampleSizeElement.className = 'low-prob'; // Small sample size (red)
+                    }
+                }
+            }
+            
+            // Taxa Level with tooltip
+            const taxaLevelElement = document.getElementById('paper-taxa-level');
+            const taxaLevelValue = analysisData.taxa_level || 
+                (analysisData.found_terms?.['taxa level']?.[0] || 
+                analysisData.found_terms?.['taxonomic level']?.[0] || 'N/A');
+            taxaLevelElement.textContent = taxaLevelValue;
+            if (taxaLevelValue !== 'N/A' && taxaLevelValue.length > 15) {
+                taxaLevelElement.title = taxaLevelValue;
+                taxaLevelElement.style.cursor = 'help';
+            }
+            
+            // Statistical Method with tooltip
+            const statMethodElement = document.getElementById('paper-statistical-method');
+            const statMethodValue = analysisData.statistical_method || 
+                (analysisData.found_terms?.['statistical method']?.[0] || 
+                analysisData.found_terms?.['statistics']?.[0] || 'N/A');
+            statMethodElement.textContent = statMethodValue;
+            if (statMethodValue !== 'N/A' && statMethodValue.length > 15) {
+                statMethodElement.title = statMethodValue;
+                statMethodElement.style.cursor = 'help';
+            }
 
             // Update confidence bar
             const confidence = data.analysis?.confidence || 0;

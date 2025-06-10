@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Cache and user data
+cache/
+user_sessions/
+analysis_results/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Model files (optional, depending on your needs)
+# models/*.pt
+# models/*.bin
+
+# Data files
+data/full_dump.csv
+data/pubmed_papers.csv
+data/pubmed_training_conversations.json
+
+# Jupyter notebooks
+.ipynb_checkpoints
+*.ipynb

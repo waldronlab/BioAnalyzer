@@ -16,6 +16,7 @@ from models.unified_qa import UnifiedQA
 from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor
 from utils.user_manager import UserManager
+from utils.config import NCBI_API_KEY, GEMINI_API_KEY, SUPERSTUDIO_API_KEY, SUPERSTUDIO_URL
 
 app = FastAPI(title="BugSigDB Analyzer")
 
@@ -52,24 +53,24 @@ if Path("models/intent_classifier/model.pt").exists():
 intent_classifier.eval()
 
 # Initialize PubMedRetriever with NCBI API key
-retriever = PubMedRetriever(api_key="30f325dac249c6e73498c0225d818105e008")
+retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 
 # Initialize UnifiedQA with SuperStudio API key
 qa_system = UnifiedQA(
     use_biobert=True, 
     use_superstudio=True,
     use_gemini=False,
-    superstudio_api_key="AIzaSyD-B2XQrXgsn-YZarxZcz5jHCTI-g3nugI"
+    superstudio_api_key=SUPERSTUDIO_API_KEY
 )
 
 # Initialize Gemini for chat using SuperStudio
 from models.gemini_qa import GeminiQA
 gemini_chat = GeminiQA(
-    api_key="AIzaSyD-B2XQrXgsn-YZarxZcz5jHCTI-g3nugI",
+    api_key=GEMINI_API_KEY,
     model="gemini-pro",
     base_url="https://generativelanguage.googleapis.com/v1beta",
     use_superstudio=True,
-    superstudio_url="https://superstudio.ngrok.io"
+    superstudio_url=SUPERSTUDIO_URL
 )
 
 class Message(BaseModel):

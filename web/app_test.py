@@ -23,6 +23,7 @@ from utils.data_processor import clean_scientific_text
 from starlette.websockets import WebSocketState
 from pydantic import validator
 import asyncio  # Import asyncio for async/await support
+from utils.config import NCBI_API_KEY, GEMINI_API_KEY, SUPERSTUDIO_API_KEY, SUPERSTUDIO_URL
 
 class Message(BaseModel):
     content: str
@@ -149,11 +150,11 @@ else:
 # Initialize Gemini for chat
 from models.gemini_qa import GeminiQA
 gemini_chat = GeminiQA(
-    api_key="AIzaSyD-B2XQrXgsn-YZarxZcz5jHCTI-g3nugI",
+    api_key=GEMINI_API_KEY,
     model="gemini-pro",
     base_url="https://generativelanguage.googleapis.com/v1beta",
     use_superstudio=True,
-    superstudio_url="https://superstudio.ngrok.io"
+    superstudio_url=SUPERSTUDIO_URL
 )
 
 class ModelBasedChatHandler:
@@ -338,11 +339,9 @@ def fetch_paper_metadata(pmid: str) -> Dict[str, Any]:
         # Configure longer timeouts
         timeout = Timeout(connect=30, read=30)
         
-        # Use the E-utilities API to fetch paper metadata and abstract
+        # Use the API key from environment variables
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-        
-        # Add NCBI API key to requests
-        api_key = "30f325dac249c6e73498c0225d818105e008"
+        api_key = NCBI_API_KEY
         
         # First fetch the summary
         esummary_url = f"{base_url}/esummary.fcgi?db=pubmed&id={pmid}&retmode=json&api_key={api_key}"

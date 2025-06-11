@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -958,6 +958,144 @@ def generate_fallback_answer(question: str, context: str) -> str:
     
     # Default response
     return "I'm sorry, I don't have enough information to answer that question based on this paper."
+
+@app.post("/upload_paper")
+async def upload_paper(file: UploadFile = File(...), username: str = Form(None)):
+    """Upload a paper file (PDF or text) and extract information for curation"""
+    try:
+        # Check file type
+        if file.content_type not in ["application/pdf", "text/plain"]:
+            return {"error": "Only PDF and text files are supported"}
+        
+        # Read file content
+        content = await file.read()
+        
+        # Process the file based on type
+        if file.content_type == "application/pdf":
+            # For PDF files, extract text using PyPDF2
+            try:
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+                text_content = ""
+                for page in pdf_reader.pages:
+                    text_content += page.extract_text() + "\n"
+                
+                paper_content = {
+                    "title": file.filename,
+                    "abstract": text_content[:500] + "..." if len(text_content) > 500 else text_content,
+                    "full_text": text_content
+                }
+            except Exception as e:
+                print(f"Error extracting text from PDF: {str(e)}")
+                return {"error": f"Error extracting text from PDF: {str(e)}"}
+        else:
+            # For text files, use the content directly
+            text_content = content.decode("utf-8")
+            paper_content = {
+                "title": file.filename,
+                "abstract": text_content[:500] + "..." if len(text_content) > 500 else text_content,
+                "full_text": text_content
+            }
+        
+        # Use Gemini to analyze the paper
+        try:
+            print(f"Analyzing uploaded paper with Gemini...")
+            results = await gemini_chat.analyze_paper(paper_content)
+            
+            # Extract analysis results
+            analysis_results = results.get("signature_analysis", {})
+            
+            # Add additional fields for curation
+            if "found_terms" in analysis_results:
+                # Extract potential taxa from found terms or full text
+                taxa = []
+                if "taxa" in analysis_results["found_terms"]:
+                    taxa = analysis_results["found_terms"]["taxa"]
+                elif "microbiome" in analysis_results["found_terms"]:
+                    taxa = analysis_results["found_terms"]["microbiome"]
+                
+                analysis_results["taxa"] = taxa
+            
+            # Create response with metadata and analysis
+            response = {
+                "metadata": {
+                    "title": paper_content["title"],
+                    "abstract": paper_content["abstract"],
+                    "pmid": "",  # No PMID for uploaded files
+                    "doi": "",   # No DOI for uploaded files
+                    "publication_date": ""  # No date for uploaded files
+                },
+                "analysis": analysis_results
+            }
+            
+            # If username is provided, update session
+            if username and username in active_sessions:
+                active_sessions[username]["current_paper"] = file.filename
+            
+            return response
+            
+        except Exception as e:
+            print(f"Error analyzing paper with Gemini: {str(e)}")
+            # Return basic info without analysis
+            return {
+                "metadata": {
+                    "title": paper_content["title"],
+                    "abstract": paper_content["abstract"],
+                },
+                "analysis": {
+                    "error": f"Error analyzing paper: {str(e)}",
+                    "key_findings": ["Unable to analyze paper automatically"],
+                    "confidence": 0.1
+                }
+            }
+            
+    except Exception as e:
+        print(f"Error processing uploaded file: {str(e)}")
+        return {"error": f"Error processing file: {str(e)}"}
+
+@app.get("/fetch_by_doi")
+async def fetch_by_doi(doi: str):
+    """Fetch paper by DOI for curation"""
+    try:
+        # Use NCBI API to convert DOI to PMID
+        url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term={doi}[doi]&retmode=json"
+        response = requests.get(url)
+        data = response.json()
+        
+        # Check if we got a PMID
+        id_list = data.get("esearchresult", {}).get("idlist", [])
+        if not id_list:
+            return {"error": f"No PMID found for DOI {doi}"}
+        
+        pmid = id_list[0]
+        
+        # Use the analyze_paper function to get full analysis
+        return await analyze_paper(pmid)
+    except Exception as e:
+        print(f"Error fetching paper by DOI: {str(e)}")
+        return {"error": f"Error fetching paper: {str(e)}"}
+
+@app.post("/submit_curation")
+async def submit_curation(request: Request):
+    """Submit paper curation to BugSigDB"""
+    try:
+        # Parse request body
+        data = await request.json()
+        
+        # Validate required fields
+        required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            return {"error": f"Missing required fields: {', '.join(missing_fields)}"}
+        
+        # In a real implementation, this would submit to BugSigDB API
+        # For now, just log the submission
+        print(f"Curation submitted: {data}")
+        
+        # Return success response
+        return {"status": "success", "message": "Curation submitted successfully"}
+    except Exception as e:
+        print(f"Error submitting curation: {str(e)}")
+        return {"error": f"Error submitting curation: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn

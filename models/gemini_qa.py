@@ -249,56 +249,69 @@ class GeminiQA:
         try:
             logger.info(f"Processing chat message: {message[:50]}...")
             
-            # Prepare context from chat history and paper context
-            context_text = ""
+            # Format chat history for Gemini
+            gemini_messages = []
             
+            # Add system prompt
+            system_prompt = "You are a helpful AI assistant for BugSigDB, specialized in microbial signatures in scientific papers."
+            
+            # Add paper context if available
             if paper_context:
-                # Format paper context
-                paper_text = f"Paper PMID: {paper_context.get('pmid', 'unknown')}\n"
-                paper_text += f"Title: {paper_context.get('title', '')}\n"
-                paper_text += f"Abstract: {paper_context.get('abstract', '')}"
-                context_text += f"Paper context:\n{paper_text}\n\n"
+                paper_info = f"""
+                I'm currently looking at a scientific paper with:
+                PMID: {paper_context.get('pmid', 'Unknown')}
+                Title: {paper_context.get('title', 'Unknown')}
+                Abstract: {paper_context.get('abstract', 'Not available')}
+                
+                Please keep this paper in mind when answering my questions.
+                """
+                system_prompt += "\n\n" + paper_info
             
-            # Create a Gemini model instance
-            model = genai.GenerativeModel(model_name=self.model)
-            
-            # Create a chat session
-            chat = model.start_chat(history=[])
+            gemini_messages.append({"role": "system", "parts": [system_prompt]})
             
             # Add chat history if available
             if chat_history:
                 for msg in chat_history:
-                    role = msg.get('role', 'user')
-                    content = msg.get('content', '')
-                    if role and content:
-                        # Add to chat history
-                        if role == 'user':
-                            chat.history.append({"role": "user", "parts": [content]})
-                        else:
-                            chat.history.append({"role": "model", "parts": [content]})
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if content:  # Skip empty messages
+                        gemini_messages.append({"role": role, "parts": [content]})
             
-            # Add paper context as a system message if available
-            if context_text:
-                system_msg = f"Please consider the following context when responding to the user: {context_text}"
-                chat.history.append({"role": "user", "parts": [system_msg]})
-                chat.history.append({"role": "model", "parts": ["I'll consider this context in our conversation."]})
+            # Add current message
+            gemini_messages.append({"role": "user", "parts": [message]})
             
-            # Send the user message and get response
+            # Create a Gemini model instance
+            generation_config = {
+                "temperature": 0.7,
+                "top_p": 0.8,
+                "top_k": 40,
+                "max_output_tokens": 1024,
+            }
+            
+            model = genai.GenerativeModel(
+                model_name=self.model,
+                generation_config=generation_config,
+            )
+            
+            # Run the model in a separate thread to avoid blocking
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None, 
-                lambda: chat.send_message(message)
+                lambda: model.generate_content(gemini_messages)
             )
             
+            # Process the response
+            response_text = response.text
+            
             return {
-                "response": response.text,
-                "context_used": bool(context_text)
+                "response": response_text,
+                "timestamp": datetime.now().isoformat()
             }
         except Exception as e:
             logger.error(f"Error in chat_with_context: {str(e)}")
             return {
-                "error": str(e),
-                "response": f"Sorry, I couldn't process your message due to an error: {str(e)}"
+                "response": f"I'm sorry, I encountered an error while processing your message. Error details: {str(e)}",
+                "timestamp": datetime.now().isoformat()
             }
     
     def _save_results(self, paper_title: str, results: Dict) -> None:

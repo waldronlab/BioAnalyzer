@@ -131,21 +131,26 @@ active_sessions: Dict[str, Dict] = {}
 # Initialize text processor and model
 text_processor = AdvancedTextProcessor()
 
+# Comment out the local model loading and always use Gemini instead
 # Load the trained model
-model_path = Path("models/conversation_model/best_model.pt")
-if model_path.exists():
-    # Add ModelConfig to safe globals
-    serialization.add_safe_globals([ModelConfig])
-    # Load the model with weights_only=False
-    checkpoint = torch.load(model_path, weights_only=False)
-    config = checkpoint['config']
-    model = ConversationalBugSigModel.load_from_pretrained(checkpoint)
-    model.eval()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-else:
-    print("Warning: Model checkpoint not found. Please train the model first.")
-    model = None
+# model_path = Path("models/conversation_model/best_model.pt")
+# if model_path.exists():
+#     # Add ModelConfig to safe globals
+#     serialization.add_safe_globals([ModelConfig])
+#     # Load the model with weights_only=False
+#     checkpoint = torch.load(model_path, weights_only=False)
+#     config = checkpoint['config']
+#     model = ConversationalBugSigModel.load_from_pretrained(checkpoint)
+#     model.eval()
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     model = model.to(device)
+# else:
+#     print("Warning: Model checkpoint not found. Please train the model first.")
+#     model = None
+
+# Skip local model entirely and use Gemini exclusively
+model = None
+print("Info: Using Gemini API exclusively (local model disabled)")
 
 # Initialize Gemini for chat
 from models.gemini_qa import GeminiQA
@@ -466,10 +471,17 @@ async def analyze_text(text: str, timeout: int = 30) -> Dict[str, Any]:
             )
             
             if "error" in gemini_response:
-                warning = f"Gemini API error: {gemini_response.get('error')}"
-                print(warning)
-                print("Falling back to local extraction method")
-                key_findings = extract_key_findings_from_text(cleaned_text)
+                # Special handling for IP restriction errors
+                if gemini_response.get('error') == "IP_RESTRICTED":
+                    warning = "The Gemini API key has IP address restrictions. Your current IP address is not authorized to use this API key. Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
+                    print(warning)
+                    print("Falling back to local extraction method")
+                    key_findings = extract_key_findings_from_text(cleaned_text)
+                else:
+                    warning = f"Gemini API error: {gemini_response.get('error')}"
+                    print(warning)
+                    print("Falling back to local extraction method")
+                    key_findings = extract_key_findings_from_text(cleaned_text)
             else:
                 # Process Gemini's response
                 response_text = gemini_response.get("answer", "")
@@ -641,28 +653,45 @@ async def chat(name: str, message: Message):
             print(f"Attempting to chat using Gemini API: {message.content[:50]}...")
             response = await gemini_chat.chat_with_context(
                 message=message.content,
-                conversation_history=conversation_history
+                chat_history=session["messages"]
             )
             
             if "error" in response:
                 print(f"Gemini API error: {response.get('error')}")
-                # Fall back to local method
-                answer = generate_fallback_chat_response(message.content, session["messages"])
                 
-                # Add fallback response to history
-                session["messages"].append({
-                    "role": "assistant",
-                    "content": answer
-                })
-                
-                return {
-                    "response": answer,
-                    "name": name,
-                    "note": "Generated using fallback method due to API unavailability"
-                }
+                # Special handling for IP restriction errors
+                if response.get('error') == "IP_RESTRICTED":
+                    answer = "⚠️ API Key Error: The Gemini API key has IP address restrictions. Your current IP address is not authorized to use this API key. Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
+                    
+                    # Add error response to history
+                    session["messages"].append({
+                        "role": "assistant",
+                        "content": answer
+                    })
+                    
+                    return {
+                        "response": answer,
+                        "name": name,
+                        "note": "API Key IP restriction error"
+                    }
+                else:
+                    # Fall back to local method for other errors
+                    answer = generate_fallback_chat_response(message.content, session["messages"])
+                    
+                    # Add fallback response to history
+                    session["messages"].append({
+                        "role": "assistant",
+                        "content": answer
+                    })
+                    
+                    return {
+                        "response": answer,
+                        "name": name,
+                        "note": "Generated using fallback method due to API unavailability"
+                    }
             
             # Add assistant response to history
-            assistant_response = response.get("answer", "Sorry, I couldn't generate a response.")
+            assistant_response = response.get("response", "Sorry, I couldn't generate a response.")
             session["messages"].append({
                 "role": "assistant",
                 "content": assistant_response
@@ -757,23 +786,28 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
                     print(f"Attempting to chat using Gemini API via WebSocket: {user_message[:50]}...")
                     response = await gemini_chat.chat_with_context(
                         message=user_message,
-                        conversation_history=conversation_history
+                        chat_history=active_sessions[name]["messages"]
                     )
                     
                     if "error" in response:
                         print(f"Gemini API error: {response.get('error')}")
-                        # Fall back to local method
-                        assistant_message = generate_fallback_chat_response(
-                            user_message, 
-                            active_sessions[name]["messages"]
-                        )
                         
-                        # Add note about fallback
-                        note = "Note: Generated using fallback method due to API unavailability"
-                        assistant_message = f"{assistant_message}\n\n{note}"
+                        # Special handling for IP restriction errors
+                        if response.get('error') == "IP_RESTRICTED":
+                            assistant_message = "⚠️ API Key Error: The Gemini API key has IP address restrictions. Your current IP address is not authorized to use this API key. Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
+                        else:
+                            # Fall back to local method for other errors
+                            assistant_message = generate_fallback_chat_response(
+                                user_message, 
+                                active_sessions[name]["messages"]
+                            )
+                            
+                            # Add note about fallback
+                            note = "Note: Generated using fallback method due to API unavailability"
+                            assistant_message = f"{assistant_message}\n\n{note}"
                     else:
-                        # Get the response text
-                        assistant_message = response.get("answer", "Sorry, I couldn't generate a response.")
+                        # Get the response text - use 'response' key instead of 'answer'
+                        assistant_message = response.get("response", "Sorry, I couldn't generate a response.")
                         
                 except Exception as e:
                     print(f"Error using Gemini API via WebSocket: {str(e)}")
@@ -869,14 +903,24 @@ async def ask_question(pmid: str, question: Question):
             
             if "error" in response:
                 print(f"Gemini API error: {response.get('error')}")
-                # Fall back to local method
-                answer = generate_fallback_answer(question.question, paper_text)
-                return {
-                    "answer": answer,
-                    "pmid": pmid,
-                    "question": question.question,
-                    "note": "Generated using fallback method due to API unavailability"
-                }
+                
+                # Special handling for IP restriction errors
+                if response.get('error') == "IP_RESTRICTED":
+                    return {
+                        "answer": "⚠️ API Key Error: The Gemini API key has IP address restrictions. Your current IP address is not authorized to use this API key. Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list.",
+                        "pmid": pmid,
+                        "question": question.question,
+                        "note": "API Key IP restriction error"
+                    }
+                else:
+                    # Fall back to local method for other errors
+                    answer = generate_fallback_answer(question.question, paper_text)
+                    return {
+                        "answer": answer,
+                        "pmid": pmid,
+                        "question": question.question,
+                        "note": "Generated using fallback method due to API unavailability"
+                    }
             
             return {
                 "answer": response.get("answer", "Sorry, I couldn't generate an answer."),

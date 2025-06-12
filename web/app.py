@@ -36,17 +36,21 @@ user_manager = UserManager()
 text_processor = AdvancedTextProcessor()
 
 # Load models
-model_path = Path("models/conversation_model/best_model.pt")
-if model_path.exists():
-    # Add ModelConfig to safe globals for PyTorch 2.6+ compatibility
-    torch.serialization.add_safe_globals([ModelConfig])
-    checkpoint = torch.load(model_path, weights_only=False)
-    config = checkpoint['config']
-    model = ConversationalBugSigModel.load_from_pretrained(checkpoint)
-    model.eval()
-else:
-    print("Warning: Model checkpoint not found. Running in limited functionality mode.")
-    model = None
+# model_path = Path("models/conversation_model/best_model.pt")
+# if model_path.exists():
+#     # Add ModelConfig to safe globals for PyTorch 2.6+ compatibility
+#     torch.serialization.add_safe_globals([ModelConfig])
+#     checkpoint = torch.load(model_path, weights_only=False)
+#     config = checkpoint['config']
+#     model = ConversationalBugSigModel.load_from_pretrained(checkpoint)
+#     model.eval()
+# else:
+#     print("Warning: Model checkpoint not found. Running in limited functionality mode.")
+#     model = None
+
+# Skip local model entirely and use Gemini exclusively
+model = None
+print("Info: Using Gemini API exclusively (local model disabled)")
 
 intent_classifier = IntentClassifier()
 if Path("models/intent_classifier/model.pt").exists():
@@ -329,7 +333,7 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
             
             try:
                 print(f"Calling Gemini chat_with_context for {name}")
-                # Call Gemini API with the new method
+                # Try using Gemini API with the new method
                 result = await gemini_chat.chat_with_context(
                     message=message["content"],
                     chat_history=chat_history,

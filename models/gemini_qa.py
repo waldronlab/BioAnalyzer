@@ -126,37 +126,54 @@ class GeminiQA:
                 
                 # Run the model in a separate thread to avoid blocking
                 loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None, 
-                    lambda: model.generate_content([
-                        {"role": "system", "parts": [prompt_data["system_prompt"]]},
-                        {"role": "user", "parts": [formatted_prompt]}
-                    ])
-                )
-                
-                # Process the response
-                response_text = response.text
-                
-                # Extract key findings, confidence, and other metadata
-                key_findings = self._extract_key_findings(response_text)
-                confidence = self._calculate_confidence(response_text)
-                category_scores = self._extract_category_scores(response_text)
-                found_terms = self._extract_found_terms(response_text, paper_content)
-                
-                results[analysis_type] = {
-                    "analysis": response_text,
-                    "key_findings": key_findings,
-                    "confidence": confidence,
-                    "category_scores": category_scores,
-                    "found_terms": found_terms,
-                    "host": self._extract_host(found_terms),
-                    "body_site": self._extract_body_site(found_terms),
-                    "condition": self._extract_condition(found_terms),
-                    "sequencing_type": self._extract_sequencing_type(found_terms),
-                    "sample_size": self._extract_sample_size(found_terms, paper_content),
-                    "taxa_level": self._extract_taxa_level(found_terms),
-                    "statistical_method": self._extract_statistical_method(found_terms, response_text)
-                }
+                try:
+                    response = await loop.run_in_executor(
+                        None, 
+                        lambda: model.generate_content([
+                            {"role": "system", "parts": [prompt_data["system_prompt"]]},
+                            {"role": "user", "parts": [formatted_prompt]}
+                        ])
+                    )
+                    
+                    # Process the response
+                    response_text = response.text
+                    
+                    # Extract key findings, confidence, and other metadata
+                    key_findings = self._extract_key_findings(response_text)
+                    confidence = self._calculate_confidence(response_text)
+                    category_scores = self._extract_category_scores(response_text)
+                    found_terms = self._extract_found_terms(response_text, paper_content)
+                    
+                    results[analysis_type] = {
+                        "analysis": response_text,
+                        "key_findings": key_findings,
+                        "confidence": confidence,
+                        "category_scores": category_scores,
+                        "found_terms": found_terms,
+                        "host": self._extract_host(found_terms),
+                        "body_site": self._extract_body_site(found_terms),
+                        "condition": self._extract_condition(found_terms),
+                        "sequencing_type": self._extract_sequencing_type(found_terms),
+                        "sample_size": self._extract_sample_size(found_terms, paper_content),
+                        "taxa_level": self._extract_taxa_level(found_terms),
+                        "statistical_method": self._extract_statistical_method(found_terms, response_text)
+                    }
+                except Exception as api_error:
+                    error_str = str(api_error)
+                    logger.error(f"Gemini API error in {analysis_type} analysis: {error_str}")
+                    
+                    # Check for IP restriction errors
+                    if "API_KEY_IP_ADDRESS_BLOCKED" in error_str or "IP address restriction" in error_str:
+                        results[analysis_type] = {
+                            "error": "IP_RESTRICTED",
+                            "analysis": "The Gemini API key has IP address restrictions. Your current IP address is not authorized to use this API key. Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list.",
+                            "confidence": 0.0
+                        }
+                    else:
+                        results[analysis_type] = {
+                            "error": f"API_ERROR: {error_str}",
+                            "confidence": 0.0
+                        }
             except Exception as e:
                 logger.error(f"Error in {analysis_type} analysis: {str(e)}")
                 results[analysis_type] = {
@@ -207,21 +224,39 @@ class GeminiQA:
             
             # Run the model in a separate thread to avoid blocking
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, 
-                lambda: model.generate_content(prompt)
-            )
-            
-            # Process the response
-            answer = response.text
-            
-            # Calculate confidence based on response content
-            confidence = self._calculate_answer_confidence(answer, question)
-            
-            return {
-                "answer": answer,
-                "confidence": confidence
-            }
+            try:
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: model.generate_content(prompt)
+                )
+                
+                # Process the response
+                answer = response.text
+                
+                # Calculate confidence based on response content
+                confidence = self._calculate_answer_confidence(answer, question)
+                
+                return {
+                    "answer": answer,
+                    "confidence": confidence
+                }
+            except Exception as api_error:
+                error_str = str(api_error)
+                logger.error(f"Gemini API error: {error_str}")
+                
+                # Check for IP restriction errors
+                if "API_KEY_IP_ADDRESS_BLOCKED" in error_str or "IP address restriction" in error_str:
+                    return {
+                        "error": "IP_RESTRICTED",
+                        "answer": "The Gemini API key has IP address restrictions. Your current IP address is not authorized to use this API key. Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list.",
+                        "confidence": 0.0
+                    }
+                else:
+                    return {
+                        "error": "API_ERROR",
+                        "answer": f"Error calling Gemini API: {error_str}",
+                        "confidence": 0.0
+                    }
         except Exception as e:
             logger.error(f"Error in get_answer: {str(e)}")
             return {
@@ -240,7 +275,7 @@ class GeminiQA:
         
         Args:
             message: User message
-            chat_history: Optional chat history
+            chat_history: Optional chat history as a list of message dictionaries with 'role' and 'content' keys
             paper_context: Optional paper context
             
         Returns:
@@ -272,10 +307,12 @@ class GeminiQA:
             # Add chat history if available
             if chat_history:
                 for msg in chat_history:
-                    role = msg.get("role", "user")
-                    content = msg.get("content", "")
-                    if content:  # Skip empty messages
-                        gemini_messages.append({"role": role, "parts": [content]})
+                    if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                        role = msg['role']
+                        content = msg['content']
+                        # Map 'user' and 'assistant' roles to Gemini's expected format
+                        if role in ['user', 'assistant'] and content:
+                            gemini_messages.append({"role": role, "parts": [content]})
             
             # Add current message
             gemini_messages.append({"role": "user", "parts": [message]})
@@ -295,18 +332,37 @@ class GeminiQA:
             
             # Run the model in a separate thread to avoid blocking
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, 
-                lambda: model.generate_content(gemini_messages)
-            )
-            
-            # Process the response
-            response_text = response.text
-            
-            return {
-                "response": response_text,
-                "timestamp": datetime.now().isoformat()
-            }
+            try:
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: model.generate_content(gemini_messages)
+                )
+                
+                # Process the response
+                response_text = response.text
+                
+                return {
+                    "response": response_text,
+                    "timestamp": datetime.now().isoformat()
+                }
+            except Exception as api_error:
+                error_str = str(api_error)
+                logger.error(f"Gemini API error: {error_str}")
+                
+                # Check for IP restriction errors
+                if "API_KEY_IP_ADDRESS_BLOCKED" in error_str or "IP address restriction" in error_str:
+                    return {
+                        "error": "IP_RESTRICTED",
+                        "response": "The Gemini API key has IP address restrictions. Your current IP address is not authorized to use this API key. Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list.",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                else:
+                    return {
+                        "error": "API_ERROR",
+                        "response": f"Error calling Gemini API: {error_str}",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                
         except Exception as e:
             logger.error(f"Error in chat_with_context: {str(e)}")
             return {

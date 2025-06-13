@@ -45,23 +45,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .loading {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
-            position: relative;
-        }
-        .loading::before {
-            content: '';
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            border: 4px solid #0d6efd;
-            border-top-color: transparent;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+            /* Keep original .loading styles here if any, but remove spinner related ones */
         }
         .paper-metadata {
             background-color: #f8f9fa;
@@ -513,6 +497,34 @@
                 max-width: 100vw;
             }
         }
+        /* Add Whirl container styles */
+        .whirl-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        /* Custom CSS Spinner Styles */
+        .custom-spinner {
+            display: inline-block;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%; /* Make it a perfect circle */
+            background: conic-gradient(
+                #75d175 0deg 60deg,    /* Green */
+                #0d6efd 60deg 120deg,   /* Blue */
+                #ffffff 120deg 180deg,  /* White */
+                #75d175 180deg 240deg,  /* Green */
+                #0d6efd 240deg 300deg,   /* Blue */
+                #ffffff 300deg 360deg   /* White */
+            );
+            animation: custom-spin 2s linear infinite;
+        }
+
+        @keyframes custom-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -642,8 +654,11 @@
                         </div>
                     </div>
 
-                    <div id="loading" class="loading">
-                        <p class="mt-2">Analyzing paper...</p>
+                    <div id="loading">
+                        <div class="whirl-container">
+                            <div id="whirl-spinner" class="custom-spinner"></div>
+                        </div>
+                        <p class="mt-2 text-center">Analyzing paper...</p>
                     </div>
 
                     <div id="results" class="analysis-results">
@@ -945,7 +960,10 @@
                                     </div>
                                     
                                     <div id="curation-loading" class="loading" style="display: none;">
-                                        <p class="mt-2">Processing paper...</p>
+                                        <div class="whirl-container">
+                                            <div id="curation-whirl-spinner" class="custom-spinner"></div>
+                                        </div>
+                                        <p class="mt-2 text-center">Processing paper...</p>
                                     </div>
                                 </div>
                             </div>
@@ -1071,6 +1089,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-r.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-javascript.min.js"></script>
+    <!-- Add Whirl library -->
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/react-whirl@1.0.0/dist/index.js"></script>
 
     <!-- Inline JavaScript -->
     <script>
@@ -2397,6 +2419,34 @@
             `;
             categoryScoresDiv.appendChild(legendDiv);
         }
+
+        // Initialize Custom Circular Spinners
+        function initializeWhirlSpinners() {
+            console.log('initializeWhirlSpinners called');
+            const whirlContainer = document.getElementById('whirl-spinner');
+            const curationWhirlContainer = document.getElementById('curation-whirl-spinner');
+
+            const spinnerHtml = '<div class="custom-spinner"></div>';
+
+            if (whirlContainer) {
+                console.log('Rendering main custom circular spinner in #whirl-spinner');
+                whirlContainer.innerHTML = spinnerHtml;
+                console.log('Main custom circular spinner rendered successfully.');
+            } else {
+                console.log('#whirl-spinner not found.');
+            }
+
+            if (curationWhirlContainer) {
+                console.log('Rendering curation custom circular spinner in #curation-whirl-spinner');
+                curationWhirlContainer.innerHTML = spinnerHtml;
+                console.log('Curation custom circular spinner rendered successfully.');
+            } else {
+                console.log('#curation-whirl-spinner not found.');
+            }
+        }
+
+        // Call initializeWhirlSpinners when the DOM is loaded
+        document.addEventListener('DOMContentLoaded', initializeWhirlSpinners);
     </script>
     <script src="/static/js/app.js"></script>
 </body>

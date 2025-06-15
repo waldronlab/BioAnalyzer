@@ -150,21 +150,9 @@ class Question(BaseModel):
 async def root():
     return RedirectResponse(url="/static/index.html")
 
-@app.post("/start_session/{name}")
-async def start_session(name: str):
-    session = user_manager.start_session(name)
-    return {"message": f"Welcome {name}!", "session": session.to_dict()}
-
 @app.get("/analyze/{pmid}")
 async def analyze_paper(pmid: str, request: Request):
     try:
-        # Extract username from request cookies or query params
-        username = None
-        if "username" in request.cookies:
-            username = request.cookies["username"]
-        elif "username" in request.query_params:
-            username = request.query_params["username"]
-        
         # Get metadata and full text
         try:
             metadata = retriever.get_paper_metadata(pmid)
@@ -341,24 +329,6 @@ async def analyze_paper(pmid: str, request: Request):
             signature_probability = max(confidence, signature_score)
             analysis_results["signature_probability"] = f"{signature_probability * 100:.1f}%"
         
-        # If we have a valid username, update the user session
-        if username:
-            try:
-                session = user_manager.get_session(username)
-                if session:
-                    session.set_current_paper(pmid)
-                    user_manager.save_session(username)
-                    print(f"Set current paper for {username} to {pmid}")
-                else:
-                    # Create a new session if needed
-                    session = user_manager.start_session(username)
-                    session.set_current_paper(pmid)
-                    user_manager.save_session(username)
-                    print(f"Created new session for {username} and set paper to {pmid}")
-            except Exception as e:
-                print(f"Error updating user session for {username}: {str(e)}")
-                # Continue without updating the session
-        
         return {
             "metadata": metadata,
             "analysis": analysis_results
@@ -391,153 +361,22 @@ def cleanup_session(name: str):
     except Exception as e:
         print(f"Error cleaning up session for {name}: {str(e)}")
 
-@app.websocket("/ws/{name}")
-async def websocket_endpoint(websocket: WebSocket, name: str):
-    # Validate username
-    if not name or name.lower() == "null":
-        await websocket.close(code=1008, reason="Invalid username")
-        return
-        
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print(f"WebSocket connection accepted for {name}")
-    
-    session = user_manager.get_session(name)
-    if not session:
-        print(f"Session not found for {name}, creating new session")
-        session = user_manager.start_session(name)
-    
     try:
         while True:
             data = await websocket.receive_text()
-            print(f"Received message from {name}: {data[:100]}...")
-            
             try:
                 message = json.loads(data)
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON from {name}: {str(e)}")
-                await websocket.send_text(json.dumps({
-                    "error": "Invalid message format. Please send valid JSON."
-                }))
-                continue
-            
-            # Check if message contains current paper info
-            if "currentPaper" in message:
-                pmid = message["currentPaper"]
-                session.set_current_paper(pmid)
-                user_manager.save_session(name)
-                print(f"Updated current paper for {name} to {pmid} from chat message")
-            
-            # Get chat history for context
-            chat_history = []
-            if hasattr(session, "memory") and hasattr(session.memory, "messages"):
-                chat_history = session.memory.messages[-5:] if len(session.memory.messages) > 5 else session.memory.messages
-            
-            # Get current paper context if available
-            paper_context = None
-            current_paper = message.get("currentPaper") or (hasattr(session, "current_paper") and session.current_paper)
-            
-            if current_paper:
-                try:
-                    pmid = current_paper
-                    metadata = retriever.get_paper_metadata(pmid)
-                    paper_context = {
-                        "pmid": pmid,
-                        "title": metadata.get("title", ""),
-                        "abstract": metadata.get("abstract", "")
-                    }
-                    print(f"Using paper context for PMID: {pmid}")
-                except Exception as e:
-                    print(f"Error getting paper context: {str(e)}")
-                    paper_context = {
-                        "pmid": pmid,
-                        "title": "Unknown paper",
-                        "abstract": "Unable to retrieve paper abstract"
-                    }
-            
-            # Determine which model to use
-            preferred_model = message.get("model", model_config.get_model())
-            if not model_config.is_model_available(preferred_model):
-                preferred_model = model_config.get_model()
-            
-            response_text = None
-            model_used = None
-            error_message = None
-            
-            # Try models in order of preference
-            models_to_try = [preferred_model] if preferred_model else []
-            if preferred_model != "openai" and model_config.is_model_available("openai"):
-                models_to_try.append("openai")
-            
-            for model_name in models_to_try:
-                try:
-                    if model_name == "openai" and model_config.openai_available:
-                        print(f"Attempting to use OpenAI for {name}")
-                        messages = []
-                        if paper_context:
-                            messages.append({
-                                "role": "system",
-                                "content": f"You are a helpful assistant analyzing a scientific paper. Paper title: {paper_context['title']}\nAbstract: {paper_context['abstract']}"
-                            })
-                        
-                        # Add chat history
-                        for msg in chat_history:
-                            messages.append({"role": msg["role"], "content": msg["content"]})
-                        
-                        # Add current message
-                        messages.append({"role": "user", "content": message["content"]})
-                        
-                        # Call OpenAI API
-                        response = await client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=messages,
-                            temperature=0.7,
-                            max_tokens=500
-                        )
-                        
-                        response_text = response.choices[0].message.content
-                        model_used = "openai"
-                        break
-                        
-                except Exception as e:
-                    print(f"Error with {model_name}: {str(e)}")
-                    error_message = str(e)
-                    continue
-            
-            if response_text is None:
-                response_text = "I apologize, but I'm currently unable to process your request. "
-                if error_message:
-                    response_text += f"Error: {error_message}"
-                else:
-                    response_text += "All available AI models are experiencing issues. Please try again later."
-                model_used = "none"
-            
-            await websocket.send_text(json.dumps({
-                "response": response_text,
-                "timestamp": datetime.now().isoformat(),
-                "model_used": model_used,
-                "error": error_message if error_message else None
-            }))
-            
-            session.memory.add_message(role="user", content=message['content'])
-            session.memory.add_message(role="assistant", content=response_text)
-            print(f"Response sent to {name}")
-            
+                response = await qa_system.chat_with_context(message["content"])
+                await websocket.send_json({"response": response})
+            except json.JSONDecodeError:
+                await websocket.send_json({"error": "Invalid message format"})
+            except Exception as e:
+                await websocket.send_json({"error": str(e)})
     except WebSocketDisconnect:
-        print(f"WebSocket disconnected for {name}")
-        cleanup_session(name)  # Clean up session when WebSocket disconnects
-    except Exception as e:
-        print(f"WebSocket error: {str(e)}")
-        try:
-            await websocket.send_text(json.dumps({"error": str(e)}))
-        except:
-            print(f"Failed to send error message to {name}")
-        cleanup_session(name)  # Clean up session on error
-    finally:
-        cleanup_session(name)  # Ensure cleanup happens in all cases
-        try:
-            await websocket.close()
-        except:
-            pass
+        pass
 
 @app.post("/ask_question/{pmid}")
 async def ask_question(pmid: str, question: Question):

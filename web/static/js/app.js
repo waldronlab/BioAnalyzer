@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize state
-    let currentUser = null;
     let ws = null;
     let currentPaper = null;
     let isAnalyzing = false;
@@ -23,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
             'suggested-topics',
             'analysis-status',
             'tokens-generated',
-            // New paper analysis details table elements
             'paper-pmid',
             'paper-journal-short',
             'paper-title-short',
@@ -57,17 +55,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // DOM Elements
-    const loginScreen = document.getElementById('login-screen');
-    const usernameInput = document.getElementById('username');
-    const startChatButton = document.getElementById('start-chat');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const analyzeButton = document.querySelector('button[onclick="analyzePaper()"]');
 
     // Event Listeners
-    if (startChatButton) {
-        startChatButton.addEventListener('click', startChat);
-    }
     if (sendButton) {
         sendButton.addEventListener('click', sendMessage);
     }
@@ -81,37 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
         analyzeButton.addEventListener('click', analyzePaper);
     }
 
-    // Chat Functions
-    async function startChat() {
-        if (!usernameInput) return;
-        const username = usernameInput.value.trim();
-        if (!username) {
-            alert('Please enter your name');
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/start_session/${username}`, {
-                method: 'POST'
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Failed to start session: ${response.status}`);
-            }
-            currentUser = username;
-            if (loginScreen) loginScreen.classList.add('hidden');
-            document.getElementById('main-interface').classList.remove('hidden');
-            
-            // Add welcome message
-            addMessage('Assistant', 'Welcome! How can I help you today?', 'assistant');
-            
-            // Setup WebSocket
-            setupWebSocket();
-        } catch (error) {
-            console.error('Error starting chat:', error);
-            alert('Error starting chat: ' + error.message);
-        }
-    }
+    // Setup WebSocket connection immediately
+    setupWebSocket();
 
     function setupWebSocket() {
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -119,8 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const encodedUsername = encodeURIComponent(currentUser);
-        ws = new WebSocket(`ws://${window.location.host}/ws/${encodedUsername}`);
+        ws = new WebSocket(`ws://${window.location.host}/ws`);
         
         ws.onopen = () => {
             console.log('Connected to WebSocket');
@@ -203,36 +165,22 @@ document.addEventListener('DOMContentLoaded', () => {
         
         messageDiv.appendChild(messageContent);
         container.appendChild(messageDiv);
-        
-        const clearDiv = document.createElement('div');
-        clearDiv.style.clear = 'both';
-        container.appendChild(clearDiv);
-        
         container.scrollTop = container.scrollHeight;
     }
 
     function sendMessage() {
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            console.log('WebSocket not connected, attempting to reconnect...');
-            setupWebSocket();
-            setTimeout(() => sendMessage(), 1000); // Retry after connection attempt
-            return;
-        }
-
-        const messageInput = document.getElementById('message-input');
-        if (!messageInput) return;
-
+        if (!messageInput || !ws || ws.readyState !== WebSocket.OPEN) return;
+        
         const message = messageInput.value.trim();
         if (!message) return;
-
-        try {
-            ws.send(JSON.stringify({ content: message }));
-            addMessage('You', message, 'user-message');
-            messageInput.value = '';
-        } catch (error) {
-            console.error('Error sending message:', error);
-            addMessage('Error', 'Failed to send message', 'error-message');
-        }
+        
+        addMessage('You', message, 'user-message');
+        messageInput.value = '';
+        
+        ws.send(JSON.stringify({
+            content: message,
+            currentPaper: currentPaper
+        }));
     }
 
     function getScoreColor(score) {
@@ -623,10 +571,5 @@ document.addEventListener('DOMContentLoaded', () => {
             isAnalyzing = false;
             document.getElementById('loading').style.display = 'none';
         }
-    }
-
-    // Initialize WebSocket connection if needed
-    if (document.getElementById('chat-container')) {
-        setupWebSocket();
     }
 });

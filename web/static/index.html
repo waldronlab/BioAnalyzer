@@ -762,458 +762,53 @@
     </div>
 
     <!-- Main Content -->
-    <div class="main-content">
-        <div class="centered-content-wrapper">
-            <div class="main-app-title">
-                <h1><span class="bugsigdb-blue">BugSigDB</span> <span class="bugsigdb-black">Analyzer</span></h1>
-            </div>
-            
-            <!-- Search Section -->
-            <div class="search-container">
-                <select class="form-select search-type-selector" id="searchType">
-                    <option value="pmid">PMID</option>
-                    <option value="title">Title</option>
-                    <option value="url">URL</option>
-                </select>
-                <input type="text" class="form-control" id="searchInput" placeholder="Enter PMID, title, or URL">
-                <button class="btn btn-primary" onclick="analyzePaper()">Analyze</button>
-            </div>
+    <div id="main-content" class="container-fluid">
+        <div class="row">
+            <div class="col-md-12">
+                <!-- Title and Description -->
+                <div class="main-app-title">
+                    <h1><span class="bugsigdb-blue">BugSigDB</span> <span class="bugsigdb-black">Analyzer</span></h1>
+                </div>
+                <p class="title-description">
+                    Explore and analyze scientific papers with advanced AI assistance. Extract key findings, analyze microbiome signatures, and generate insights from research papers.
+                </p>
 
-            <!-- Main Interface -->
-            <div id="main-interface">
                 <!-- Navigation Tabs -->
                 <ul class="nav nav-tabs" id="mainTabs" role="tablist">
                     <li class="nav-item">
-                        <button class="nav-link active" id="analyze-tab" data-bs-toggle="tab" data-bs-target="#analyze" type="button" role="tab">Paper Analysis</button>
+                        <a class="nav-link active" id="analyze-tab" data-bs-toggle="tab" href="#analyze" role="tab">Paper Analysis</a>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat" type="button" role="tab">Chat Assistant</button>
+                        <a class="nav-link" id="chat-tab" data-bs-toggle="tab" href="#chat" role="tab">Chat Assistant</a>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link" id="curation-tab" data-bs-toggle="tab" data-bs-target="#curation" type="button" role="tab">Curation Assistant</button>
+                        <a class="nav-link" id="curation-tab" data-bs-toggle="tab" href="#curation" role="tab">Curation Assistant</a>
                     </li>
                 </ul>
 
                 <!-- Tab Content -->
-                <div class="tab-content" id="mainTabsContent">
+                <div class="tab-content" id="mainTabContent">
                     <!-- Paper Analysis Tab -->
                     <div class="tab-pane fade show active" id="analyze" role="tabpanel">
-                        <div id="loading" class="whirl-container" style="display: none;">
-                            <div id="whirl-spinner" class="custom-spinner"></div>
-                            <p class="mt-2 text-center">Analyzing paper...</p>
-                        </div>
-                        <div id="results" class="analysis-results">
-                            <!-- Resources Card -->
-                            <div class="card mb-4">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">BugSigDB Resources</h5>
-                                    <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#resources-collapse">
-                                        <i class="fas fa-chevron-down"></i>
-                                    </button>
-                                </div>
-                                <div id="resources-collapse" class="collapse">
-                                    <div class="card-body">
-                                        <div class="resource-item">
-                                            <i class="fas fa-info-circle"></i>
-                                            <div>
-                                                <a href="https://bugsigdb.org/Project:About" target="_blank">BugSigDB Project Information</a>
-                                                <small class="text-muted d-block">Estimated time: 15 minutes</small>
-                                            </div>
-                                        </div>
-                                        <div class="resource-item">
-                                            <i class="fas fa-book"></i>
-                                            <div>
-                                                <a href="https://docs.google.com/document/d/1cpY8RoOHjJ_oxkDRGwlpqL-I29IN9B5BifhZIlqTjhE/edit?tab=t.0" target="_blank">Reading Materials on the Human Microbiome</a>
-                                                <small class="text-muted d-block">Estimated time: 2 hours</small>
-                                            </div>
-                                        </div>
-                                        <div class="resource-item">
-                                            <i class="fas fa-video"></i>
-                                            <div>
-                                                <a href="https://www.youtube.com/watch?v=yfpnwxefLFc&list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq&index=6" target="_blank">Step-by-Step Guidance on Documenting a Signature in BugSigDB</a>
-                                                <small class="text-muted d-block">Video tutorial</small>
-                                            </div>
-                                        </div>
-                                        <div class="resource-item">
-                                            <i class="fas fa-file-alt"></i>
-                                            <div>
-                                                <a href="https://bugsigdb.org/Study_600" target="_blank">View Examples of Completed BugSigDB Curations</a>
-                                                <small class="text-muted d-block">Estimated time: 15 minutes</small>
-                                            </div>
-                                        </div>
-                                        <div class="resource-item">
-                                            <i class="fas fa-play-circle"></i>
-                                            <div>
-                                                <a href="https://www.youtube.com/playlist?list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq" target="_blank">Video Trainings on BugSigDB Curation</a>
-                                                <small class="text-muted d-block">Playlist</small>
-                                            </div>
-                                        </div>
-                                        <div class="resource-item">
-                                            <i class="fas fa-user"></i>
-                                            <div>
-                                                <a href="https://bugsigdb.org/Main_Page" target="_blank">Open Your BugSigDB Account</a>
-                                                <small class="text-muted d-block">Access the BugSigDB platform</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Paper Metadata -->
-                            <div class="paper-metadata card mb-4">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">Paper Metadata</h5>
-                                    <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#metadata-collapse">
-                                        <i class="fas fa-chevron-down"></i>
-                                    </button>
-                                </div>
-                                <div id="metadata-collapse" class="collapse show">
-                                    <div class="card-body">
-                                        <h2 id="paper-title" class="h4 mb-3"></h2>
-                                        <div class="mb-2">
-                                            <strong>Authors:</strong>
-                                            <span id="paper-authors" class="text-muted"></span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <strong>Journal:</strong>
-                                            <span id="paper-journal" class="text-muted"></span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <strong>Publication Date:</strong>
-                                            <span id="paper-date" class="text-muted"></span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <strong>DOI:</strong>
-                                            <span id="paper-doi" class="text-muted"></span>
-                                        </div>
-                                        <div class="mt-3">
-                                            <strong>Abstract:</strong>
-                                            <p id="paper-abstract" class="mt-2 text-muted"></p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Paper Analysis Details Table -->
-                            <div class="card mb-4">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">Paper Analysis Details</h5>
-                                    <div>
-                                        <button class="btn btn-sm btn-outline-primary me-2" onclick="exportTableToCSV()">
-                                            <i class="fas fa-download me-1"></i>Export CSV
-                                        </button>
-                                        <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#analysis-details-collapse">
-                                            <i class="fas fa-chevron-down"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div id="analysis-details-collapse" class="collapse show">
-                                    <div class="card-body">
-                                        <div class="table-responsive">
-                                            <table class="table table-bordered paper-analysis-table w-100">
-                                                <thead class="table-light">
-                                                    <tr>
-                                                        <th>PMID</th>
-                                                        <th>Journal</th>
-                                                        <th>Title</th>
-                                                        <th>Year</th>
-                                                        <th>Host</th>
-                                                        <th>Body Site</th>
-                                                        <th>Condition</th>
-                                                        <th>Sequencing Type</th>
-                                                        <th>In BugSigDB?</th>
-                                                        <th>Predicted Prob of Signature</th>
-                                                        <th>Sample Size</th>
-                                                        <th>Taxa Level</th>
-                                                        <th>Statistical Method</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr id="paper-analysis-details" class="analysis-row" style="cursor: pointer;" onclick="toggleDetailedView()">
-                                                        <td id="paper-pmid"></td>
-                                                        <td id="paper-journal-short"></td>
-                                                        <td id="paper-title-short"></td>
-                                                        <td id="paper-year"></td>
-                                                        <td id="paper-host"></td>
-                                                        <td id="paper-body-site"></td>
-                                                        <td id="paper-condition"></td>
-                                                        <td id="paper-sequencing-type"></td>
-                                                        <td id="paper-in-bugsigdb"></td>
-                                                        <td id="paper-signature-prob"></td>
-                                                        <td id="paper-sample-size"></td>
-                                                        <td id="paper-taxa-level"></td>
-                                                        <td id="paper-statistical-method"></td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Analysis Results -->
-                            <div class="card mb-4">
-                                <div class="card-body">
-                                    <h3 class="card-title h5 mb-4">Analysis Results</h3>
-                                    
-                                    <!-- Overall Confidence -->
-                                    <div class="mb-4">
-                                        <h4 class="h6">Overall Confidence</h4>
-                                        <div class="confidence-bar">
-                                            <div id="confidence-fill" class="confidence-fill"></div>
-                                        </div>
-                                        <small class="text-muted" id="confidence-value"></small>
-                                    </div>
-
-                                    <!-- Category Scores -->
-                                    <div class="mb-4">
-                                        <h4 class="h6">Category Scores</h4>
-                                        <div id="category-scores" class="mt-3">
-                                            <div class="category-scores-list">
-                                                <!-- Category scores will be dynamically inserted here -->
-                                            </div>
-                                            <div class="mt-3 small text-muted d-flex justify-content-center gap-4">
-                                                <span><i class="fas fa-circle text-success"></i> High (>70%)</span>
-                                                <span><i class="fas fa-circle text-warning"></i> Medium (30-70%)</span>
-                                                <span><i class="fas fa-circle text-danger"></i> Low (<30%)</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Found Terms -->
-                                    <div class="mb-4">
-                                        <h4 class="h6">Found Terms</h4>
-                                        <div id="found-terms"></div>
-                                    </div>
-
-                                    <!-- Key Findings -->
-                                    <div class="mb-4">
-                                        <h4 class="h6">Key Findings</h4>
-                                        <div id="key-findings" class="mt-3">
-                                            <p class="text-muted">Analyzing paper...</p>
-                                        </div>
-                                    </div>
-
-                                    <!-- Suggested Topics -->
-                                    <div class="mb-4">
-                                        <h4 class="h6">Suggested Topics</h4>
-                                        <div id="suggested-topics" class="d-flex flex-wrap gap-2"></div>
-                                    </div>
-
-                                    <!-- Analysis Status -->
-                                    <div class="mt-4 text-muted">
-                                        <div class="mb-1">
-                                            <strong>Analysis Status:</strong>
-                                            <span id="analysis-status"></span>
-                                        </div>
-                                        <div>
-                                            <strong>Tokens Generated:</strong>
-                                            <span id="tokens-generated"></span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Paper Q&A Section -->
-                            <div class="card">
-                                <div class="card-body">
-                                    <h4 class="h6 mb-3">Ask Questions About This Paper</h4>
-                                    <div class="input-group mb-3">
-                                        <input type="text" id="paper-question" class="form-control" placeholder="Ask a question about this paper...">
-                                        <button class="btn btn-outline-primary" onclick="askQuestion()">Ask</button>
-                                    </div>
-                                    <div id="qa-results"></div>
-                                    
-                                    <!-- Chat about paper button -->
-                                    <div class="mt-3 text-center">
-                                        <button id="chat-about-paper-btn" class="btn btn-primary" onclick="switchToChatWithPaper()" disabled>
-                                            <i class="fas fa-comments me-2"></i><span id="chat-btn-text">Continue discussing this paper in Chat</span>
-                                        </button>
-                                    </div>
+                        <div class="row justify-content-center mb-4">
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <input type="text" id="pmid" class="form-control" placeholder="Enter PubMed ID">
+                                    <button class="btn btn-primary" onclick="analyzePaper()">Analyze</button>
                                 </div>
                             </div>
                         </div>
+                        <!-- Rest of the analysis content -->
                     </div>
 
                     <!-- Chat Tab -->
                     <div class="tab-pane fade" id="chat" role="tabpanel">
-                        <div id="connection-status" class="alert mb-3"></div>
-                        
-                        <!-- Current paper indicator -->
-                        <div id="current-paper-indicator" class="alert alert-info mb-3" style="display: none;">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <i class="fas fa-file-alt me-2"></i>
-                                    <span id="current-paper-title">Discussing paper</span>
-                                </div>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="clearCurrentPaperContext()">
-                                    <i class="fas fa-times"></i> Clear paper context
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="chat-tab-header mb-3">
-                            <input type="text" id="chat-search" class="form-control" placeholder="Search chat history...">
-                        </div>
-                        <div id="chat-container" class="chat-container"></div>
-                        <div class="chat-input-container">
-                            <input type="text" id="message-input" placeholder="Type your message..." disabled>
-                            <button id="send-button" onclick="sendMessage()" disabled>Send</button>
-                        </div>
+                        <!-- Chat content -->
                     </div>
 
                     <!-- Curation Tab -->
                     <div class="tab-pane fade" id="curation" role="tabpanel">
-                        <div class="row justify-content-center mb-4">
-                            <div class="col-md-8">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <h5 class="mb-0">Paper Upload & Curation Assistant</h5>
-                                    </div>
-                                    <div class="card-body">
-                                        <p class="text-muted mb-4">Upload a scientific paper (PDF or text) and get AI-assisted curation for BugSigDB.</p>
-                                        
-                                        <div class="mb-4">
-                                            <h6>Upload Paper</h6>
-                                            <div class="input-group mb-3">
-                                                <input type="file" class="form-control" id="paper-file" accept=".pdf,.txt">
-                                                <button class="btn btn-primary" id="upload-paper-btn" onclick="uploadPaper()">Upload</button>
-                                            </div>
-                                            <div class="form-text">Supported formats: PDF, TXT (max 10MB)</div>
-                                        </div>
-                                        
-                                        <div class="mb-4">
-                                            <h6>Or Enter Paper Details</h6>
-                                            <div class="mb-3">
-                                                <label for="paper-pmid-input" class="form-label">PubMed ID</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control" id="paper-pmid-input" placeholder="Enter PMID">
-                                                    <button class="btn btn-outline-primary" onclick="fetchPaperByPMID()">Fetch</button>
-                                                </div>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label for="paper-doi-input" class="form-label">DOI</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control" id="paper-doi-input" placeholder="Enter DOI">
-                                                    <button class="btn btn-outline-primary" onclick="fetchPaperByDOI()">Fetch</button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div id="curation-loading" class="loading" style="display: none;">
-                                            <div class="whirl-container">
-                                                <div id="curation-whirl-spinner" class="custom-spinner"></div>
-                                            </div>
-                                            <p class="mt-2 text-center">Processing paper...</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="curation-results" style="display: none;">
-                            <div class="card mb-4">
-                                <div class="card-header">
-                                    <h5 class="mb-0">Curation Form</h5>
-                                </div>
-                                <div class="card-body">
-                                    <form id="curation-form">
-                                        <div class="row mb-3">
-                                            <div class="col-md-6">
-                                                <label for="curation-pmid" class="form-label">PMID</label>
-                                                <input type="text" class="form-control" id="curation-pmid" readonly>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label for="curation-year" class="form-label">Year</label>
-                                                <input type="text" class="form-control" id="curation-year">
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="curation-title" class="form-label">Title</label>
-                                            <input type="text" class="form-control" id="curation-title">
-                                        </div>
-                                        
-                                        <div class="row mb-3">
-                                            <div class="col-md-6">
-                                                <label for="curation-host" class="form-label">Host</label>
-                                                <select class="form-select" id="curation-host">
-                                                    <option value="">Select host...</option>
-                                                    <option value="human">Human</option>
-                                                    <option value="mouse">Mouse</option>
-                                                    <option value="rat">Rat</option>
-                                                    <option value="other">Other</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label for="curation-body-site" class="form-label">Body Site</label>
-                                                <select class="form-select" id="curation-body-site">
-                                                    <option value="">Select body site...</option>
-                                                    <option value="gut">Gut</option>
-                                                    <option value="oral">Oral</option>
-                                                    <option value="skin">Skin</option>
-                                                    <option value="vaginal">Vaginal</option>
-                                                    <option value="other">Other</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="row mb-3">
-                                            <div class="col-md-6">
-                                                <label for="curation-condition" class="form-label">Condition</label>
-                                                <input type="text" class="form-control" id="curation-condition">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label for="curation-seq-type" class="form-label">Sequencing Type</label>
-                                                <select class="form-select" id="curation-seq-type">
-                                                    <option value="">Select sequencing type...</option>
-                                                    <option value="16S rRNA">16S rRNA</option>
-                                                    <option value="shotgun">Shotgun Metagenomics</option>
-                                                    <option value="metatranscriptomics">Metatranscriptomics</option>
-                                                    <option value="other">Other</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="curation-taxa" class="form-label">Signature Taxa</label>
-                                            <textarea class="form-control" id="curation-taxa" rows="3" placeholder="Enter taxa separated by commas"></textarea>
-                                            <div class="form-text">Enter the microbial taxa that form the signature</div>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="curation-notes" class="form-label">Curation Notes</label>
-                                            <textarea class="form-control" id="curation-notes" rows="3"></textarea>
-                                        </div>
-                                        
-                                        <div class="d-flex justify-content-between">
-                                            <button type="button" class="btn btn-outline-secondary" onclick="resetCurationForm()">Reset</button>
-                                            <button type="button" class="btn btn-primary" onclick="submitCuration()">Submit to BugSigDB</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                            
-                            <div class="card mb-4">
-                                <div class="card-header">
-                                    <h5 class="mb-0">AI Curation Suggestions</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div id="ai-suggestions">
-                                        <p class="text-muted">AI suggestions will appear here after processing the paper.</p>
-                                    </div>
-                                    
-                                    <div class="mt-3">
-                                        <h6>Ask for Curation Help</h6>
-                                        <div class="input-group mb-3">
-                                            <input type="text" class="form-control" id="curation-question" placeholder="Ask a question about curating this paper...">
-                                            <button class="btn btn-outline-primary" onclick="askCurationQuestion()">Ask</button>
-                                        </div>
-                                        <div id="curation-qa-results"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <!-- Curation content -->
                     </div>
                 </div>
             </div>
@@ -1287,7 +882,7 @@
             <img src="/static/images/un.png" alt="CUNY Logo" class="logo-img">
         </div>
         <a href="https://bugsigdb.org/about" class="about-link footer-link" target="_blank">About BugSigDB Analyzer</a>
-        <a href="https://waldronlab.io/" class="about-link footer-link" target="_blank">About Waldron Lab </a>
+        <a href="https://waldronlab.io/" class="about-link footer-link" target="_blank">About Waldron Lab</a>
     </footer>
 
     <!-- Add necessary JavaScript -->

@@ -15,17 +15,14 @@ from models.conversation_model import ConversationalBugSigModel
 from models.unified_qa import UnifiedQA
 from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor
-from utils.user_manager import UserManager
 from utils.config import (
     NCBI_API_KEY, 
     OPENAI_API_KEY, 
-    # GEMINI_API_KEY,  # Commented out Gemini
     DEFAULT_MODEL,
     AVAILABLE_MODELS
 )
 import re
 import openai
-# from models.gemini_qa import GeminiQA  # Commented out Gemini
 import asyncio
 
 app = FastAPI(title="BugSigDB Analyzer")
@@ -38,8 +35,6 @@ client = openai.OpenAI(api_key=OPENAI_API_KEY)
 class ModelConfig:
     def __init__(self):
         self.openai_available = bool(OPENAI_API_KEY)
-        # self.gemini_available = False  # Commented out Gemini
-        # self.gemini_chat = None  # Commented out Gemini
         self.available_models = []
         self.default_model = None
         self.initialize_models()
@@ -50,28 +45,6 @@ class ModelConfig:
             self.available_models.append("openai")
             self.default_model = "openai"
             print("OpenAI model initialized successfully")
-
-        # Commented out Gemini initialization
-        # if GEMINI_API_KEY and not self.openai_available:
-        #     try:
-        #         self.gemini_chat = GeminiQA(
-        #             api_key=GEMINI_API_KEY,
-        #             model="gemini-pro"
-        #         )
-        #         test_response = asyncio.run(self.gemini_chat.chat_with_context("test"))
-        #         if "error" not in test_response:
-        #             self.gemini_available = True
-        #             self.available_models.append("gemini")
-        #             self.default_model = "gemini"
-        #             print("Gemini model initialized successfully")
-        #         else:
-        #             print("Gemini API key has restrictions or is invalid")
-        #             self.gemini_chat = None
-        #             self.gemini_available = False
-        #     except Exception as e:
-        #         print(f"Error initializing Gemini: {str(e)}")
-        #         self.gemini_chat = None
-        #         self.gemini_available = False
 
         print(f"Available models: {self.available_models}")
         print(f"Default model: {self.default_model}")
@@ -92,9 +65,9 @@ model_config = ModelConfig()
 # Initialize UnifiedQA with OpenAI only
 qa_system = UnifiedQA(
     use_openai=model_config.openai_available,
-    use_gemini=False,  # Disabled Gemini
+    use_gemini=False,
     openai_api_key=OPENAI_API_KEY,
-    gemini_api_key=None  # No Gemini API key
+    gemini_api_key=None
 )
 
 # Update available models based on successful initialization
@@ -115,21 +88,7 @@ app.add_middleware(
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-user_manager = UserManager()
 text_processor = AdvancedTextProcessor()
-
-# Load models
-# model_path = Path("models/conversation_model/best_model.pt")
-# if model_path.exists():
-#     # Add ModelConfig to safe globals for PyTorch 2.6+ compatibility
-#     torch.serialization.add_safe_globals([ModelConfig])
-#     checkpoint = torch.load(model_path, weights_only=False)
-#     config = checkpoint['config']
-#     model = ConversationalBugSigModel.load_from_pretrained(checkpoint)
-#     model.eval()
-# else:
-#     print("Warning: Model checkpoint not found. Running in limited functionality mode.")
-#     model = None
 
 # Skip local model
 model = None
@@ -141,7 +100,7 @@ retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 class Message(BaseModel):
     content: str
     role: str = "user"
-    model: Optional[str] = None  # Allow user to specify preferred model
+    model: Optional[str] = None
 
 class Question(BaseModel):
     question: str
@@ -340,26 +299,48 @@ async def analyze_paper(pmid: str, request: Request):
         print(f"Unexpected error in analyze_paper endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
 
-# Add cache cleanup function
-def cleanup_session(name: str):
-    """Clean up session data and cache when a session ends"""
+async def process_message(message):
+    """Process incoming WebSocket messages"""
     try:
-        # Get the session
-        session = user_manager.get_session(name)
-        if session:
-            # Clear any cached data
-            if hasattr(session, "memory"):
-                session.memory.messages = []
+        content = message.get('content', '')
+        current_paper = message.get('currentPaper')
+        
+        if not content:
+            return {"error": "No message content provided"}
             
-            # Clear current paper
-            if hasattr(session, "current_paper"):
-                session.current_paper = None
+        # Create context from current paper if available
+        context = ""
+        if current_paper:
+            try:
+                metadata = retriever.get_paper_metadata(current_paper)
+                if metadata:
+                    context = f"Title: {metadata['title']}\nAbstract: {metadata['abstract']}"
+            except Exception as e:
+                print(f"Error getting paper metadata: {str(e)}")
+        
+        # Use OpenAI for chat
+        if model_config.openai_available:
+            try:
+                response = await client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant analyzing scientific papers. " + 
+                         ("Here is the current paper context:\n" + context if context else "")},
+                        {"role": "user", "content": content}
+                    ],
+                    temperature=0.7,
+                    max_tokens=500
+                )
+                return {"response": response.choices[0].message.content}
+            except Exception as e:
+                print(f"Error with OpenAI: {str(e)}")
+                return {"error": f"Error processing message: {str(e)}"}
+        else:
+            return {"error": "No AI models available"}
             
-            # Save the cleaned session
-            user_manager.save_session(name)
-            print(f"Cleaned up session data for {name}")
     except Exception as e:
-        print(f"Error cleaning up session for {name}: {str(e)}")
+        print(f"Error processing message: {str(e)}")
+        return {"error": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -369,14 +350,14 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             try:
                 message = json.loads(data)
-                response = await qa_system.chat_with_context(message["content"])
-                await websocket.send_json({"response": response})
+                response = await process_message(message)
+                await websocket.send_json(response)
             except json.JSONDecodeError:
-                await websocket.send_json({"error": "Invalid message format"})
+                await websocket.send_json({"error": "Invalid JSON format"})
             except Exception as e:
                 await websocket.send_json({"error": str(e)})
     except WebSocketDisconnect:
-        pass
+        print("WebSocket disconnected")
 
 @app.post("/ask_question/{pmid}")
 async def ask_question(pmid: str, question: Question):
@@ -600,16 +581,6 @@ async def get_model_status():
     except Exception as e:
         print(f"Error getting model status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
-
-# Add session cleanup endpoint
-@app.post("/cleanup_session/{name}")
-async def cleanup_session_endpoint(name: str):
-    """Manually trigger session cleanup"""
-    try:
-        cleanup_session(name)
-        return {"status": "success", "message": f"Session cleaned up for {name}"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error cleaning up session: {str(e)}")
 
 @app.get("/analyze_by_title")
 async def analyze_by_title(title: str, request: Request):

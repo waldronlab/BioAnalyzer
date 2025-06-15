@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocketDisconnect
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 import json
@@ -11,15 +12,97 @@ from datetime import datetime
 import pytz
 from models.config import ModelConfig
 from models.conversation_model import ConversationalBugSigModel
-from models.intent_classifier import IntentClassifier  # New import
 from models.unified_qa import UnifiedQA
 from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor
 from utils.user_manager import UserManager
-from utils.config import NCBI_API_KEY, GEMINI_API_KEY, SUPERSTUDIO_API_KEY, SUPERSTUDIO_URL
+from utils.config import (
+    NCBI_API_KEY, 
+    OPENAI_API_KEY, 
+    # GEMINI_API_KEY,  # Commented out Gemini
+    DEFAULT_MODEL,
+    AVAILABLE_MODELS
+)
 import re
+import openai
+# from models.gemini_qa import GeminiQA  # Commented out Gemini
+import asyncio
 
 app = FastAPI(title="BugSigDB Analyzer")
+
+# Configure API keys
+openai.api_key = OPENAI_API_KEY
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+# Model configuration
+class ModelConfig:
+    def __init__(self):
+        self.openai_available = bool(OPENAI_API_KEY)
+        # self.gemini_available = False  # Commented out Gemini
+        # self.gemini_chat = None  # Commented out Gemini
+        self.available_models = []
+        self.default_model = None
+        self.initialize_models()
+
+    def initialize_models(self):
+        # Initialize OpenAI
+        if self.openai_available:
+            self.available_models.append("openai")
+            self.default_model = "openai"
+            print("OpenAI model initialized successfully")
+
+        # Commented out Gemini initialization
+        # if GEMINI_API_KEY and not self.openai_available:
+        #     try:
+        #         self.gemini_chat = GeminiQA(
+        #             api_key=GEMINI_API_KEY,
+        #             model="gemini-pro"
+        #         )
+        #         test_response = asyncio.run(self.gemini_chat.chat_with_context("test"))
+        #         if "error" not in test_response:
+        #             self.gemini_available = True
+        #             self.available_models.append("gemini")
+        #             self.default_model = "gemini"
+        #             print("Gemini model initialized successfully")
+        #         else:
+        #             print("Gemini API key has restrictions or is invalid")
+        #             self.gemini_chat = None
+        #             self.gemini_available = False
+        #     except Exception as e:
+        #         print(f"Error initializing Gemini: {str(e)}")
+        #         self.gemini_chat = None
+        #         self.gemini_available = False
+
+        print(f"Available models: {self.available_models}")
+        print(f"Default model: {self.default_model}")
+
+    def get_model(self, preferred_model: Optional[str] = None) -> str:
+        """Get the model to use, considering preferences and availability"""
+        if preferred_model and preferred_model in self.available_models:
+            return preferred_model
+        return self.default_model
+
+    def is_model_available(self, model_name: str) -> bool:
+        """Check if a specific model is available"""
+        return model_name in self.available_models
+
+# Initialize model configuration
+model_config = ModelConfig()
+
+# Initialize UnifiedQA with OpenAI only
+qa_system = UnifiedQA(
+    use_openai=model_config.openai_available,
+    use_gemini=False,  # Disabled Gemini
+    openai_api_key=OPENAI_API_KEY,
+    gemini_api_key=None  # No Gemini API key
+)
+
+# Update available models based on successful initialization
+AVAILABLE_MODELS = model_config.available_models
+DEFAULT_MODEL = model_config.default_model
+
+print(f"Final available models: {AVAILABLE_MODELS}")
+print(f"Final default model: {DEFAULT_MODEL}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,48 +131,24 @@ text_processor = AdvancedTextProcessor()
 #     print("Warning: Model checkpoint not found. Running in limited functionality mode.")
 #     model = None
 
-# Skip local model entirely and use Gemini exclusively
+# Skip local model
 model = None
-print("Info: Using Gemini API exclusively (local model disabled)")
-
-intent_classifier = IntentClassifier()
-if Path("models/intent_classifier/model.pt").exists():
-    intent_classifier.model.load_state_dict(torch.load("models/intent_classifier/model.pt"))
-intent_classifier.eval()
+print(f"Model Status: Using {DEFAULT_MODEL} as primary model")
 
 # Initialize PubMedRetriever with NCBI API key
 retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 
-# Initialize UnifiedQA with SuperStudio API key
-qa_system = UnifiedQA(
-    use_biobert=True, 
-    use_superstudio=True,
-    use_gemini=True,
-    superstudio_api_key=SUPERSTUDIO_API_KEY,
-    gemini_api_key=GEMINI_API_KEY
-)
-
-# Initialize Gemini for chat using SuperStudio
-from models.gemini_qa import GeminiQA
-gemini_chat = GeminiQA(
-    api_key=GEMINI_API_KEY,
-    model="gemini-pro"
-)
-
 class Message(BaseModel):
     content: str
     role: str = "user"
+    model: Optional[str] = None  # Allow user to specify preferred model
 
 class Question(BaseModel):
     question: str
 
 @app.get("/")
 async def root():
-    return {
-        "name": "BugSigDB Analyzer API",
-        "version": "1.0.0",
-        "description": "API for analyzing papers for microbial signatures"
-    }
+    return RedirectResponse(url="/static/index.html")
 
 @app.post("/start_session/{name}")
 async def start_session(name: str):
@@ -129,19 +188,58 @@ async def analyze_paper(pmid: str, request: Request):
             "full_text": full_text if full_text else ""
         }
         
-        # Use Gemini for analysis if available
-        try:
-            results = await qa_system.analyze_paper(paper_content)
-        except Exception as e:
-            print(f"Error in paper analysis: {str(e)}")
+        # Try models in order of preference
+        models_to_try = ["openai"] if model_config.openai_available else []
+        
+        results = {}
+        error_message = None
+        
+        for model_name in models_to_try:
+            try:
+                if model_name == "openai" and model_config.openai_available:
+                    print(f"Attempting to use OpenAI for paper analysis")
+                    # Use OpenAI for analysis
+                    response = await client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant analyzing scientific papers. Extract key findings, suggested topics, and categorize the content."},
+                            {"role": "user", "content": f"Analyze this paper:\nTitle: {paper_content['title']}\nAbstract: {paper_content['abstract']}\nFull Text: {paper_content['full_text']}"}
+                        ],
+                        temperature=0.7,
+                        max_tokens=1000
+                    )
+                    
+                    # Parse OpenAI response into analysis format
+                    analysis_text = response.choices[0].message.content
+                    results["openai"] = {
+                        "key_findings": [line.strip() for line in analysis_text.split('\n') if line.strip()],
+                        "confidence": 0.8,
+                        "status": "success",
+                        "suggested_topics": [],
+                        "found_terms": {},
+                        "category_scores": {},
+                        "num_tokens": len(analysis_text.split())
+                    }
+                    break
+                    
+            except Exception as e:
+                error_str = str(e)
+                print(f"Error with {model_name}: {error_str}")
+                if "insufficient_quota" in error_str:
+                    error_message = "OpenAI API quota exceeded. Please check your billing details or try again later."
+                else:
+                    error_message = str(e)
+                continue
+        
+        if not results:
             # Return a partial result with error information
             return {
                 "metadata": metadata,
                 "analysis": {
-                    "error": str(e),
+                    "error": error_message or "All AI models are currently unavailable",
                     "confidence": 0.0,
                     "status": "error",
-                    "key_findings": ["Error analyzing paper"],
+                    "key_findings": ["Unable to analyze paper at this time. Please try again later or contact support if the issue persists."],
                     "suggested_topics": [],
                     "found_terms": {},
                     "category_scores": {},
@@ -149,8 +247,8 @@ async def analyze_paper(pmid: str, request: Request):
                 }
             }
         
-        # Prefer Gemini results if available, otherwise use biobert
-        analysis_results = results.get("gemini", results.get("biobert", {}))
+        # Prefer OpenAI results if available
+        analysis_results = results.get("openai", {})
         
         # Add additional fields for the paper analysis details table
         # Extract these from the analysis if possible, or set defaults
@@ -272,8 +370,34 @@ async def analyze_paper(pmid: str, request: Request):
         print(f"Unexpected error in analyze_paper endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
 
+# Add cache cleanup function
+def cleanup_session(name: str):
+    """Clean up session data and cache when a session ends"""
+    try:
+        # Get the session
+        session = user_manager.get_session(name)
+        if session:
+            # Clear any cached data
+            if hasattr(session, "memory"):
+                session.memory.messages = []
+            
+            # Clear current paper
+            if hasattr(session, "current_paper"):
+                session.current_paper = None
+            
+            # Save the cleaned session
+            user_manager.save_session(name)
+            print(f"Cleaned up session data for {name}")
+    except Exception as e:
+        print(f"Error cleaning up session for {name}: {str(e)}")
+
 @app.websocket("/ws/{name}")
 async def websocket_endpoint(websocket: WebSocket, name: str):
+    # Validate username
+    if not name or name.lower() == "null":
+        await websocket.close(code=1008, reason="Invalid username")
+        return
+        
     await websocket.accept()
     print(f"WebSocket connection accepted for {name}")
     
@@ -324,55 +448,74 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
                     print(f"Using paper context for PMID: {pmid}")
                 except Exception as e:
                     print(f"Error getting paper context: {str(e)}")
-                    # Continue without paper context
                     paper_context = {
                         "pmid": pmid,
                         "title": "Unknown paper",
                         "abstract": "Unable to retrieve paper abstract"
                     }
             
-            try:
-                print(f"Calling Gemini chat_with_context for {name}")
-                # Try using Gemini API with the new method
-                result = await gemini_chat.chat_with_context(
-                    message=message["content"],
-                    chat_history=chat_history,
-                    paper_context=paper_context
-                )
-                
-                response_text = result["response"]
-                print(f"Generated response: {response_text[:100]}...")
-                
-            except Exception as e:
-                print(f"Gemini API error: {str(e)}. Falling back to local model.")
-                # Fall back to the local model if Gemini fails
-                if model is None:
-                    response_text = f"Sorry, the model is not available. Running in limited functionality mode. Error: {str(e)}"
-                else:
-                    # Classify intent
-                    intent = intent_classifier.classify(message['content'])
-                    
-                    if intent == "greeting":
-                        eat_tz = pytz.timezone('Africa/Nairobi')
-                        current_hour = datetime.now(eat_tz).hour
-                        if "morning" in message['content'].lower() and current_hour < 12:
-                            response_text = "Good morning! How can I help you today?"
-                        elif current_hour < 17:
-                            response_text = "Good afternoon! How can I assist you?"
-                        else:
-                            response_text = "Good evening! What's on your mind?"
-                    else:
-                        query_ids = text_processor.encode_text(message['content'])
-                        response = model.generate_response(
-                            query_ids=query_ids,
+            # Determine which model to use
+            preferred_model = message.get("model", model_config.get_model())
+            if not model_config.is_model_available(preferred_model):
+                preferred_model = model_config.get_model()
+            
+            response_text = None
+            model_used = None
+            error_message = None
+            
+            # Try models in order of preference
+            models_to_try = [preferred_model] if preferred_model else []
+            if preferred_model != "openai" and model_config.is_model_available("openai"):
+                models_to_try.append("openai")
+            
+            for model_name in models_to_try:
+                try:
+                    if model_name == "openai" and model_config.openai_available:
+                        print(f"Attempting to use OpenAI for {name}")
+                        messages = []
+                        if paper_context:
+                            messages.append({
+                                "role": "system",
+                                "content": f"You are a helpful assistant analyzing a scientific paper. Paper title: {paper_context['title']}\nAbstract: {paper_context['abstract']}"
+                            })
+                        
+                        # Add chat history
+                        for msg in chat_history:
+                            messages.append({"role": msg["role"], "content": msg["content"]})
+                        
+                        # Add current message
+                        messages.append({"role": "user", "content": message["content"]})
+                        
+                        # Call OpenAI API
+                        response = await client.chat.completions.create(
+                            model="gpt-3.5-turbo",
+                            messages=messages,
                             temperature=0.7,
-                            max_length=100
+                            max_tokens=500
                         )
-                        response_text = text_processor.decode_tokens(response['response_ids'])
+                        
+                        response_text = response.choices[0].message.content
+                        model_used = "openai"
+                        break
+                        
+                except Exception as e:
+                    print(f"Error with {model_name}: {str(e)}")
+                    error_message = str(e)
+                    continue
+            
+            if response_text is None:
+                response_text = "I apologize, but I'm currently unable to process your request. "
+                if error_message:
+                    response_text += f"Error: {error_message}"
+                else:
+                    response_text += "All available AI models are experiencing issues. Please try again later."
+                model_used = "none"
             
             await websocket.send_text(json.dumps({
                 "response": response_text,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "model_used": model_used,
+                "error": error_message if error_message else None
             }))
             
             session.memory.add_message(role="user", content=message['content'])
@@ -381,14 +524,16 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
             
     except WebSocketDisconnect:
         print(f"WebSocket disconnected for {name}")
+        cleanup_session(name)  # Clean up session when WebSocket disconnects
     except Exception as e:
         print(f"WebSocket error: {str(e)}")
         try:
             await websocket.send_text(json.dumps({"error": str(e)}))
         except:
             print(f"Failed to send error message to {name}")
+        cleanup_session(name)  # Clean up session on error
     finally:
-        user_manager.save_session(name)
+        cleanup_session(name)  # Ensure cleanup happens in all cases
         try:
             await websocket.close()
         except:
@@ -396,7 +541,7 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
 
 @app.post("/ask_question/{pmid}")
 async def ask_question(pmid: str, question: Question):
-    """Answer questions about a specific paper using Gemini"""
+    """Answer questions about a specific paper using available AI models"""
     try:
         # Get paper metadata
         metadata = retriever.get_paper_metadata(pmid)
@@ -416,23 +561,44 @@ async def ask_question(pmid: str, question: Question):
             print(f"Error getting full text for PMID {pmid}: {str(e)}")
             # Continue with just the abstract
         
-        # Use Gemini to answer the question
-        try:
-            answer = await gemini_chat.get_answer(question.question, context)
-        except Exception as e:
-            print(f"Error from Gemini API: {str(e)}")
-            # Return a graceful error message
+        # Try models in order of preference
+        models_to_try = ["openai"] if "openai" in AVAILABLE_MODELS else AVAILABLE_MODELS
+        answer = None
+        confidence = 0.0
+        
+        for model_name in models_to_try:
+            try:
+                if model_name == "openai" and model_config.openai_available:
+                    print(f"Attempting to use OpenAI for question answering")
+                    response = await client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": f"You are a helpful assistant analyzing a scientific paper. Here is the paper content:\n\n{context}"},
+                            {"role": "user", "content": question.question}
+                        ],
+                        temperature=0.7,
+                        max_tokens=500
+                    )
+                    answer = response.choices[0].message.content
+                    confidence = 0.8  # OpenAI responses are generally reliable
+                    break
+                    
+            except Exception as e:
+                print(f"Error with {model_name}: {str(e)}")
+                continue
+        
+        if answer is None:
             return {
-                "answer": f"I'm sorry, I encountered an error while processing your question. Please try again later. Error: {str(e)}",
-                "confidence": 0.1
+                "answer": "I apologize, but I'm currently unable to process your question. All available AI models are experiencing issues. Please try again later.",
+                "confidence": 0.0
             }
         
         return {
-            "answer": answer["answer"],
-            "confidence": answer["confidence"]
+            "answer": answer,
+            "confidence": confidence
         }
+        
     except HTTPException as he:
-        # Re-raise HTTP exceptions
         raise he
     except Exception as e:
         print(f"Error in ask_question endpoint: {str(e)}")
@@ -470,8 +636,8 @@ async def upload_paper(file: UploadFile = File(...), username: str = Form(None))
         # Use QA system to analyze the paper
         results = await qa_system.analyze_paper(paper_content)
         
-        # Prefer Gemini results if available, otherwise use biobert
-        analysis_results = results.get("gemini", results.get("biobert", {}))
+        # Prefer OpenAI results if available
+        analysis_results = results.get("openai", {})
         
         # Add additional fields for curation
         analysis_results["taxa"] = extract_taxa(paper_content["full_text"])
@@ -578,6 +744,84 @@ def extract_taxa(text):
             found_taxa.append(genus)
     
     return found_taxa
+
+@app.get("/model_status")
+async def get_model_status():
+    """Get the status of available AI models."""
+    try:
+        status = {
+            "available_models": model_config.available_models,
+            "default_model": model_config.default_model,
+            "openai_available": model_config.openai_available,
+            "gemini_available": False,  # Commented out Gemini
+            "openai_key_present": bool(OPENAI_API_KEY),
+            "gemini_key_present": False  # Commented out Gemini
+        }
+        return status
+    except Exception as e:
+        print(f"Error getting model status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
+
+# Add session cleanup endpoint
+@app.post("/cleanup_session/{name}")
+async def cleanup_session_endpoint(name: str):
+    """Manually trigger session cleanup"""
+    try:
+        cleanup_session(name)
+        return {"status": "success", "message": f"Session cleaned up for {name}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error cleaning up session: {str(e)}")
+
+@app.get("/analyze_by_title")
+async def analyze_by_title(title: str, request: Request):
+    """Analyze a paper by its title"""
+    try:
+        # Search PubMed for the paper by title
+        search_results = retriever.search_by_title(title)
+        if not search_results:
+            raise HTTPException(status_code=404, detail=f"No paper found with title: {title}")
+        
+        # Get the first result's PMID
+        pmid = search_results[0].get('pmid')
+        if not pmid:
+            raise HTTPException(status_code=404, detail="No PMID found for the paper")
+        
+        # Use the existing analyze_paper endpoint
+        return await analyze_paper(pmid, request)
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error analyzing paper by title: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
+
+@app.get("/analyze_by_url")
+async def analyze_by_url(url: str, request: Request):
+    """Analyze a paper by its URL (DOI or PubMed URL)"""
+    try:
+        # Extract DOI or PMID from URL
+        doi = None
+        pmid = None
+        
+        # Check if it's a DOI URL
+        if "doi.org" in url:
+            doi = url.split("doi.org/")[-1]
+        # Check if it's a PubMed URL
+        elif "pubmed.ncbi.nlm.nih.gov" in url:
+            pmid = url.split("/")[-1]
+        else:
+            raise HTTPException(status_code=400, detail="Invalid URL format. Please provide a DOI or PubMed URL")
+        
+        if doi:
+            # Use the existing fetch_by_doi endpoint
+            return await fetch_by_doi(doi, request)
+        elif pmid:
+            # Use the existing analyze_paper endpoint
+            return await analyze_paper(pmid, request)
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error analyzing paper by URL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

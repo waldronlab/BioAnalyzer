@@ -4,44 +4,38 @@ import os
 import sys
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the project root directory to the Python path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
 
-try:
-    from utils.config import NCBI_API_KEY, GEMINI_API_KEY, SUPERSTUDIO_API_KEY, EMAIL, validate_env_vars
+from utils.config import (
+    NCBI_API_KEY,
+    OPENAI_API_KEY,
+    EMAIL,
+    validate_openai_key,
+    check_required_vars
+)
+
+def main():
+    """Check environment configuration."""
+    print("\nChecking environment configuration...")
     
-    print("Environment Variable Check")
-    print("=========================")
-    
-    # Check if .env file exists
-    env_path = Path(__file__).parents[1] / '.env'
-    if env_path.exists():
-        print(f"✓ .env file found at {env_path}")
-    else:
-        print(f"✗ .env file not found. Please create one based on .env.example")
-    
-    # Check individual variables
-    print("\nRequired Variables:")
-    print(f"EMAIL: {'✓ Set' if EMAIL else '✗ Missing'}")
+    # Check required environment variables
+    print("\nRequired Environment Variables:")
     print(f"NCBI_API_KEY: {'✓ Set' if NCBI_API_KEY else '✗ Missing'}")
+    print(f"OPENAI_API_KEY: {'✓ Set' if OPENAI_API_KEY else '✗ Missing'}")
+    print(f"EMAIL: {'✓ Set' if EMAIL else '✗ Missing'}")
     
-    print("\nOptional Variables:")
-    print(f"GEMINI_API_KEY: {'✓ Set' if GEMINI_API_KEY else '✗ Missing'}")
-    print(f"SUPERSTUDIO_API_KEY: {'✓ Set' if SUPERSTUDIO_API_KEY else '✗ Missing'}")
+    # Validate API keys
+    print("\nAPI Key Validation:")
+    print(f"OpenAI API: {'✓ Valid' if validate_openai_key() else '✗ Invalid'}")
     
-    # Overall status
-    if validate_env_vars():
-        print("\n✓ All required environment variables are set.")
+    # Check if all required variables are set
+    if check_required_vars():
+        print("\n✓ All required environment variables are set and valid.")
     else:
-        print("\n✗ Some required environment variables are missing.")
-        print("  Please check your .env file and ensure all required variables are set.")
-    
-except ImportError as e:
-    print(f"Error importing configuration: {e}")
-    print("Make sure you've created the utils/config.py file.")
-except Exception as e:
-    print(f"Error checking environment variables: {e}")
+        print("\n✗ Some required environment variables are missing or invalid.")
+        print("\nNote: OpenAI API key is required.")
 
 if __name__ == "__main__":
-    # The script has already run
-    pass 
+    main() 

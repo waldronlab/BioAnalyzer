@@ -10,6 +10,8 @@ numpy>=1.26.0
 sentencepiece>=0.1.99
 accelerate>=0.24.0
 datasets>=2.14.0
+openai>=1.0.0
+google-generativeai>=0.3.0
 
 # Web and data retrieval
 requests>=2.31.0

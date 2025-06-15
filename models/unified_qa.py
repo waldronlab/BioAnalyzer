@@ -1,99 +1,111 @@
 from typing import Dict, List, Optional, Union
 import logging
-from pathlib import Path
-from .paper_qa import PaperQA
-from .superstudio_qa import SuperstudioQA
-from .gemini_qa import GeminiQA
+from .openai_qa import OpenAIQA
 
 logger = logging.getLogger(__name__)
 
 class UnifiedQA:
-    """Unified interface for multiple QA systems."""
+    """Unified QA system that can use OpenAI."""
     
     def __init__(
         self,
-        use_superstudio: bool = True,
-        use_gemini: bool = True,
-        use_biobert: bool = True,
-        superstudio_api_key: Optional[str] = None,
-        gemini_api_key: Optional[str] = None,
-        cache_results: bool = True
+        use_openai: bool = True,
+        use_gemini: bool = False,  # Disabled Gemini
+        openai_api_key: Optional[str] = None,
+        gemini_api_key: Optional[str] = None
     ):
-        """Initialize unified QA system.
+        """Initialize Unified QA system.
         
         Args:
-            use_superstudio: Whether to use Superstudio
-            use_gemini: Whether to use Gemini
-            use_biobert: Whether to use BioBERT
-            superstudio_api_key: API key for Superstudio
-            gemini_api_key: API key for Gemini
-            cache_results: Whether to cache results
+            use_openai: Whether to use OpenAI
+            use_gemini: Whether to use Gemini (disabled)
+            openai_api_key: API key for OpenAI
+            gemini_api_key: API key for Gemini (not used)
         """
         self.models = {}
         
-        if use_biobert:
+        # Initialize OpenAI
+        if use_openai and openai_api_key:
             try:
-                self.models['biobert'] = PaperQA()
-                logger.info("BioBERT model initialized successfully")
+                self.models['openai'] = OpenAIQA(
+                    api_key=openai_api_key,
+                    model="gpt-3.5-turbo"
+                )
+                logger.info("OpenAI model initialized successfully")
             except Exception as e:
-                logger.warning(f"Failed to initialize BioBERT: {str(e)}")
-        
-        if use_superstudio and superstudio_api_key:
-            try:
-                self.models['superstudio'] = SuperstudioQA(api_key=superstudio_api_key)
-                logger.info("Superstudio model initialized successfully")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Superstudio: {str(e)}")
-        
-        if use_gemini and gemini_api_key:
-            try:
-                self.models['gemini'] = GeminiQA(api_key=gemini_api_key)
-                logger.info("Gemini model initialized successfully")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Gemini: {str(e)}")
+                logger.warning(f"Failed to initialize OpenAI: {str(e)}")
     
     async def analyze_paper(
         self,
         paper_content: Dict[str, str],
-        models_to_use: Optional[List[str]] = None,
-        custom_questions: Optional[Dict] = None
-    ) -> Dict[str, Dict]:
-        """Analyze a paper using specified models.
+        model_name: Optional[str] = None
+    ) -> Dict[str, Dict[str, Union[str, float, Dict[str, float]]]]:
+        """Analyze a paper using OpenAI.
         
         Args:
             paper_content: Dictionary containing paper content
-            models_to_use: List of model names to use
-            custom_questions: Custom questions/prompts for analysis
+            model_name: Optional specific model to use (ignored, always uses OpenAI)
             
         Returns:
-            Dictionary containing results from each model
+            Dictionary containing analysis results
         """
-        results = {}
-        models = {k: v for k, v in self.models.items() 
-                 if not models_to_use or k in models_to_use}
+        if 'openai' not in self.models:
+            return {
+                "error": "OpenAI model not available",
+                "confidence": 0.0,
+                "status": "error",
+                "key_findings": ["Error analyzing paper"],
+                "suggested_topics": [],
+                "found_terms": {},
+                "category_scores": {},
+                "num_tokens": 0
+            }
         
-        for model_name, model in models.items():
-            try:
-                if model_name == 'biobert':
-                    results[model_name] = await model.analyze_paper(
-                        paper_content,
-                        questions=custom_questions
-                    )
-                elif model_name == 'superstudio':
-                    results[model_name] = await model.analyze_paper(
-                        paper_content,
-                        questions=custom_questions
-                    )
-                elif model_name == 'gemini':
-                    results[model_name] = await model.analyze_paper(
-                        paper_content,
-                        custom_prompts=custom_questions
-                    )
-            except Exception as e:
-                logger.error(f"Error in {model_name} analysis: {str(e)}")
-                results[model_name] = {"error": str(e)}
+        try:
+            return await self.models['openai'].analyze_paper(paper_content)
+        except Exception as e:
+            logger.error(f"Error with OpenAI model: {str(e)}")
+            return {
+                "error": str(e),
+                "confidence": 0.0,
+                "status": "error",
+                "key_findings": ["Error analyzing paper"],
+                "suggested_topics": [],
+                "found_terms": {},
+                "category_scores": {},
+                "num_tokens": 0
+            }
+    
+    async def get_answer(
+        self,
+        question: str,
+        context: str,
+        model_name: Optional[str] = None
+    ) -> Dict[str, Union[str, float]]:
+        """Get an answer using OpenAI.
         
-        return results
+        Args:
+            question: The question to answer
+            context: Context information
+            model_name: Optional specific model to use (ignored, always uses OpenAI)
+            
+        Returns:
+            Dictionary containing the answer and confidence
+        """
+        if 'openai' not in self.models:
+            return {
+                "error": "OpenAI model not available",
+                "confidence": 0.0
+            }
+        
+        try:
+            return await self.models['openai'].get_answer(question, context)
+        except Exception as e:
+            logger.error(f"Error with OpenAI model: {str(e)}")
+            return {
+                "error": str(e),
+                "confidence": 0.0
+            }
     
     def get_available_models(self) -> List[str]:
         """Get list of available models.
@@ -104,24 +116,13 @@ class UnifiedQA:
         return list(self.models.keys())
     
     def get_model_capabilities(self) -> Dict[str, Dict]:
-        """Get capabilities of each model.
+        """Get capabilities of OpenAI model.
         
         Returns:
             Dictionary of model capabilities
         """
         capabilities = {
-            'biobert': {
-                'strengths': [
-                    'Specialized in biomedical text',
-                    'Good for specific QA tasks',
-                    'No API key required'
-                ],
-                'limitations': [
-                    'Limited context window',
-                    'May be slower than API-based models'
-                ]
-            },
-            'superstudio': {
+            'openai': {
                 'strengths': [
                     'Advanced text processing',
                     'Optimized for scientific text',
@@ -130,17 +131,6 @@ class UnifiedQA:
                 'limitations': [
                     'Requires API key',
                     'May have usage limits'
-                ]
-            },
-            'gemini': {
-                'strengths': [
-                    'State-of-the-art language model',
-                    'Good at complex reasoning',
-                    'Large context window'
-                ],
-                'limitations': [
-                    'Requires API key',
-                    'May be more expensive'
                 ]
             }
         }

@@ -9,6 +9,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* General styles, kept as is for other components */
         .confidence-bar {
             height: 20px;
             background-color: #e9ecef;
@@ -252,11 +253,14 @@
         }
         body {
             font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
+            max-width: 1200px; /* Overall page max width */
+            margin: 0 auto; /* Center the body content */
             padding: 20px;
             padding-top: 80px; /* Space for fixed header */
             position: relative;
+            display: flex; /* Flex container for body */
+            flex-direction: column; /* Stack children vertically */
+            min-height: 100vh; /* Ensure body takes full viewport height */
         }
         .container {
             position: relative;
@@ -445,15 +449,24 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         /* Title styles */
-        .main-title {
+        .main-app-title {
             text-align: center;
-            margin-bottom: 15px;
+            margin-bottom: 40px; /* Space below the title */
+            padding-top: 20px; /* Padding from the top of the main content div */
+        }
+        .main-app-title h1 {
+            display: inline; /* Keep spans inline */
             font-size: 2.5rem;
             font-weight: bold;
-            padding-top: 20px;
         }
-        .main-title .highlight {
+        .main-app-title .bugsigdb-blue {
             color: #0d6efd;
+        }
+        .main-app-title .bugsigdb-black {
+            color: #212529; /* Bootstrap's default dark text color */
+        }
+        body.dark-mode .main-app-title .bugsigdb-black {
+            color: #f8f9fa; /* Light text color for dark mode */
         }
         .title-description {
             text-align: center;
@@ -470,7 +483,7 @@
             margin-top: 20px;
         }
         @media (max-width: 768px) {
-            .main-title {
+            .main-app-title {
                 font-size: 2rem;
                 padding-top: 15px;
             }
@@ -525,552 +538,338 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* Sidebar styles */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            width: 250px;
+            background-color: #f8f9fa;
+            padding: 20px;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .left-sidebar {
+            left: 0;
+            border-right: 1px solid #dee2e6;
+        }
+        
+        .right-sidebar {
+            right: 0;
+            border-left: 1px solid #dee2e6;
+        }
+        
+        .main-content {
+            margin-left: 250px;
+            margin-right: 250px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            flex-grow: 1; /* Make main content expand to push footer down */
+            /* No display: flex or align-items here, let wrapper handle centering */
+        }
+        
+        .sidebar-header {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .sidebar-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .sidebar-item:hover {
+            background-color: #e9ecef;
+        }
+        
+        /* Settings styles */
+        .settings-group {
+            margin-bottom: 20px;
+        }
+        
+        .settings-label {
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        
+        /* Improved table styles */
+        .paper-analysis-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 20px 0;
+        }
+        
+        .paper-analysis-table th,
+        .paper-analysis-table td {
+            padding: 12px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .paper-analysis-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .paper-analysis-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        /* Search bar improvements */
+        .search-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            width: 100%; /* Ensure it fills its wrapper */
+            /* No max-width or margin: auto here */
+        }
+        
+        .search-type-selector {
+            width: 120px;
+        }
+        
+        #main-interface {
+            width: 100%; /* Ensure it fills its wrapper */
+            /* No max-width or margin: auto here */
+        }
+        #main-interface .nav-tabs {
+            margin-top: 20px;
+        }
+        
+        /* Chat download button */
+        .download-chat {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .download-chat:hover {
+            background-color: #218838;
+        }
+        
+        /* Logo styles */
+        .logo-img {
+            height: 60px;
+            width: auto;
+        }
+        
+        /* BugSigDB blue color */
+        .bugsigdb-blue {
+            color: #0d6efd;
+        }
+        /* Black color for "Analyzer" */
+        .bugsigdb-black {
+            color: #212529; /* Bootstrap's default dark text color */
+        }
+        body.dark-mode .bugsigdb-black {
+            color: #f8f9fa; /* Light text color for dark mode */
+        }
+        
+        /* About link styles */
+        .about-link {
+            color: #0d6efd;
+            text-decoration: none;
+        }
+        
+        .about-link:hover {
+            text-decoration: underline;
+        }
+        
+        /* Upload section improvements */
+        .upload-section {
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .upload-features {
+            margin-top: 20px;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .feature-item i {
+            color: #0d6efd;
+            margin-right: 10px;
+        }
+
+        /* Footer styles */
+        .app-footer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 30px 20px;
+            margin-top: 50px;
+            border-top: 1px solid #dee2e6;
+            gap: 20px;
+            flex-direction: column;
+        }
+
+        .footer-logos {
+            display: flex;
+            justify-content: center; /* Explicitly center logos */
+            gap: 20px;
+            align-items: center;
+            width: 100%; /* Ensure it takes full width to enable centering */
+        }
+        .footer-link {
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        /* Centering for the main content elements */
+        .centered-content-wrapper {
+            max-width: 900px; /* Adjusted max-width for better balance */
+            margin: 0 auto; /* Center the content wrapper */
+            width: 100%; /* Ensure it takes full width up to max-width */
+        }
     </style>
 </head>
 <body>
-    <header class="logo-container">
-        <img src="/static/images/bio.png" alt="Bioconductor Logo" class="logo-img primary">
-        <img src="/static/images/image.png" alt="Additional Logo" class="logo-img secondary">
-    </header>
-
-    <div class="theme-toggle-container">
-        <button id="theme-toggle" class="btn btn-sm btn-outline-secondary">Toggle Dark Mode</button>
+    <!-- Left Sidebar -->
+    <div class="sidebar left-sidebar">
+        <div class="sidebar-header">BugSigDB Resources</div>
+        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org', '_blank')">
+            <i class="fas fa-home"></i> BugSigDB Home
+        </div>
+        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org/documentation', '_blank')">
+            <i class="fas fa-book"></i> Documentation
+        </div>
+        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org/api', '_blank')">
+            <i class="fas fa-code"></i> API Reference
+        </div>
+        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org/contact', '_blank')">
+            <i class="fas fa-envelope"></i> Contact
+        </div>
     </div>
 
-    <div class="container mt-5">
-        <!-- Login Screen -->
-        <div id="login-screen" class="text-center py-5">
-            <h1 class="mb-4 welcome-title">Welcome   to   <span class="blue-text">BugSigDB  </span>   Analyzer</h1>
-            <p class="lead mb-4">Analyze scientific papers, chat with an AI assistant, or Upload your documents to BugSigDB Analyzer.</p>
-            <p class="text-muted mb-4"> for curation.</p>
-            <div class="row justify-content-center">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Start Session</h5>
-                            <div class="mb-3">
-                                <input type="text" id="username" class="form-control" placeholder="Enter your name">
-                            </div>
-                            <button id="start-chat" class="btn btn-primary">Start Session</button>
-                        </div>
-                    </div>
-                </div>
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="centered-content-wrapper">
+            <div class="main-app-title">
+                <h1><span class="bugsigdb-blue">BugSigDB</span> <span class="bugsigdb-black">Analyzer</span></h1>
             </div>
-            <div class="row justify-content-center mt-4">
-                <div class="col-md-8">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">BugSigDB Resources</h5>
-                            <div class="resource-item">
-                                <i class="fas fa-info-circle"></i>
-                                <div>
-                                    <a href="https://bugsigdb.org/Project:About" target="_blank">BugSigDB Project Information</a>
-                                    <small class="text-muted d-block">Estimated time: 15 minutes</small>
-                                </div>
-                            </div>
-                            <div class="resource-item">
-                                <i class="fas fa-book"></i>
-                                <div>
-                                    <a href="https://docs.google.com/document/d/1cpY8RoOHjJ_oxkDRGwlpqL-I29IN9B5BifhZIlqTjhE/edit?tab=t.0" target="_blank">Reading Materials on the Human Microbiome</a>
-                                    <small class="text-muted d-block">Estimated time: 2 hours</small>
-                                </div>
-                            </div>
-                            <div class="resource-item">
-                                <i class="fas fa-video"></i>
-                                <div>
-                                    <a href="https://www.youtube.com/watch?v=yfpnwxefLFc&list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq&index=6" target="_blank">Step-by-Step Guidance on Documenting a Signature in BugSigDB</a>
-                                    <small class="text-muted d-block">Video tutorial</small>
-                                </div>
-                            </div>
-                            <div class="resource-item">
-                                <i class="fas fa-file-alt"></i>
-                                <div>
-                                    <a href="https://bugsigdb.org/Study_600" target="_blank">View Examples of Completed BugSigDB Curations</a>
-                                    <small class="text-muted d-block">Estimated time: 15 minutes</small>
-                                </div>
-                            </div>
-                            <div class="resource-item">
-                                <i class="fas fa-play-circle"></i>
-                                <div>
-                                    <a href="https://www.youtube.com/playlist?list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq" target="_blank">Video Trainings on BugSigDB Curation</a>
-                                    <small class="text-muted d-block">Playlist</small>
-                                </div>
-                            </div>
-                            <div class="resource-item">
-                                <i class="fas fa-user"></i>
-                                <div>
-                                    <a href="https://bugsigdb.org/Main_Page" target="_blank">Open Your BugSigDB Account</a>
-                                    <small class="text-muted d-block">Access the BugSigDB platform</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            
+            <!-- Search Section -->
+            <div class="search-container">
+                <select class="form-select search-type-selector" id="searchType">
+                    <option value="pmid">PMID</option>
+                    <option value="title">Title</option>
+                    <option value="url">URL</option>
+                </select>
+                <input type="text" class="form-control" id="searchInput" placeholder="Enter PMID, title, or URL">
+                <button class="btn btn-primary" onclick="analyzePaper()">Analyze</button>
             </div>
-        </div>
 
-        <!-- Main Interface -->
-        <div id="main-interface">
-            <!-- Main Title -->
-            <h1 class="main-title">
-                <span class="highlight">BugSigDB</span> Analyzer
-            </h1>
-            <p class="title-description">
-                <span class="highlight">                          
+            <!-- Main Interface -->
+            <div id="main-interface">
+                <!-- Navigation Tabs -->
+                <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab">Paper Analysis</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat" type="button" role="tab">Chat Assistant</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button" role="tab">Upload Paper</button>
+                    </li>
+                </ul>
 
-
-
-
-                    
-                </span>
-            </p>
-            <p class="title-description">
-                Explore and analyze scientific papers with advanced AI assistance. Extract key findings, analyze microbiome signatures, and generate insights from research papers.
-            </p>
-
-            <!-- Navigation Tabs -->
-            <ul class="nav nav-tabs" id="mainTabs" role="tablist">
-                <li class="nav-item">
-                    <a class="nav-link active" id="analyze-tab" data-bs-toggle="tab" href="#analyze" role="tab">Paper Analysis</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" id="chat-tab" data-bs-toggle="tab" href="#chat" role="tab">Chat Assistant</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" id="curation-tab" data-bs-toggle="tab" href="#curation" role="tab">Curation Assistant</a>
-                </li>
-            </ul>
-
-            <!-- Tab Content -->
-            <div class="tab-content" id="mainTabContent">
-                <!-- Paper Analysis Tab -->
-                <div class="tab-pane fade show active" id="analyze" role="tabpanel">
-                    <div class="row justify-content-center mb-4">
-                        <div class="col-md-6">
-                            <div class="input-group">
-                                <input type="text" id="pmid" class="form-control" placeholder="Enter PubMed ID">
-                                <button class="btn btn-primary" onclick="analyzePaper()">Analyze</button>
+                <!-- Tab Content -->
+                <div class="tab-content" id="mainTabsContent">
+                    <!-- Analysis Tab -->
+                    <div class="tab-pane fade show active" id="analysis" role="tabpanel">
+                        <div id="loading" class="whirl-container" style="display: none;">
+                            <div class="custom-spinner"></div>
+                        </div>
+                        <div id="paper-metadata" class="paper-metadata" style="display: none;">
+                            <h3 id="paper-title"></h3>
+                            <p id="paper-abstract"></p>
+                        </div>
+                        <div id="analysis-results" class="analysis-results">
+                            <div class="table-responsive">
+                                <table class="paper-analysis-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Category</th>
+                                            <th>Value</th>
+                                            <th>Confidence</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="analysis-table-body"></tbody>
+                                </table>
                             </div>
+                            <div id="found-terms" class="mt-4"></div>
+                            <div id="category-scores" class="category-scores-list mt-4"></div>
                         </div>
                     </div>
 
-                    <div id="loading">
-                        <div class="whirl-container">
-                            <div id="whirl-spinner" class="custom-spinner"></div>
-                        </div>
-                        <p class="mt-2 text-center">Analyzing paper...</p>
-                    </div>
-
-                    <div id="results" class="analysis-results">
-                        <!-- Resources Card -->
-                        <div class="card mb-4">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">BugSigDB Resources</h5>
-                                <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#resources-collapse">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                            </div>
-                            <div id="resources-collapse" class="collapse">
-                                <div class="card-body">
-                                    <div class="resource-item">
-                                        <i class="fas fa-info-circle"></i>
-                                        <div>
-                                            <a href="https://bugsigdb.org/Project:About" target="_blank">BugSigDB Project Information</a>
-                                            <small class="text-muted d-block">Estimated time: 15 minutes</small>
-                                        </div>
-                                    </div>
-                                    <div class="resource-item">
-                                        <i class="fas fa-book"></i>
-                                        <div>
-                                            <a href="https://docs.google.com/document/d/1cpY8RoOHjJ_oxkDRGwlpqL-I29IN9B5BifhZIlqTjhE/edit?tab=t.0" target="_blank">Reading Materials on the Human Microbiome</a>
-                                            <small class="text-muted d-block">Estimated time: 2 hours</small>
-                                        </div>
-                                    </div>
-                                    <div class="resource-item">
-                                        <i class="fas fa-video"></i>
-                                        <div>
-                                            <a href="https://www.youtube.com/watch?v=yfpnwxefLFc&list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq&index=6" target="_blank">Step-by-Step Guidance on Documenting a Signature in BugSigDB</a>
-                                            <small class="text-muted d-block">Video tutorial</small>
-                                        </div>
-                                    </div>
-                                    <div class="resource-item">
-                                        <i class="fas fa-file-alt"></i>
-                                        <div>
-                                            <a href="https://bugsigdb.org/Study_600" target="_blank">View Examples of Completed BugSigDB Curations</a>
-                                            <small class="text-muted d-block">Estimated time: 15 minutes</small>
-                                        </div>
-                                    </div>
-                                    <div class="resource-item">
-                                        <i class="fas fa-play-circle"></i>
-                                        <div>
-                                            <a href="https://www.youtube.com/playlist?list=PLIUETfW6tVu2OGgZcIxqI7DbUBReHVdIq" target="_blank">Video Trainings on BugSigDB Curation</a>
-                                            <small class="text-muted d-block">Playlist</small>
-                                        </div>
-                                    </div>
-                                    <div class="resource-item">
-                                        <i class="fas fa-user"></i>
-                                        <div>
-                                            <a href="https://bugsigdb.org/Main_Page" target="_blank">Open Your BugSigDB Account</a>
-                                            <small class="text-muted d-block">Access the BugSigDB platform</small>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Paper Metadata -->
-                        <div class="paper-metadata card mb-4">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">Paper Metadata</h5>
-                                <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#metadata-collapse">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                            </div>
-                            <div id="metadata-collapse" class="collapse show">
-                                <div class="card-body">
-                                    <h2 id="paper-title" class="h4 mb-3"></h2>
-                                    <div class="mb-2">
-                                        <strong>Authors:</strong>
-                                        <span id="paper-authors" class="text-muted"></span>
-                                    </div>
-                                    <div class="mb-2">
-                                        <strong>Journal:</strong>
-                                        <span id="paper-journal" class="text-muted"></span>
-                                    </div>
-                                    <div class="mb-2">
-                                        <strong>Publication Date:</strong>
-                                        <span id="paper-date" class="text-muted"></span>
-                                    </div>
-                                    <div class="mb-2">
-                                        <strong>DOI:</strong>
-                                        <span id="paper-doi" class="text-muted"></span>
-                                    </div>
-                                    <div class="mt-3">
-                                        <strong>Abstract:</strong>
-                                        <p id="paper-abstract" class="mt-2 text-muted"></p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Paper Analysis Details Table -->
-                        <div class="card mb-4">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">Paper Analysis Details</h5>
-                                <div>
-                                    <button class="btn btn-sm btn-outline-primary me-2" onclick="exportTableToCSV()">
-                                        <i class="fas fa-download me-1"></i>Export CSV
-                                    </button>
-                                    <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#analysis-details-collapse">
-                                        <i class="fas fa-chevron-down"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="analysis-details-collapse" class="collapse show">
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered paper-analysis-table w-100">
-                                            <thead class="table-light">
-                                                <tr>
-                                                    <th>PMID</th>
-                                                    <th>Journal</th>
-                                                    <th>Title</th>
-                                                    <th>Year</th>
-                                                    <th>Host</th>
-                                                    <th>Body Site</th>
-                                                    <th>Condition</th>
-                                                    <th>Sequencing Type</th>
-                                                    <th>In BugSigDB?</th>
-                                                    <th>Predicted Prob of Signature</th>
-                                                    <th>Sample Size</th>
-                                                    <th>Taxa Level</th>
-                                                    <th>Statistical Method</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr id="paper-analysis-details" class="analysis-row" style="cursor: pointer;" onclick="toggleDetailedView()">
-                                                    <td id="paper-pmid"></td>
-                                                    <td id="paper-journal-short"></td>
-                                                    <td id="paper-title-short"></td>
-                                                    <td id="paper-year"></td>
-                                                    <td id="paper-host"></td>
-                                                    <td id="paper-body-site"></td>
-                                                    <td id="paper-condition"></td>
-                                                    <td id="paper-sequencing-type"></td>
-                                                    <td id="paper-in-bugsigdb"></td>
-                                                    <td id="paper-signature-prob"></td>
-                                                    <td id="paper-sample-size"></td>
-                                                    <td id="paper-taxa-level"></td>
-                                                    <td id="paper-statistical-method"></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Analysis Results -->
-                        <div class="card mb-4">
-                            <div class="card-body">
-                                <h3 class="card-title h5 mb-4">Analysis Results</h3>
-                                
-                                <!-- Overall Confidence -->
-                                <div class="mb-4">
-                                    <h4 class="h6">Overall Confidence</h4>
-                                    <div class="confidence-bar">
-                                        <div id="confidence-fill" class="confidence-fill"></div>
-                                    </div>
-                                    <small class="text-muted" id="confidence-value"></small>
-                                </div>
-
-                                <!-- Category Scores -->
-                                <div class="mb-4">
-                                    <h4 class="h6">Category Scores</h4>
-                                    <div id="category-scores" class="mt-3">
-                                        <div class="category-scores-list">
-                                            <!-- Category scores will be dynamically inserted here -->
-                                        </div>
-                                        <div class="mt-3 small text-muted d-flex justify-content-center gap-4">
-                                            <span><i class="fas fa-circle text-success"></i> High (>70%)</span>
-                                            <span><i class="fas fa-circle text-warning"></i> Medium (30-70%)</span>
-                                            <span><i class="fas fa-circle text-danger"></i> Low (<30%)</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Found Terms -->
-                                <div class="mb-4">
-                                    <h4 class="h6">Found Terms</h4>
-                                    <div id="found-terms"></div>
-                                </div>
-
-                                <!-- Key Findings -->
-                                <div class="mb-4">
-                                    <h4 class="h6">Key Findings</h4>
-                                    <div id="key-findings" class="mt-3">
-                                        <p class="text-muted">Analyzing paper...</p>
-                                    </div>
-                                </div>
-
-                                <!-- Suggested Topics -->
-                                <div class="mb-4">
-                                    <h4 class="h6">Suggested Topics</h4>
-                                    <div id="suggested-topics" class="d-flex flex-wrap gap-2"></div>
-                                </div>
-
-                                <!-- Analysis Status -->
-                                <div class="mt-4 text-muted">
-                                    <div class="mb-1">
-                                        <strong>Analysis Status:</strong>
-                                        <span id="analysis-status"></span>
-                                    </div>
-                                    <div>
-                                        <strong>Tokens Generated:</strong>
-                                        <span id="tokens-generated"></span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Paper Q&A Section -->
-                        <div class="card">
-                            <div class="card-body">
-                                <h4 class="h6 mb-3">Ask Questions About This Paper</h4>
-                                <div class="input-group mb-3">
-                                    <input type="text" id="paper-question" class="form-control" placeholder="Ask a question about this paper...">
-                                    <button class="btn btn-outline-primary" onclick="askQuestion()">Ask</button>
-                                </div>
-                                <div id="qa-results"></div>
-                                
-                                <!-- Chat about paper button -->
-                                <div class="mt-3 text-center">
-                                    <button id="chat-about-paper-btn" class="btn btn-primary" onclick="switchToChatWithPaper()" disabled>
-                                        <i class="fas fa-comments me-2"></i><span id="chat-btn-text">Continue discussing this paper in Chat</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Chat Tab -->
-                <div class="tab-pane fade" id="chat" role="tabpanel">
-                    <div id="connection-status" class="alert mb-3"></div>
-                    
-                    <!-- Current paper indicator -->
-                    <div id="current-paper-indicator" class="alert alert-info mb-3" style="display: none;">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <i class="fas fa-file-alt me-2"></i>
-                                <span id="current-paper-title">Discussing paper</span>
-                            </div>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="clearCurrentPaperContext()">
-                                <i class="fas fa-times"></i> Clear paper context
+                    <!-- Chat Tab -->
+                    <div class="tab-pane fade" id="chat" role="tabpanel">
+                        <div id="connection-status" class="disconnected">Disconnected</div>
+                        <div class="chat-container" id="chat-container">
+                            <button class="download-chat" onclick="downloadChat()">
+                                <i class="fas fa-download"></i> Download Chat
                             </button>
                         </div>
+                        <div class="chat-input-container">
+                            <input type="text" id="message-input" placeholder="Type your message...">
+                            <button id="send-button" onclick="sendMessage()">Send</button>
+                        </div>
                     </div>
-                    
-                    <div class="chat-tab-header mb-3">
-                        <input type="text" id="chat-search" class="form-control" placeholder="Search chat history...">
-                    </div>
-                    <div id="chat-container" class="chat-container"></div>
-                    <div class="chat-input-container">
-                        <input type="text" id="message-input" placeholder="Type your message..." disabled>
-                        <button id="send-button" onclick="sendMessage()" disabled>Send</button>
-                    </div>
-                </div>
 
-                <!-- Curation Tab -->
-                <div class="tab-pane fade" id="curation" role="tabpanel">
-                    <div class="row justify-content-center mb-4">
-                        <div class="col-md-8">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5 class="mb-0">Paper Upload & Curation Assistant</h5>
+                    <!-- Upload Tab -->
+                    <div class="tab-pane fade" id="upload" role="tabpanel">
+                        <div class="upload-section">
+                            <h5 class="card-title">Upload Paper</h5>
+                            <form id="upload-form" enctype="multipart/form-data">
+                                <div class="mb-3">
+                                    <label for="paper-file" class="form-label">Select Paper (PDF or Text)</label>
+                                    <input type="file" class="form-control" id="paper-file" accept=".pdf,.txt">
                                 </div>
-                                <div class="card-body">
-                                    <p class="text-muted mb-4">Upload a scientific paper (PDF or text) and get AI-assisted curation for BugSigDB.</p>
-                                    
-                                    <div class="mb-4">
-                                        <h6>Upload Paper</h6>
-                                        <div class="input-group mb-3">
-                                            <input type="file" class="form-control" id="paper-file" accept=".pdf,.txt">
-                                            <button class="btn btn-primary" id="upload-paper-btn" onclick="uploadPaper()">Upload</button>
-                                        </div>
-                                        <div class="form-text">Supported formats: PDF, TXT (max 10MB)</div>
+                                <div class="upload-features">
+                                    <h6>Features:</h6>
+                                    <div class="feature-item">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span>Support for PDF and text files</span>
                                     </div>
-                                    
-                                    <div class="mb-4">
-                                        <h6>Or Enter Paper Details</h6>
-                                        <div class="mb-3">
-                                            <label for="paper-pmid-input" class="form-label">PubMed ID</label>
-                                            <div class="input-group">
-                                                <input type="text" class="form-control" id="paper-pmid-input" placeholder="Enter PMID">
-                                                <button class="btn btn-outline-primary" onclick="fetchPaperByPMID()">Fetch</button>
-                                            </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="paper-doi-input" class="form-label">DOI</label>
-                                            <div class="input-group">
-                                                <input type="text" class="form-control" id="paper-doi-input" placeholder="Enter DOI">
-                                                <button class="btn btn-outline-primary" onclick="fetchPaperByDOI()">Fetch</button>
-                                            </div>
-                                        </div>
+                                    <div class="feature-item">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span>Automatic metadata extraction</span>
                                     </div>
-                                    
-                                    <div id="curation-loading" class="loading" style="display: none;">
-                                        <div class="whirl-container">
-                                            <div id="curation-whirl-spinner" class="custom-spinner"></div>
-                                        </div>
-                                        <p class="mt-2 text-center">Processing paper...</p>
+                                    <div class="feature-item">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span>Full text analysis</span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span>Microbial signature detection</span>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div id="curation-results" style="display: none;">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5 class="mb-0">Curation Form</h5>
-                            </div>
-                            <div class="card-body">
-                                <form id="curation-form">
-                                    <div class="row mb-3">
-                                        <div class="col-md-6">
-                                            <label for="curation-pmid" class="form-label">PMID</label>
-                                            <input type="text" class="form-control" id="curation-pmid" readonly>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label for="curation-year" class="form-label">Year</label>
-                                            <input type="text" class="form-control" id="curation-year">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="curation-title" class="form-label">Title</label>
-                                        <input type="text" class="form-control" id="curation-title">
-                                    </div>
-                                    
-                                    <div class="row mb-3">
-                                        <div class="col-md-6">
-                                            <label for="curation-host" class="form-label">Host</label>
-                                            <select class="form-select" id="curation-host">
-                                                <option value="">Select host...</option>
-                                                <option value="human">Human</option>
-                                                <option value="mouse">Mouse</option>
-                                                <option value="rat">Rat</option>
-                                                <option value="other">Other</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label for="curation-body-site" class="form-label">Body Site</label>
-                                            <select class="form-select" id="curation-body-site">
-                                                <option value="">Select body site...</option>
-                                                <option value="gut">Gut</option>
-                                                <option value="oral">Oral</option>
-                                                <option value="skin">Skin</option>
-                                                <option value="vaginal">Vaginal</option>
-                                                <option value="other">Other</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="row mb-3">
-                                        <div class="col-md-6">
-                                            <label for="curation-condition" class="form-label">Condition</label>
-                                            <input type="text" class="form-control" id="curation-condition">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label for="curation-seq-type" class="form-label">Sequencing Type</label>
-                                            <select class="form-select" id="curation-seq-type">
-                                                <option value="">Select sequencing type...</option>
-                                                <option value="16S rRNA">16S rRNA</option>
-                                                <option value="shotgun">Shotgun Metagenomics</option>
-                                                <option value="metatranscriptomics">Metatranscriptomics</option>
-                                                <option value="other">Other</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="curation-taxa" class="form-label">Signature Taxa</label>
-                                        <textarea class="form-control" id="curation-taxa" rows="3" placeholder="Enter taxa separated by commas"></textarea>
-                                        <div class="form-text">Enter the microbial taxa that form the signature</div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="curation-notes" class="form-label">Curation Notes</label>
-                                        <textarea class="form-control" id="curation-notes" rows="3"></textarea>
-                                    </div>
-                                    
-                                    <div class="d-flex justify-content-between">
-                                        <button type="button" class="btn btn-outline-secondary" onclick="resetCurationForm()">Reset</button>
-                                        <button type="button" class="btn btn-primary" onclick="submitCuration()">Submit to BugSigDB</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                        
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5 class="mb-0">AI Curation Suggestions</h5>
-                            </div>
-                            <div class="card-body">
-                                <div id="ai-suggestions">
-                                    <p class="text-muted">AI suggestions will appear here after processing the paper.</p>
-                                </div>
-                                
-                                <div class="mt-3">
-                                    <h6>Ask for Curation Help</h6>
-                                    <div class="input-group mb-3">
-                                        <input type="text" class="form-control" id="curation-question" placeholder="Ask a question about curating this paper...">
-                                        <button class="btn btn-outline-primary" onclick="askCurationQuestion()">Ask</button>
-                                    </div>
-                                    <div id="curation-qa-results"></div>
-                                </div>
-                            </div>
+                                <button type="submit" class="btn btn-primary mt-3">Upload and Analyze</button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -1078,1376 +877,468 @@
         </div>
     </div>
 
-    <footer class="mt-5 py-3 text-center text-muted">
-        <p>© 2025 BugSigDB Analyzer. Powered by BugSigDB.</p>
-        <p><a href="http://waldronlab.io/" target="_blank">Learn more about waldronlab</a> | <a href="https://bugsigdb.org/Project:About" target="_blank">About</a></p>
+    <!-- Right Sidebar -->
+    <div class="sidebar right-sidebar">
+        <div class="sidebar-header">Page Settings</div>
+        
+        <div class="settings-group">
+            <div class="settings-label">Font Size</div>
+            <input type="range" class="form-range" id="fontSize" min="12" max="24" value="16">
+            <div class="settings-value" id="fontSizeValue">16px</div>
+        </div>
+        
+        <div class="settings-group">
+            <div class="settings-label">Zoom Level</div>
+            <input type="range" class="form-range" id="zoomLevel" min="50" max="150" value="100">
+            <div class="settings-value" id="zoomLevelValue">100%</div>
+        </div>
+        
+        <div class="settings-group">
+            <div class="settings-label">Theme</div>
+            <select class="form-select" id="themeSelect">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="contrast">High Contrast</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <div class="settings-label">Table Display</div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="compactTable" checked>
+                <label class="form-check-label" for="compactTable">
+                    Compact View
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="showConfidence" checked>
+                <label class="form-check-label" for="showConfidence">
+                    Show Confidence Scores
+                </label>
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <div class="settings-label">Chat Display</div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="showTimestamps" checked>
+                <label class="form-check-label" for="showTimestamps">
+                    Show Timestamps
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="autoScroll" checked>
+                <label class="form-check-label" for="autoScroll">
+                    Auto-scroll to Latest
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-logos">
+            <img src="/static/images/bugsigdb-logo.png" alt="BugSigDB Logo" class="logo-img">
+            <img src="/static/images/bugsigdb-logo.png" alt="BugSigDB Logo" class="logo-img">
+        </div>
+        <a href="https://bugsigdb.org/about" class="about-link footer-link" target="_blank">About BugSigDB Analyzer</a>
     </footer>
 
-    <!-- Required JavaScript -->
+    <!-- Add necessary JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-r.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-javascript.min.js"></script>
-    <!-- Add Whirl library -->
-    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/react-whirl@1.0.0/dist/index.js"></script>
-
-    <!-- Inline JavaScript -->
     <script>
-        // Global variables
-        let ws = null;
-        let currentPaper = localStorage.getItem('currentPaper');
-        console.log("Initial currentPaper from localStorage:", currentPaper);
-        let username = '';
-        
-        // Function to ensure currentPaper is properly initialized
-        function ensureCurrentPaper() {
-            console.log("ensureCurrentPaper - Starting with currentPaper:", currentPaper);
-            console.log("ensureCurrentPaper - localStorage value:", localStorage.getItem('currentPaper'));
-            
-            // First check localStorage
-            const storedPaper = localStorage.getItem('currentPaper');
-            if (storedPaper && (!currentPaper || currentPaper !== storedPaper)) {
-                console.log("ensureCurrentPaper - Updating currentPaper from localStorage");
-                currentPaper = storedPaper;
-                console.log("ensureCurrentPaper - Updated currentPaper:", currentPaper);
-                return true;
+        // Settings management
+        const settings = {
+            fontSize: 16,
+            zoomLevel: 100,
+            theme: 'light',
+            compactTable: true,
+            showConfidence: true,
+            showTimestamps: true,
+            autoScroll: true
+        };
+
+        // Load saved settings from localStorage
+        function loadSettings() {
+            const savedSettings = localStorage.getItem('paperSettings');
+            if (savedSettings) {
+                Object.assign(settings, JSON.parse(savedSettings));
+                applySettings();
             }
-            
-            // If still no currentPaper, check if we have a PMID in the table
-            if (!currentPaper) {
-                const tablePmid = document.getElementById('paper-pmid').textContent;
-                if (tablePmid && tablePmid !== 'N/A') {
-                    console.log("ensureCurrentPaper - Updating currentPaper from table PMID:", tablePmid);
-                    currentPaper = tablePmid;
-                    localStorage.setItem('currentPaper', tablePmid);
-                    return true;
-                }
-            }
-            
-            // If still no currentPaper, check if we have a value in the PMID input field
-            if (!currentPaper) {
-                const inputPmid = document.getElementById('pmid').value.trim();
-                if (inputPmid) {
-                    console.log("ensureCurrentPaper - Updating currentPaper from PMID input:", inputPmid);
-                    currentPaper = inputPmid;
-                    localStorage.setItem('currentPaper', inputPmid);
-                    return true;
-                }
-            }
-            
-            return false;
         }
 
-        // Initialize interface
-        document.getElementById('main-interface').style.display = 'none';
-
-        // Load saved theme
-        if (localStorage.getItem('theme') === 'dark') {
-            document.body.classList.add('dark-mode');
+        // Save settings to localStorage
+        function saveSettings() {
+            localStorage.setItem('paperSettings', JSON.stringify(settings));
         }
 
-        // Event listeners
-        document.getElementById('start-chat').addEventListener('click', startSession);
-        document.getElementById('message-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
-        });
-        document.getElementById('theme-toggle').addEventListener('click', () => {
-            document.body.classList.toggle('dark-mode');
-            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
-        });
-        document.getElementById('chat-search').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            const messages = document.querySelectorAll('#chat-container .message');
-            messages.forEach(msg => {
-                msg.style.display = msg.textContent.toLowerCase().includes(searchTerm) ? 'block' : 'none';
-            });
-        });
-        
-        // Handle tab changes
-        document.querySelectorAll('.nav-link').forEach(tab => {
-            tab.addEventListener('click', function() {
-                console.log("Tab changed to:", this.id);
-                
-                // Sync paper context from localStorage
-                syncPaperContext();
-                
-                // If switching to analyze tab and we have a currentPaper, make sure it's loaded
-                if (this.id === 'analyze-tab' && currentPaper) {
-                    document.getElementById('pmid').value = currentPaper;
-                    console.log("Tab change - Set pmid input to:", currentPaper);
-                }
-                // If switching to chat tab, update paper indicator
-                else if (this.id === 'chat-tab') {
-                    updateCurrentPaperIndicator();
-                }
-            });
-        });
+        // Apply all settings
+        function applySettings() {
+            // Apply font size
+            document.body.style.fontSize = `${settings.fontSize}px`;
+            document.getElementById('fontSize').value = settings.fontSize;
+            document.getElementById('fontSizeValue').textContent = `${settings.fontSize}px`;
 
-        // Load current paper if it exists
-        window.addEventListener('DOMContentLoaded', async () => {
-            console.log("DOMContentLoaded - Starting initialization");
-            
-            // Sync paper context from localStorage
-            syncPaperContext();
-            
-            console.log("DOMContentLoaded - After syncPaperContext - currentPaper:", currentPaper);
-            
-            if (currentPaper) {
-                document.getElementById('pmid').value = currentPaper;
-                console.log("DOMContentLoaded - Set pmid input to:", currentPaper);
-                // Only auto-load if we're on the analyze tab
-                if (document.getElementById('analyze-tab').classList.contains('active')) {
-                    console.log("DOMContentLoaded - Analyze tab is active, calling analyzePaper()");
-                    await analyzePaper();
-                }
-            }
-            
-            // Add storage event listener to sync between tabs
-            window.addEventListener('storage', (event) => {
-                if (event.key === 'currentPaper' || event.key === 'paperTitle') {
-                    console.log("Storage event detected:", event.key, event.newValue);
-                    syncPaperContext();
-                }
-            });
-        });
+            // Apply zoom level
+            document.body.style.zoom = `${settings.zoomLevel}%`;
+            document.getElementById('zoomLevel').value = settings.zoomLevel;
+            document.getElementById('zoomLevelValue').textContent = `${settings.zoomLevel}%`;
 
-        async function startSession() {
-            username = document.getElementById('username').value.trim();
-            if (!username) {
-                alert('Please enter your name');
-                return;
-            }
+            // Apply theme
+            document.body.className = `${settings.theme}-theme`;
+            document.getElementById('themeSelect').value = settings.theme;
 
-            try {
-                const response = await fetch(`/start_session/${username}`, {
-                    method: 'POST'
+            // Apply table settings
+            const table = document.querySelector('.paper-analysis-table');
+            if (table) {
+                table.classList.toggle('compact-view', settings.compactTable);
+                const confidenceColumns = table.querySelectorAll('.confidence-column');
+                confidenceColumns.forEach(col => {
+                    col.style.display = settings.showConfidence ? '' : 'none';
                 });
+            }
 
-                if (response.ok) {
-                    document.getElementById('login-screen').style.display = 'none';
-                    document.getElementById('main-interface').style.display = 'block';
-                    document.getElementById('analyze-tab').click();
-                    setupWebSocket();
-                    addMessage('System', `Welcome ${username}! How can I help you today?`, 'system-message');
-                }
-            } catch (error) {
-                alert('Error starting session: ' + error.message);
+            // Apply chat settings
+            const chatContainer = document.getElementById('chat-container');
+            if (chatContainer) {
+                const timestamps = chatContainer.querySelectorAll('.message-time');
+                timestamps.forEach(time => {
+                    time.style.display = settings.showTimestamps ? '' : 'none';
+                });
             }
         }
 
-        function setupWebSocket() {
-            const encodedUsername = encodeURIComponent(username);
-            // Use secure WebSocket (wss://) if the page is loaded over HTTPS
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws/${encodedUsername}`);
-            
-            ws.onopen = () => {
-                console.log('Connected to WebSocket');
-                updateConnectionStatus(true);
-                addMessage('System', 'Connected to chat server', 'system-message');
-            };
+        // Font size control
+        document.getElementById('fontSize').addEventListener('input', function(e) {
+            settings.fontSize = parseInt(e.target.value);
+            document.getElementById('fontSizeValue').textContent = `${settings.fontSize}px`;
+            document.body.style.fontSize = `${settings.fontSize}px`;
+            saveSettings();
+        });
 
-            ws.onmessage = (event) => {
+        // Zoom control
+        document.getElementById('zoomLevel').addEventListener('input', function(e) {
+            settings.zoomLevel = parseInt(e.target.value);
+            document.getElementById('zoomLevelValue').textContent = `${settings.zoomLevel}%`;
+            document.body.style.zoom = `${settings.zoomLevel}%`;
+            saveSettings();
+        });
+
+        // Theme control
+        document.getElementById('themeSelect').addEventListener('change', function(e) {
+            settings.theme = e.target.value;
+            document.body.className = `${settings.theme}-theme`;
+            saveSettings();
+        });
+
+        // Table display settings
+        document.getElementById('compactTable').addEventListener('change', function(e) {
+            settings.compactTable = e.target.checked;
+            const table = document.querySelector('.paper-analysis-table');
+            if (table) {
+                table.classList.toggle('compact-view', settings.compactTable);
+            }
+            saveSettings();
+        });
+
+        document.getElementById('showConfidence').addEventListener('change', function(e) {
+            settings.showConfidence = e.target.checked;
+            const confidenceColumns = document.querySelectorAll('.confidence-column');
+            confidenceColumns.forEach(col => {
+                col.style.display = settings.showConfidence ? '' : 'none';
+            });
+            saveSettings();
+        });
+
+        // Chat display settings
+        document.getElementById('showTimestamps').addEventListener('change', function(e) {
+            settings.showTimestamps = e.target.checked;
+            const timestamps = document.querySelectorAll('.message-time');
+            timestamps.forEach(time => {
+                time.style.display = settings.showTimestamps ? '' : 'none';
+            });
+            saveSettings();
+        });
+
+        document.getElementById('autoScroll').addEventListener('change', function(e) {
+            settings.autoScroll = e.target.checked;
+            saveSettings();
+        });
+
+        // Load settings when page loads
+        window.addEventListener('load', function() {
+            loadSettings();
+            // Initialize other settings
+            document.getElementById('compactTable').checked = settings.compactTable;
+            document.getElementById('showConfidence').checked = settings.showConfidence;
+            document.getElementById('showTimestamps').checked = settings.showTimestamps;
+            document.getElementById('autoScroll').checked = settings.autoScroll;
+        });
+
+        // Initialize WebSocket connection
+        let ws = null;
+        let currentUsername = null;
+
+        function connectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+
+            // Generate a random username if not set
+            if (!currentUsername) {
+                currentUsername = 'user_' + Math.random().toString(36).substr(2, 9);
+            }
+
+            ws = new WebSocket(`ws://${window.location.host}/ws/${currentUsername}`);
+            
+            ws.onopen = function() {
+                document.getElementById('connection-status').className = 'connected';
+                document.getElementById('connection-status').textContent = 'Connected';
+            };
+            
+            ws.onclose = function() {
+                document.getElementById('connection-status').className = 'disconnected';
+                document.getElementById('connection-status').textContent = 'Disconnected';
+                // Try to reconnect after 5 seconds
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            ws.onmessage = function(event) {
                 const data = JSON.parse(event.data);
                 if (data.error) {
-                    addMessage('Error', data.error, 'error-message');
-                } else if (data.response) {
+                    addMessage('System', data.error, 'error-message');
+                } else {
                     addMessage('Assistant', data.response, 'assistant-message');
                 }
             };
-
-            ws.onclose = (event) => {
-                console.log('Disconnected from WebSocket:', event.code, event.reason);
-                updateConnectionStatus(false);
-                addMessage('System', `Disconnected from chat server (${event.code})`, 'system-message');
-                ws = null;
-                
-                // Try to reconnect after 3 seconds
-                setTimeout(() => {
-                    if (!ws || ws.readyState !== WebSocket.OPEN) {
-                        addMessage('System', 'Attempting to reconnect...', 'system-message');
-                        setupWebSocket();
-                    }
-                }, 3000);
-            };
-
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                addMessage('Error', 'WebSocket error occurred. Will attempt to reconnect.', 'error-message');
-            };
         }
 
-        function updateConnectionStatus(connected) {
-            const status = document.getElementById('connection-status');
-            status.textContent = connected ? 'Connected' : 'Disconnected';
-            status.className = connected ? 'connected' : 'disconnected';
+        // Connect WebSocket when page loads
+        window.addEventListener('load', connectWebSocket);
+
+        // Send message function
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
             
-            document.getElementById('message-input').disabled = !connected;
-            document.getElementById('send-button').disabled = !connected;
-            document.getElementById('username').disabled = connected;
+            if (message && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    content: message,
+                    currentPaper: document.getElementById('paper-title').textContent
+                }));
+                addMessage('You', message, 'user-message');
+                input.value = '';
+            }
         }
 
+        // Add message to chat
         function addMessage(sender, content, className) {
-            const container = document.getElementById('chat-container');
+            const chatContainer = document.getElementById('chat-container');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
-            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            
             messageDiv.innerHTML = `
                 <div class="message-sender">${sender}</div>
-                <div>${content}</div>
-                <div class="message-time">${timestamp}</div>
+                <div class="message-content">${content}</div>
+                <div class="message-time" style="display: ${settings.showTimestamps ? '' : 'none'}">${timeString}</div>
             `;
-            container.appendChild(messageDiv);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        async function askQuestion() {
-            // Ensure currentPaper is up-to-date
-            ensureCurrentPaper();
             
-            // Try multiple sources to find the paper ID
-            let paperToUse = currentPaper;
-            
-            // If not found in currentPaper, check localStorage
-            if (!paperToUse) {
-                paperToUse = localStorage.getItem('currentPaper');
-            }
-            
-            // If still not found, check the table
-            if (!paperToUse) {
-                const tablePmid = document.getElementById('paper-pmid').textContent;
-                if (tablePmid && tablePmid !== 'N/A') {
-                    paperToUse = tablePmid;
-                }
-            }
-            
-            // If still not found, check the input field
-            if (!paperToUse) {
-                const inputPmid = document.getElementById('pmid').value.trim();
-                if (inputPmid) {
-                    paperToUse = inputPmid;
-                }
-            }
-            
-            console.log("askQuestion - paperToUse final:", paperToUse);
-            
-            if (!paperToUse) {
-                // Show error message
-                const qaResults = document.getElementById('qa-results');
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-warning';
-                errorDiv.textContent = 'Please analyze a paper first';
-                qaResults.insertBefore(errorDiv, qaResults.firstChild);
-                
-                // Remove after 3 seconds
-                setTimeout(() => {
-                    if (errorDiv.parentNode) {
-                        errorDiv.parentNode.removeChild(errorDiv);
-                    }
-                }, 3000);
-                return;
-            }
-
-            const question = document.getElementById('paper-question').value.trim();
-            if (!question) {
-                // Show error message
-                const qaResults = document.getElementById('qa-results');
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-warning';
-                errorDiv.textContent = 'Please enter a question';
-                qaResults.insertBefore(errorDiv, qaResults.firstChild);
-                
-                // Remove after 3 seconds
-                setTimeout(() => {
-                    if (errorDiv.parentNode) {
-                        errorDiv.parentNode.removeChild(errorDiv);
-                    }
-                }, 3000);
-                return;
-            }
-            
-            // Show loading indicator
-            const qaResults = document.getElementById('qa-results');
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'alert alert-info';
-            loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Getting answer...';
-            qaResults.insertBefore(loadingDiv, qaResults.firstChild);
-
-            try {
-                const response = await fetch(`/ask_question/${paperToUse}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        question: question
-                    })
-                });
-
-                // Remove loading indicator
-                if (loadingDiv.parentNode) {
-                    loadingDiv.parentNode.removeChild(loadingDiv);
-                }
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                const resultDiv = document.createElement('div');
-                resultDiv.className = 'card mb-3';
-                resultDiv.innerHTML = `
-                    <div class="card-body">
-                        <h6 class="card-subtitle mb-2 text-muted">Q: ${question}</h6>
-                        <p class="card-text">A: ${data.answer}</p>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar" role="progressbar" 
-                                 style="width: ${data.confidence * 100}%"></div>
-                        </div>
-                        <small class="text-muted">Confidence: ${(data.confidence * 100).toFixed(1)}%</small>
-                    </div>
-                `;
-                
-                qaResults.insertBefore(resultDiv, qaResults.firstChild);
-                
-                // Clear the question input
-                document.getElementById('paper-question').value = '';
-            } catch (error) {
-                console.error('Error asking question:', error);
-                
-                // Remove loading indicator if it exists
-                if (loadingDiv.parentNode) {
-                    loadingDiv.parentNode.removeChild(loadingDiv);
-                }
-                
-                // Show error message
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-danger';
-                errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
-                qaResults.insertBefore(errorDiv, qaResults.firstChild);
-                
-                // Remove error after 5 seconds
-                setTimeout(() => {
-                    if (errorDiv.parentNode) {
-                        errorDiv.parentNode.removeChild(errorDiv);
-                    }
-                }, 5000);
+            chatContainer.appendChild(messageDiv);
+            if (settings.autoScroll) {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
             }
         }
 
-        async function analyzePaper() {
-            // Get PMID from input or use current if available
-            let pmid = document.getElementById('pmid').value.trim();
-            if (!pmid && currentPaper) {
-                pmid = currentPaper;
-                document.getElementById('pmid').value = pmid;
-                console.log("analyzePaper - Using existing currentPaper:", pmid);
-            }
-            
-            if (!pmid) {
-                alert('Please enter a PubMed ID');
-                return;
-            }
+        // Download chat history
+        function downloadChat() {
+            const chatContainer = document.querySelector('.chat-container');
+            const messages = Array.from(chatContainer.children).map(msg => {
+                const sender = msg.querySelector('.message-sender').textContent;
+                const content = msg.querySelector('.message-content').textContent;
+                const time = msg.querySelector('.message-time').textContent;
+                return `${time} - ${sender}:\n${content}\n\n`;
+            }).join('');
 
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('results').style.display = 'none';
-            
-            // Reset the chat button state
-            const chatBtn = document.getElementById('chat-about-paper-btn');
-            chatBtn.disabled = true;
-            document.getElementById('chat-btn-text').textContent = 'Analyzing paper...';
-
-            try {
-                // Include username in the request
-                const apiUrl = `/analyze/${pmid}?username=${encodeURIComponent(username)}`;
-                console.log("Analyzing paper with URL:", apiUrl);
-                
-                const response = await fetch(apiUrl);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                // Update paper metadata
-                document.getElementById('paper-title').textContent = data.metadata.title;
-                document.getElementById('paper-authors').textContent = Array.isArray(data.metadata.authors)
-                    ? data.metadata.authors.join(', ')
-                    : (data.metadata.authors || 'No authors available');
-                document.getElementById('paper-journal').textContent = 
-                    `${data.metadata.journal} (${data.metadata.publication_date})`;
-                document.getElementById('paper-abstract').textContent = data.metadata.abstract;
-                
-                // Update paper analysis details table
-                document.getElementById('paper-pmid').textContent = pmid;
-                document.getElementById('paper-journal-short').textContent = data.metadata.journal || 'N/A';
-                document.getElementById('paper-title-short').textContent = data.metadata.title || 'N/A';
-                
-                // Extract year from publication date
-                const yearMatch = data.metadata.publication_date ? data.metadata.publication_date.match(/\d{4}/) : null;
-                document.getElementById('paper-year').textContent = yearMatch ? yearMatch[0] : 'N/A';
-                
-                // Update other fields in the table
-                document.getElementById('paper-host').textContent = data.analysis.host || 'N/A';
-                document.getElementById('paper-body-site').textContent = data.analysis.body_site || 'N/A';
-                document.getElementById('paper-condition').textContent = data.analysis.condition || 'N/A';
-                document.getElementById('paper-sequencing-type').textContent = data.analysis.sequencing_type || 'N/A';
-                document.getElementById('paper-in-bugsigdb').textContent = data.analysis.in_bugsigdb || 'No';
-                document.getElementById('paper-signature-prob').textContent = data.analysis.signature_probability || `${(data.analysis.confidence * 100).toFixed(1)}%`;
-                document.getElementById('paper-sample-size').textContent = data.analysis.sample_size || 'N/A';
-                document.getElementById('paper-taxa-level').textContent = data.analysis.taxa_level || 'N/A';
-                document.getElementById('paper-statistical-method').textContent = data.analysis.statistical_method || 'N/A';
-                
-                // Store paper info in global variable and localStorage
-                currentPaper = pmid;
-                localStorage.setItem('currentPaper', pmid);
-                localStorage.setItem('paperTitle', data.metadata.title);
-                console.log("analyzePaper - Set currentPaper to:", pmid);
-                console.log("analyzePaper - Set paperTitle to:", data.metadata.title);
-                console.log("analyzePaper - localStorage values after setting:", {
-                    currentPaper: localStorage.getItem('currentPaper'),
-                    paperTitle: localStorage.getItem('paperTitle')
-                });
-
-                // Update confidence bar
-                const confidenceFill = document.getElementById('confidence-fill');
-                confidenceFill.style.width = `${data.analysis.confidence * 100}%`;
-                document.getElementById('confidence-value').textContent = 
-                    `${(data.analysis.confidence * 100).toFixed(1)}%`;
-
-                // Update category scores using the function from app.js
-                if (data.analysis && data.analysis.category_scores) {
-                    updateCategoryScores(data.analysis.category_scores);
-                }
-
-                // Update found terms
-                const foundTermsDiv = document.getElementById('found-terms');
-                foundTermsDiv.innerHTML = '';
-                let foundTerms = data.analysis.found_terms || {};
-                
-                // Use provided found terms as fallback for testing
-                if (!foundTerms || Object.keys(foundTerms).length === 0) {
-                    foundTerms = {
-                        "microbiome": ["microbiota", "microbiome", "bacterial", "bacteria", "16S rRNA", "sequencing"],
-                        "methods": ["sequencing"],
-                        "body sites": ["oral"],
-                        "diseases": ["disease"]
-                    };
-                }
-
-                Object.entries(foundTerms).forEach(([category, terms]) => {
-                    if (terms && terms.length > 0) {
-                        const categoryDiv = document.createElement('div');
-                        categoryDiv.className = 'mb-2';
-                        categoryDiv.innerHTML = `<small class="text-muted">${category}:</small>`;
-                        terms.forEach(term => {
-                            const termSpan = document.createElement('span');
-                            termSpan.className = 'found-term';
-                            termSpan.textContent = term;
-                            categoryDiv.appendChild(termSpan);
-                        });
-                        foundTermsDiv.appendChild(categoryDiv);
-                    }
-                });
-
-                // Update key findings
-                const keyFindingsDiv = document.getElementById('key-findings');
-                keyFindingsDiv.innerHTML = '';
-                const findings = Array.isArray(data.analysis.key_findings) ? data.analysis.key_findings : [];
-                if (findings.length > 0) {
-                    const findingsList = document.createElement('ul');
-                    findingsList.className = 'list-unstyled';
-                    findings.forEach(finding => {
-                        if (finding && typeof finding === 'string' && finding.trim()) {
-                            const li = document.createElement('li');
-                            li.className = 'mb-2 finding-item';
-                            li.innerHTML = `<i class="fas fa-${data.analysis.warning ? 'info text-info' : 'check text-success'} me-2"></i>${finding.trim()}`;
-                            findingsList.appendChild(li);
-                        }
-                    });
-                    if (findingsList.children.length > 0) {
-                        keyFindingsDiv.appendChild(findingsList);
-                    } else {
-                        keyFindingsDiv.innerHTML = '<p class="text-muted">No valid findings available</p>';
-                    }
-                } else {
-                    keyFindingsDiv.innerHTML = '<p class="text-muted">No findings available</p>';
-                }
-
-                // Update suggested topics
-                const suggestedTopicsDiv = document.getElementById('suggested-topics');
-                suggestedTopicsDiv.innerHTML = '';
-                if (Array.isArray(data.analysis.suggested_topics) && data.analysis.suggested_topics.length > 0) {
-                    data.analysis.suggested_topics.forEach(topic => {
-                        if (topic && typeof topic === 'string') {
-                            const topicTag = document.createElement('span');
-                            topicTag.className = 'badge bg-secondary';
-                            topicTag.textContent = topic;
-                            suggestedTopicsDiv.appendChild(topicTag);
-                        }
-                    });
-                } else {
-                    suggestedTopicsDiv.innerHTML = '<p class="text-muted">No suggested topics available</p>';
-                }
-
-                // Update analysis status
-                document.getElementById('analysis-status').textContent = data.analysis.status;
-                document.getElementById('tokens-generated').textContent = data.analysis.num_tokens;
-
-                // Show results
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('results').style.display = 'block';
-                document.getElementById('results').style.opacity = '0';
-                setTimeout(() => {
-                    document.getElementById('results').style.opacity = '1';
-                    
-                    // Enable the "Continue discussing" button
-                    document.getElementById('chat-about-paper-btn').disabled = false;
-                    
-                    // Show success message
-                    const successMessage = document.createElement('div');
-                    successMessage.className = 'alert alert-success mt-3';
-                    successMessage.textContent = 'Paper analysis complete! You can now ask questions about this paper.';
-                    successMessage.style.opacity = '1';
-                    
-                    // Add to the top of the results
-                    const resultsDiv = document.getElementById('results');
-                    resultsDiv.insertBefore(successMessage, resultsDiv.firstChild);
-                    
-                    // Auto-scroll to the paper question section
-                    document.getElementById('paper-question').scrollIntoView({behavior: 'smooth'});
-                    
-                    // Remove the message after 5 seconds
-                    setTimeout(() => {
-                        successMessage.style.opacity = '0';
-                        setTimeout(() => {
-                            if (successMessage.parentNode) {
-                                successMessage.parentNode.removeChild(successMessage);
-                            }
-                        }, 500);
-                    }, 5000);
-                }, 100);
-            } catch (error) {
-                console.error('Error analyzing paper:', error);
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('results').style.display = 'none';
-                
-                // Reset the chat button
-                document.getElementById('chat-btn-text').textContent = 'Continue discussing this paper in Chat';
-                
-                // Show error message
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-danger mt-3';
-                errorDiv.innerHTML = `<strong>Error analyzing paper:</strong> ${error.message}`;
-                
-                // Add error to the top of the page
-                const container = document.querySelector('.container');
-                container.insertBefore(errorDiv, container.firstChild);
-                
-                // Remove error after 10 seconds
-                setTimeout(() => {
-                    if (errorDiv.parentNode) {
-                        errorDiv.parentNode.removeChild(errorDiv);
-                    }
-                }, 10000);
-            }
+            const blob = new Blob([messages], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'chat-history.txt';
+            a.click();
+            window.URL.revokeObjectURL(url);
         }
 
-        // Function to update current paper indicator in chat
-        function updateCurrentPaperIndicator() {
-            // Ensure we have the current paper from localStorage if needed
-            ensureCurrentPaper();
-            
-            const indicator = document.getElementById('current-paper-indicator');
-            const titleSpan = document.getElementById('current-paper-title');
-            
-            if (currentPaper) {
-                console.log("updateCurrentPaperIndicator - Using paper:", currentPaper);
-                
-                // Get paper title if available
-                let paperTitle = document.getElementById('paper-title').textContent || '';
-                
-                // If paper title is empty (e.g., when directly switching to chat tab), try to get it from localStorage
-                if (!paperTitle && localStorage.getItem('paperTitle')) {
-                    paperTitle = localStorage.getItem('paperTitle');
-                }
-                
-                const displayTitle = paperTitle ? paperTitle : `Paper (PMID: ${currentPaper})`;
-                
-                // Update and show indicator
-                titleSpan.textContent = `Discussing: ${displayTitle}`;
-                indicator.style.display = 'block';
-            } else {
-                // Hide indicator if no paper
-                indicator.style.display = 'none';
-            }
-        }
-        
-        // Function to sync paper context between tabs
-        function syncPaperContext() {
-            // Get the latest paper context from localStorage
-            const storedPaper = localStorage.getItem('currentPaper');
-            const storedTitle = localStorage.getItem('paperTitle');
-            
-            console.log("syncPaperContext - localStorage values:", {
-                currentPaper: storedPaper,
-                paperTitle: storedTitle
-            });
-            
-            // Update in-memory variables if needed
-            if (storedPaper && (!currentPaper || currentPaper !== storedPaper)) {
-                currentPaper = storedPaper;
-                console.log("syncPaperContext - Updated currentPaper:", currentPaper);
-            }
-            
-            // Update UI elements
-            updateCurrentPaperIndicator();
-            
-            // Update PMID input if we're on the analyze tab
-            if (document.getElementById('analyze-tab').classList.contains('active') && currentPaper) {
-                document.getElementById('pmid').value = currentPaper;
-            }
-        }
-        
-        // Function to clear current paper context
-        function clearCurrentPaperContext() {
-            try {
-                // Clear variables and localStorage
-                currentPaper = null;
-                localStorage.removeItem('currentPaper');
-                localStorage.removeItem('paperTitle');
-                
-                // Update UI
-                updateCurrentPaperIndicator();
-                
-                // Add system message
-                addMessage('System', 'Paper context cleared. You are now in general chat mode.', 'system-message');
-                
-                // Update message input placeholder
-                document.getElementById('message-input').placeholder = "Type your message...";
-                
-                console.log("clearCurrentPaperContext - Paper context cleared successfully");
-            } catch (error) {
-                console.error("Error clearing paper context:", error);
-                addMessage('Error', 'Failed to clear paper context', 'error-message');
-            }
-        }
-
-        // Function to switch to chat tab with current paper context
-        function switchToChatWithPaper() {
-            try {
-                // Debug the current state
-                console.log("Before ensureCurrentPaper - currentPaper:", currentPaper);
-                console.log("Before ensureCurrentPaper - localStorage:", localStorage.getItem('currentPaper'));
-                
-                // Ensure we have the current paper from localStorage if needed
-                ensureCurrentPaper();
-                
-                console.log("After ensureCurrentPaper - currentPaper:", currentPaper);
-                
-                // Try multiple sources to find the paper ID
-                let paperToUse = currentPaper;
-                
-                // If not found in currentPaper, check localStorage
-                if (!paperToUse) {
-                    paperToUse = localStorage.getItem('currentPaper');
-                }
-                
-                // If still not found, check the table
-                if (!paperToUse) {
-                    const tablePmid = document.getElementById('paper-pmid').textContent;
-                    if (tablePmid && tablePmid !== 'N/A') {
-                        paperToUse = tablePmid;
-                    }
-                }
-                
-                // If still not found, check the input field
-                if (!paperToUse) {
-                    const inputPmid = document.getElementById('pmid').value.trim();
-                    if (inputPmid) {
-                        paperToUse = inputPmid;
-                    }
-                }
-                
-                console.log("switchToChatWithPaper - paperToUse final:", paperToUse);
-                
-                if (!paperToUse) {
-                    throw new Error('No paper available to discuss. Please analyze a paper first.');
-                }
-                
-                // Update the global variable
-                currentPaper = paperToUse;
-                localStorage.setItem('currentPaper', currentPaper);
-                
-                console.log("switchToChatWithPaper - Using paper:", currentPaper);
-                
-                // Get paper metadata
-                let paperTitle = document.getElementById('paper-title').textContent;
-                console.log("switchToChatWithPaper - Paper title from DOM:", paperTitle);
-                
-                // If paper title is empty, try to get it from localStorage
-                if (!paperTitle || paperTitle.trim() === '') {
-                    paperTitle = localStorage.getItem('paperTitle') || `Paper ${currentPaper}`;
-                    console.log("switchToChatWithPaper - Using paper title from localStorage:", paperTitle);
-                }
-                
-                // Switch to chat tab
-                document.getElementById('chat-tab').click();
-                
-                // Update paper indicator
-                updateCurrentPaperIndicator();
-                
-                // Add system message about the paper
-                addMessage('System', `Now discussing paper: "${paperTitle}" (PMID: ${currentPaper})`, 'system-message');
-                
-                // Focus on message input
-                document.getElementById('message-input').focus();
-                
-                // Add a helpful suggestion
-                const suggestedQuestions = [
-                    "What are the key findings of this paper?",
-                    "What methods were used in this study?",
-                    "What are the limitations of this research?",
-                    "What are the implications for microbiome research?",
-                    "How does this relate to BugSigDB curation?"
-                ];
-                const randomQuestion = suggestedQuestions[Math.floor(Math.random() * suggestedQuestions.length)];
-                document.getElementById('message-input').placeholder = `Try asking: "${randomQuestion}"`;
-            } catch (error) {
-                console.error("Error switching to chat with paper:", error);
-                
-                // Show error message
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-danger mt-3';
-                errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
-                
-                // Add error to the top of the page
-                const container = document.querySelector('.container');
-                container.insertBefore(errorDiv, container.firstChild);
-                
-                // Remove error after 5 seconds
-                setTimeout(() => {
-                    if (errorDiv.parentNode) {
-                        errorDiv.parentNode.removeChild(errorDiv);
-                    }
-                }, 5000);
-            }
-        }
-
-        function sendMessage() {
-            const messageInput = document.getElementById('message-input');
-            const message = messageInput.value.trim();
-            
-            if (!message) {
-                return;
-            }
-            
-            // Add user message to chat
-            addMessage('You', message, 'user-message');
-            
-            // Clear input
-            messageInput.value = '';
-            
-            // Ensure we have the current paper from localStorage if needed
-            ensureCurrentPaper();
-            
-            // Create message object with current paper info if available
-            const messageObj = {
-                content: message,
-                timestamp: new Date().toISOString()
-            };
-            
-            // Add current paper info if available
-            if (currentPaper) {
-                messageObj.currentPaper = currentPaper;
-                console.log("sendMessage - Including paper context:", currentPaper);
-            }
-            
-            // Send to server - ensure the message is properly formatted
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                try {
-                    const messageString = JSON.stringify(messageObj);
-                    console.log("Sending message:", messageString);
-                    ws.send(messageString);
-                } catch (error) {
-                    console.error("Error sending message:", error);
-                    addMessage('System', 'Error sending message. Please try again.', 'system-message');
-                }
-            } else {
-                addMessage('System', 'Connection lost. Please refresh the page.', 'system-message');
-            }
-        }
-
-        // Function to toggle detailed view of paper analysis
-        function toggleDetailedView() {
-            // Get the current paper ID
-            const pmid = document.getElementById('paper-pmid').textContent;
-            if (!pmid || pmid === 'N/A') return;
-            
-            // Toggle the collapse state of the paper metadata and analysis results sections
-            const metadataCollapse = document.getElementById('metadata-collapse');
-            const analysisResultsCard = document.querySelector('.card-body h3.card-title').closest('.card');
-            
-            if (metadataCollapse.classList.contains('show')) {
-                // If metadata is showing, collapse it and show analysis results
-                const bsCollapse = new bootstrap.Collapse(metadataCollapse);
-                bsCollapse.hide();
-                // Scroll to analysis results
-                analysisResultsCard.scrollIntoView({ behavior: 'smooth' });
-            } else {
-                // If metadata is collapsed, show it
-                const bsCollapse = new bootstrap.Collapse(metadataCollapse);
-                bsCollapse.show();
-                // Scroll to metadata
-                metadataCollapse.scrollIntoView({ behavior: 'smooth' });
-            }
-        }
-
-        function exportTableToCSV() {
-            // Get the table headers
-            const table = document.querySelector('.paper-analysis-table');
-            const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent);
-            
-            // Get the table data
-            const rowData = [];
-            const row = document.getElementById('paper-analysis-details');
-            const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent);
-            rowData.push(cells);
-            
-            // Create CSV content
-            let csvContent = headers.join(',') + '\n';
-            rowData.forEach(row => {
-                csvContent += row.join(',') + '\n';
-            });
-            
-            // Create a download link
-            const encodedUri = encodeURI('data:text/csv;charset=utf-8,' + csvContent);
-            const link = document.createElement('a');
-            link.setAttribute('href', encodedUri);
-            
-            // Get PMID for filename
-            const pmid = document.getElementById('paper-pmid').textContent || 'paper';
-            link.setAttribute('download', `paper_analysis_${pmid}.csv`);
-            
-            // Trigger download
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-        
-        // Curation Assistant Functions
-        async function uploadPaper() {
+        // Handle file upload
+        document.getElementById('upload-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
             const fileInput = document.getElementById('paper-file');
-            if (!fileInput.files || fileInput.files.length === 0) {
-                alert('Please select a file to upload');
-                return;
-            }
-            
             const file = fileInput.files[0];
-            if (file.size > 10 * 1024 * 1024) { // 10MB limit
-                alert('File size exceeds the 10MB limit');
+            
+            if (!file) {
+                alert('Please select a file');
                 return;
             }
             
-            // Show loading indicator
-            document.getElementById('curation-loading').style.display = 'block';
+            const formData = new FormData();
+            formData.append('file', file);
+            if (currentUsername) {
+                formData.append('username', currentUsername);
+            }
             
             try {
-                const formData = new FormData();
-                formData.append('file', file);
-                
-                // Add username if available
-                if (username) {
-                    formData.append('username', username);
-                }
-                
                 const response = await fetch('/upload_paper', {
                     method: 'POST',
                     body: formData
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+                    throw new Error('Upload failed');
                 }
                 
                 const data = await response.json();
+                displayResults(data);
                 
-                // Process the response
-                handleCurationResponse(data);
+                // Switch to analysis tab
+                document.getElementById('analysis-tab').click();
             } catch (error) {
-                console.error('Error uploading paper:', error);
-                alert('Error uploading paper: ' + error.message);
-            } finally {
-                // Hide loading indicator
-                document.getElementById('curation-loading').style.display = 'none';
+                console.error('Error:', error);
+                alert('Failed to upload paper. Please try again.');
             }
-        }
-        
-        async function fetchPaperByPMID() {
-            const pmidInput = document.getElementById('paper-pmid-input');
-            const pmid = pmidInput.value.trim();
+        });
+
+        // Extended paper analysis
+        async function analyzePaper() {
+            const searchType = document.getElementById('searchType').value;
+            const searchInput = document.getElementById('searchInput').value;
             
-            if (!pmid) {
-                alert('Please enter a PubMed ID');
+            if (!searchInput) {
+                alert('Please enter a search term');
                 return;
             }
             
-            // Show loading indicator
-            document.getElementById('curation-loading').style.display = 'block';
+            // Show loading spinner
+            document.getElementById('loading').style.display = 'flex';
             
             try {
-                // Reuse the existing analyze endpoint
-                const response = await fetch(`/analyze/${pmid}?format=curation`);
+                let response;
+                if (searchType === 'pmid') {
+                    response = await fetch(`/analyze/${searchInput}`);
+                } else if (searchType === 'title') {
+                    response = await fetch(`/analyze_by_title?title=${encodeURIComponent(searchInput)}`);
+                } else if (searchType === 'url') {
+                    response = await fetch(`/analyze_by_url?url=${encodeURIComponent(searchInput)}`);
+                }
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+                    throw new Error('Analysis failed');
                 }
                 
                 const data = await response.json();
-                
-                // Process the response
-                handleCurationResponse(data);
+                displayResults(data);
             } catch (error) {
-                console.error('Error fetching paper by PMID:', error);
-                alert('Error fetching paper: ' + error.message);
+                console.error('Error:', error);
+                alert('Failed to analyze paper. Please try again.');
             } finally {
-                // Hide loading indicator
-                document.getElementById('curation-loading').style.display = 'none';
+                // Hide loading spinner
+                document.getElementById('loading').style.display = 'none';
             }
         }
-        
-        async function fetchPaperByDOI() {
-            const doiInput = document.getElementById('paper-doi-input');
-            const doi = doiInput.value.trim();
+
+        // Display analysis results
+        function displayResults(data) {
+            const metadata = data.metadata;
+            const analysis = data.analysis;
             
-            if (!doi) {
-                alert('Please enter a DOI');
-                return;
-            }
+            // Display metadata
+            document.getElementById('paper-title').textContent = metadata.title;
+            document.getElementById('paper-abstract').textContent = metadata.abstract;
+            document.getElementById('paper-metadata').style.display = 'block';
             
-            // Show loading indicator
-            document.getElementById('curation-loading').style.display = 'block';
+            // Display analysis results
+            const tableBody = document.getElementById('analysis-table-body');
+            tableBody.innerHTML = '';
             
-            try {
-                const response = await fetch(`/fetch_by_doi?doi=${encodeURIComponent(doi)}`);
+            // Add rows for each analysis category
+            const categories = [
+                { key: 'host', label: 'Host' },
+                { key: 'body_site', label: 'Body Site' },
+                { key: 'condition', label: 'Condition' },
+                { key: 'sequencing_type', label: 'Sequencing Type' },
+                { key: 'sample_size', label: 'Sample Size' },
+                { key: 'taxa_level', label: 'Taxa Level' },
+                { key: 'statistical_method', label: 'Statistical Method' },
+                { key: 'in_bugsigdb', label: 'In BugSigDB' },
+                { key: 'signature_probability', label: 'Signature Probability' }
+            ];
+            
+            categories.forEach(category => {
+                const value = analysis[category.key] || 'N/A';
+                const confidence = analysis.confidence || 0;
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                // Process the response
-                handleCurationResponse(data);
-            } catch (error) {
-                console.error('Error fetching paper by DOI:', error);
-                alert('Error fetching paper: ' + error.message);
-            } finally {
-                // Hide loading indicator
-                document.getElementById('curation-loading').style.display = 'none';
-            }
-        }
-        
-        function handleCurationResponse(data) {
-            // Show the curation results section
-            document.getElementById('curation-results').style.display = 'block';
-            
-            // Fill in the curation form with data
-            document.getElementById('curation-pmid').value = data.metadata?.pmid || '';
-            document.getElementById('curation-title').value = data.metadata?.title || '';
-            
-            // Extract year from publication date
-            if (data.metadata?.publication_date) {
-                const yearMatch = data.metadata.publication_date.match(/\d{4}/);
-                if (yearMatch) {
-                    document.getElementById('curation-year').value = yearMatch[0];
-                }
-            }
-            
-            // Fill in other fields if available in the analysis
-            if (data.analysis) {
-                // Set host
-                const hostSelect = document.getElementById('curation-host');
-                const hostValue = data.analysis.host || '';
-                setSelectValue(hostSelect, hostValue);
-                
-                // Set body site
-                const bodySiteSelect = document.getElementById('curation-body-site');
-                const bodySiteValue = data.analysis.body_site || '';
-                setSelectValue(bodySiteSelect, bodySiteValue);
-                
-                // Set condition
-                document.getElementById('curation-condition').value = data.analysis.condition || '';
-                
-                // Set sequencing type
-                const seqTypeSelect = document.getElementById('curation-seq-type');
-                const seqTypeValue = data.analysis.sequencing_type || '';
-                setSelectValue(seqTypeSelect, seqTypeValue);
-                
-                // Set taxa if available
-                if (data.analysis.found_terms && data.analysis.found_terms.taxa) {
-                    document.getElementById('curation-taxa').value = data.analysis.found_terms.taxa.join(', ');
-                }
-                
-                // Display AI suggestions
-                displayAISuggestions(data.analysis);
-            }
-            
-            // Scroll to the curation form
-            document.getElementById('curation-form').scrollIntoView({ behavior: 'smooth' });
-        }
-        
-        function setSelectValue(selectElement, value) {
-            if (!value) return;
-            
-            // Try to find an exact match first
-            for (let i = 0; i < selectElement.options.length; i++) {
-                if (selectElement.options[i].value.toLowerCase() === value.toLowerCase()) {
-                    selectElement.selectedIndex = i;
-                    return;
-                }
-            }
-            
-            // If no exact match, try to find a partial match
-            for (let i = 0; i < selectElement.options.length; i++) {
-                if (value.toLowerCase().includes(selectElement.options[i].value.toLowerCase()) ||
-                    selectElement.options[i].value.toLowerCase().includes(value.toLowerCase())) {
-                    selectElement.selectedIndex = i;
-                    return;
-                }
-            }
-            
-            // If still no match and the value is not empty, select "other"
-            if (value) {
-                for (let i = 0; i < selectElement.options.length; i++) {
-                    if (selectElement.options[i].value.toLowerCase() === 'other') {
-                        selectElement.selectedIndex = i;
-                        return;
-                    }
-                }
-            }
-        }
-        
-        function displayAISuggestions(analysis) {
-            const suggestionsDiv = document.getElementById('ai-suggestions');
-            suggestionsDiv.innerHTML = '';
-            
-            // Create a list of suggestions
-            const suggestionsList = document.createElement('ul');
-            suggestionsList.className = 'list-group';
-            
-            // Add suggestions based on analysis data
-            if (analysis.key_findings && analysis.key_findings.length > 0) {
-                const findingsItem = document.createElement('li');
-                findingsItem.className = 'list-group-item';
-                findingsItem.innerHTML = `<strong>Key Findings:</strong> ${analysis.key_findings.join('<br>')}`;
-                suggestionsList.appendChild(findingsItem);
-            }
-            
-            // Add suggestion for taxa if available
-            if (analysis.found_terms && analysis.found_terms.taxa) {
-                const taxaItem = document.createElement('li');
-                taxaItem.className = 'list-group-item';
-                taxaItem.innerHTML = `<strong>Suggested Taxa:</strong> ${analysis.found_terms.taxa.join(', ')}`;
-                suggestionsList.appendChild(taxaItem);
-            }
-            
-            // Add suggestion for condition
-            if (analysis.condition) {
-                const conditionItem = document.createElement('li');
-                conditionItem.className = 'list-group-item';
-                conditionItem.innerHTML = `<strong>Suggested Condition:</strong> ${analysis.condition}`;
-                suggestionsList.appendChild(conditionItem);
-            }
-            
-            // Add curation tips
-            const tipsItem = document.createElement('li');
-            tipsItem.className = 'list-group-item';
-            tipsItem.innerHTML = `
-                <strong>Curation Tips:</strong>
-                <ul>
-                    <li>Verify that all required fields are filled correctly</li>
-                    <li>Check that taxa names follow proper nomenclature</li>
-                    <li>Ensure the condition is clearly defined</li>
-                    <li>Add any relevant notes about the study design</li>
-                </ul>
-            `;
-            suggestionsList.appendChild(tipsItem);
-            
-            // Add the list to the suggestions div
-            suggestionsDiv.appendChild(suggestionsList);
-        }
-        
-        async function askCurationQuestion() {
-            const questionInput = document.getElementById('curation-question');
-            const question = questionInput.value.trim();
-            
-            if (!question) {
-                alert('Please enter a question');
-                return;
-            }
-            
-            // Get the current paper PMID
-            const pmid = document.getElementById('curation-pmid').value;
-            if (!pmid) {
-                alert('No paper is currently loaded for curation');
-                return;
-            }
-            
-            // Show a loading message
-            const resultsDiv = document.getElementById('curation-qa-results');
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'alert alert-info';
-            loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Getting answer...';
-            resultsDiv.insertBefore(loadingDiv, resultsDiv.firstChild);
-            
-            try {
-                // Call the ask_question endpoint
-                const response = await fetch(`/ask_question/${pmid}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        question: question,
-                        context: 'curation' // Add context to indicate this is for curation
-                    })
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                // Remove loading message
-                if (loadingDiv.parentNode) {
-                    loadingDiv.parentNode.removeChild(loadingDiv);
-                }
-                
-                // Display the answer
-                const answerDiv = document.createElement('div');
-                answerDiv.className = 'card mb-3';
-                answerDiv.innerHTML = `
-                    <div class="card-body">
-                        <h6 class="card-subtitle mb-2 text-muted">Q: ${question}</h6>
-                        <p class="card-text">A: ${data.answer}</p>
-                    </div>
-                `;
-                
-                resultsDiv.insertBefore(answerDiv, resultsDiv.firstChild);
-                
-                // Clear the question input
-                questionInput.value = '';
-            } catch (error) {
-                console.error('Error asking question:', error);
-                
-                // Remove loading message
-                if (loadingDiv.parentNode) {
-                    loadingDiv.parentNode.removeChild(loadingDiv);
-                }
-                
-                // Show error message
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-danger';
-                errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
-                resultsDiv.insertBefore(errorDiv, resultsDiv.firstChild);
-                
-                // Remove error after 5 seconds
-                setTimeout(() => {
-                    if (errorDiv.parentNode) {
-                        errorDiv.parentNode.removeChild(errorDiv);
-                    }
-                }, 5000);
-            }
-        }
-        
-        function resetCurationForm() {
-            document.getElementById('curation-form').reset();
-            document.getElementById('ai-suggestions').innerHTML = '<p class="text-muted">AI suggestions will appear here after processing the paper.</p>';
-            document.getElementById('curation-qa-results').innerHTML = '';
-        }
-        
-        async function submitCuration() {
-            // Get form data
-            const formData = {
-                pmid: document.getElementById('curation-pmid').value,
-                year: document.getElementById('curation-year').value,
-                title: document.getElementById('curation-title').value,
-                host: document.getElementById('curation-host').value,
-                body_site: document.getElementById('curation-body-site').value,
-                condition: document.getElementById('curation-condition').value,
-                sequencing_type: document.getElementById('curation-seq-type').value,
-                taxa: document.getElementById('curation-taxa').value,
-                notes: document.getElementById('curation-notes').value,
-                username: username || 'anonymous'
-            };
-            
-            // Validate required fields
-            const requiredFields = ['pmid', 'title', 'host', 'body_site', 'condition', 'sequencing_type'];
-            const missingFields = requiredFields.filter(field => !formData[field]);
-            
-            if (missingFields.length > 0) {
-                alert(`Please fill in the following required fields: ${missingFields.join(', ')}`);
-                return;
-            }
-            
-            try {
-                // Show loading indicator
-                document.getElementById('curation-loading').style.display = 'block';
-                
-                // Submit the form data
-                const response = await fetch('/submit_curation', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                // Show success message
-                alert('Curation submitted successfully!');
-                
-                // Reset the form
-                resetCurationForm();
-                
-                // Hide the curation results
-                document.getElementById('curation-results').style.display = 'none';
-            } catch (error) {
-                console.error('Error submitting curation:', error);
-                alert('Error submitting curation: ' + error.message);
-            } finally {
-                // Hide loading indicator
-                document.getElementById('curation-loading').style.display = 'none';
-            }
-        }
-        
-        // Function to get score color based on value
-        function getScoreColor(score) {
-            const percentage = score * 100;
-            if (percentage >= 70) return 'bg-success';
-            if (percentage >= 30) return 'bg-warning';
-            return 'bg-danger';
-        }
-        
-        // Function to update category scores
-        function updateCategoryScores(scores) {
-            console.log('updateCategoryScores called with:', scores);
-            
-            const categoryScoresDiv = document.getElementById('category-scores');
-            if (!categoryScoresDiv) {
-                console.log('Category scores div not found');
-                return;
-            }
-            
-            categoryScoresDiv.innerHTML = '';
-            
-            if (!scores || typeof scores !== 'object' || Object.keys(scores).length === 0) {
-                console.log('No valid scores provided');
-                categoryScoresDiv.innerHTML = '<p class="text-muted">No category scores available</p>';
-                return;
-            }
-            
-            const scoresList = document.createElement('div');
-            scoresList.className = 'category-scores-list';
-            
-            // Sort categories alphabetically
-            const sortedCategories = Object.entries(scores)
-                .filter(([_, score]) => score !== null && !isNaN(score))
-                .sort((a, b) => a[0].localeCompare(b[0]));
-            
-            if (sortedCategories.length === 0) {
-                categoryScoresDiv.innerHTML = '<p class="text-muted">No valid category scores available</p>';
-                return;
-            }
-            
-            sortedCategories.forEach(([category, score]) => {
-                const scorePercentage = (parseFloat(score) || 0) * 100;
-                const categoryDiv = document.createElement('div');
-                categoryDiv.className = 'category-score-item';
-                
-                const formattedCategory = category
-                    .split('_')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ');
-                
-                const scoreLevel = getScoreColor(score);
-                
-                categoryDiv.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="category-name">${formattedCategory}</span>
-                        <span class="score-value">${scorePercentage.toFixed(1)}%</span>
-                    </div>
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar ${scoreLevel}" role="progressbar" 
-                             style="width: ${scorePercentage}%"
-                             aria-valuenow="${scorePercentage}" 
-                             aria-valuemin="0" 
-                             aria-valuemax="100">
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${category.label}</td>
+                    <td>${value}</td>
+                    <td class="confidence-column" style="display: ${settings.showConfidence ? '' : 'none'}">
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${confidence * 100}%"></div>
                         </div>
-                    </div>
+                    </td>
                 `;
-                scoresList.appendChild(categoryDiv);
+                tableBody.appendChild(row);
             });
             
-            categoryScoresDiv.appendChild(scoresList);
+            // Display found terms
+            const foundTerms = document.getElementById('found-terms');
+            foundTerms.innerHTML = '<h4>Found Terms</h4>';
             
-            // Add a legend
-            const legendDiv = document.createElement('div');
-            legendDiv.className = 'mt-3 small text-muted d-flex justify-content-center gap-4';
-            legendDiv.innerHTML = `
-                <span><i class="fas fa-circle text-success"></i> High (>70%)</span>
-                <span><i class="fas fa-circle text-warning"></i> Medium (30-70%)</span>
-                <span><i class="fas fa-circle text-danger"></i> Low (<30%)</span>
-            `;
-            categoryScoresDiv.appendChild(legendDiv);
-        }
-
-        // Initialize Custom Circular Spinners
-        function initializeWhirlSpinners() {
-            console.log('initializeWhirlSpinners called');
-            const whirlContainer = document.getElementById('whirl-spinner');
-            const curationWhirlContainer = document.getElementById('curation-whirl-spinner');
-
-            const spinnerHtml = '<div class="custom-spinner"></div>';
-
-            if (whirlContainer) {
-                console.log('Rendering main custom circular spinner in #whirl-spinner');
-                whirlContainer.innerHTML = spinnerHtml;
-                console.log('Main custom circular spinner rendered successfully.');
-            } else {
-                console.log('#whirl-spinner not found.');
+            if (analysis.found_terms) {
+                Object.entries(analysis.found_terms).forEach(([category, terms]) => {
+                    if (terms && terms.length > 0) {
+                        const termDiv = document.createElement('div');
+                        termDiv.className = 'mb-3';
+                        termDiv.innerHTML = `
+                            <h5>${category}</h5>
+                            <div class="found-terms-container">
+                                ${terms.map(term => `<span class="found-term">${term}</span>`).join('')}
+                            </div>
+                        `;
+                        foundTerms.appendChild(termDiv);
+                    }
+                });
             }
-
-            if (curationWhirlContainer) {
-                console.log('Rendering curation custom circular spinner in #curation-whirl-spinner');
-                curationWhirlContainer.innerHTML = spinnerHtml;
-                console.log('Curation custom circular spinner rendered successfully.');
-            } else {
-                console.log('#curation-whirl-spinner not found.');
+            
+            // Display category scores
+            const categoryScores = document.getElementById('category-scores');
+            categoryScores.innerHTML = '<h4>Category Scores</h4>';
+            
+            if (analysis.category_scores) {
+                Object.entries(analysis.category_scores).forEach(([category, score]) => {
+                    const scoreDiv = document.createElement('div');
+                    scoreDiv.className = 'category-score-item';
+                    scoreDiv.innerHTML = `
+                        <div class="category-name">${category}</div>
+                        <div class="score-value">${(score * 100).toFixed(1)}%</div>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: ${score * 100}%"></div>
+                        </div>
+                    `;
+                    categoryScores.appendChild(scoreDiv);
+                });
+            }
+            
+            // Show results
+            document.getElementById('analysis-results').style.display = 'block';
+            
+            // Apply table settings for initial display
+            const table = document.querySelector('.paper-analysis-table');
+            if (table) {
+                table.classList.toggle('compact-view', settings.compactTable);
             }
         }
-
-        // Call initializeWhirlSpinners when the DOM is loaded
-        document.addEventListener('DOMContentLoaded', initializeWhirlSpinners);
     </script>
-    <script src="/static/js/app.js"></script>
 </body>
 </html>

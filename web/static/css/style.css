@@ -202,7 +202,8 @@ body {
     position: relative;
     display: flex; /* Enable flexbox for vertical layout */
     flex-direction: column; /* Stack children vertically */
-    min-height: 100vh; /* Ensure body takes full viewport height */
+    height: 100%; /* Ensure body takes full viewport height */
+    min-height: 0; /* Allow body to shrink if needed by flexbox rules */
 }
 
 .container {
@@ -365,6 +366,23 @@ body.dark-mode .logo-img {
     padding: 20px;
     transition: all 0.3s ease;
     flex-grow: 1; /* Make main content expand to push footer down */
+    display: flex; /* Make main-content a flex container */
+    flex-direction: column; /* Stack its children vertically */
+    min-height: 0; /* Allow main-content to shrink if needed by flexbox rules */
+}
+
+.main-content > .row {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Allow row to shrink if needed by flexbox rules */
+}
+
+.main-content .col-md-12 {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Allow col-md-12 to shrink if needed by flexbox rules */
 }
 
 .sidebar-header {
@@ -433,7 +451,9 @@ body.dark-mode .logo-img {
 }
 
 #main-interface {
-    width: 100%; /* Ensure it fills its wrapper */
+    flex-grow: 1; /* Allow main content to expand and push footer down */
+    display: flex;
+    flex-direction: column;
 }
 
 #main-interface .nav-tabs {
@@ -512,15 +532,13 @@ body.dark-mode .bugsigdb-black {
 
 /* Footer styles */
 .app-footer {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 30px 20px;
-    margin-top: auto; /* Push footer to the bottom */
-    border-top: 1px solid #dee2e6;
-    gap: 20px;
-    flex-direction: column;
+    width: 100%;
+    text-align: center;
+    padding: 20px;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    border-top: 1px solid #e9ecef;
+    margin-top: auto; /* Push the footer to the bottom */
 }
 
 .footer-logos {
@@ -541,4 +559,25 @@ body.dark-mode .bugsigdb-black {
     max-width: 900px; /* Adjusted max-width for better balance */
     margin: 0 auto; /* Center the content wrapper */
     width: 100%; /* Ensure it takes full width up to max-width */
+}
+
+#mainTabContent {
+    flex-grow: 1; /* Allow tab content to expand and push footer down */
+    display: flex; /* Make tab-content a flex container */
+    flex-direction: column; /* Stack its children vertically */
+    min-height: 0; /* Allow mainTabContent to shrink if needed by flexbox rules */
+}
+
+.tab-pane {
+    flex-grow: 1; /* Allow each tab pane to expand and push footer down */
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Allow tab-pane to shrink if needed by flexbox rules */
+}
+
+.tab-pane > .row {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 } 

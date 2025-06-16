@@ -66,8 +66,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('WebSocket connection established');
             isConnected = true;
             updateConnectionStatus('Connected', 'success');
-            document.getElementById('message-input').disabled = false;
-            document.getElementById('send-button').disabled = false;
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
+            if (messageInput) messageInput.disabled = false;
+            if (sendButton) sendButton.disabled = false;
         };
         
         ws.onmessage = function(event) {
@@ -79,8 +81,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('WebSocket connection closed');
             isConnected = false;
             updateConnectionStatus('Disconnected', 'danger');
-            document.getElementById('message-input').disabled = true;
-            document.getElementById('send-button').disabled = true;
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
+            if (messageInput) messageInput.disabled = true;
+            if (sendButton) sendButton.disabled = true;
             
             // Attempt to reconnect after 5 seconds
             setTimeout(initWebSocket, 5000);
@@ -99,6 +103,14 @@ document.addEventListener('DOMContentLoaded', () => {
             statusElement.className = `alert alert-${type}`;
             statusElement.textContent = message;
         }
+        
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const usernameInput = document.getElementById('username');
+
+        if (messageInput) messageInput.disabled = !isConnected;
+        if (sendButton) sendButton.disabled = !isConnected;
+        if (usernameInput) usernameInput.disabled = isConnected;
     }
 
     // Handle incoming WebSocket messages

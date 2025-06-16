@@ -216,7 +216,7 @@
             color: #28a745;
             font-weight: 600;
         }
-        .paper-analysis-table .medium-prob {
+        .paper-analysis-table .medium-prob {g
             color: #fd7e14;
             font-weight: 600;
         }
@@ -568,6 +568,7 @@
             padding: 20px;
             transition: all 0.3s ease;
             flex-grow: 1; /* Make main content expand to push footer down */
+            width: calc(100% - 500px); /* Adjust for both sidebars */
         }
         
         .sidebar-header {
@@ -637,6 +638,11 @@
         
         #main-interface {
             width: 100%; /* Ensure it fills its wrapper */
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; /* Allows content to scroll properly */
+            padding: 20px;
         }
         #main-interface .nav-tabs {
             margin-top: 20px;
@@ -712,15 +718,16 @@
 
         /* Footer styles */
         .app-footer {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
+            /* Keep existing styles */
+            margin-top: auto; /* This pushes the footer to the bottom */
+            width: 100%;
             padding: 30px 20px;
-            margin-top: 50px;
+            background-color: #f8f9fa;
             border-top: 1px solid #dee2e6;
-            gap: 20px;
+            display: flex;
             flex-direction: column;
+            align-items: center;
+            gap: 20px;
         }
 
         .footer-logos {
@@ -994,6 +1001,9 @@
         window.addEventListener('DOMContentLoaded', async () => {
             console.log("DOMContentLoaded - Starting initialization");
             
+            // Initialize interface
+            document.getElementById('main-interface').style.display = 'none';
+
             // Sync paper context from localStorage
             syncPaperContext();
             
@@ -1985,7 +1995,7 @@
             loadingDiv.className = 'alert alert-info';
             loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Getting answer...';
             resultsDiv.insertBefore(loadingDiv, resultsDiv.firstChild);
-            
+
             try {
                 // Call the ask_question endpoint
                 const response = await fetch(`/ask_question/${pmid}`, {
@@ -2070,6 +2080,7 @@
             
             // Validate required fields
             const requiredFields = ['pmid', 'title', 'host', 'body_site', 'condition', 'sequencing_type'];
+
             const missingFields = requiredFields.filter(field => !formData[field]);
             
             if (missingFields.length > 0) {
@@ -2221,6 +2232,10 @@
 
         // Call initializeWhirlSpinners when the DOM is loaded
         document.addEventListener('DOMContentLoaded', initializeWhirlSpinners);
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize interface
+            document.getElementById('main-interface').style.display = 'none';
+        });
     </script>
     <script src="/static/js/app.js"></script>
 </body>

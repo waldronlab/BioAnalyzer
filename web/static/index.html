@@ -216,7 +216,7 @@
             color: #28a745;
             font-weight: 600;
         }
-        .paper-analysis-table .medium-prob {g
+        .paper-analysis-table .medium-prob {
             color: #fd7e14;
             font-weight: 600;
         }
@@ -512,26 +512,11 @@
         }
         /* Add Whirl container styles */
         .whirl-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
+            display: none;
         }
         /* Custom CSS Spinner Styles */
         .custom-spinner {
-            display: inline-block;
-            width: 100px;
-            height: 100px;
-            border-radius: 50%; /* Make it a perfect circle */
-            background: conic-gradient(
-                #75d175 0deg 60deg,    /* Green */
-                #0d6efd 60deg 120deg,   /* Blue */
-                #ffffff 120deg 180deg,  /* White */
-                #75d175 180deg 240deg,  /* Green */
-                #0d6efd 240deg 300deg,   /* Blue */
-                #ffffff 300deg 360deg   /* White */
-            );
-            animation: custom-spin 2s linear infinite;
+            display: none;
         }
 
         @keyframes custom-spin {
@@ -748,6 +733,13 @@
             margin: 0 auto; /* Center the content wrapper */
             width: 100%; /* Ensure it takes full width up to max-width */
         }
+        /* Remove spinner styles */
+        .whirl-container {
+            display: none;
+        }
+        .custom-spinner {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -799,23 +791,378 @@
                     <div class="tab-pane fade show active" id="analyze" role="tabpanel">
                         <div class="row justify-content-center mb-4">
                             <div class="col-md-6">
-                                <div class="input-group">
-                                    <input type="text" id="pmid" class="form-control" placeholder="Enter PubMed ID">
-                                    <button class="btn btn-primary" onclick="analyzePaper()">Analyze</button>
+                                <div class="input-group mb-3">
+                                    <input type="text" id="pmid" class="form-control" placeholder="Enter PMID">
+                                    <button id="analyze-button" class="btn btn-primary">Analyze</button>
                                 </div>
                             </div>
                         </div>
-                        <!-- Rest of the analysis content -->
+                        
+                        <!-- Loading Spinner -->
+                        <div id="loading" class="text-center mt-4" style="display: none;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Analyzing paper...</p>
+                        </div>
+
+                        <!-- Results Container -->
+                        <div id="results" class="mt-4" style="display: none;">
+                            <!-- Paper Metadata -->
+                            <div class="paper-metadata card mb-4">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">Paper Metadata</h5>
+                                    <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#metadata-collapse">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                                <div id="metadata-collapse" class="collapse show">
+                                    <div class="card-body">
+                                        <h2 id="paper-title" class="h4 mb-3"></h2>
+                                        <div class="mb-2">
+                                            <strong>Authors:</strong>
+                                            <span id="paper-authors" class="text-muted"></span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <strong>Journal:</strong>
+                                            <span id="paper-journal" class="text-muted"></span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <strong>Publication Date:</strong>
+                                            <span id="paper-date" class="text-muted"></span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <strong>DOI:</strong>
+                                            <span id="paper-doi" class="text-muted"></span>
+                                        </div>
+                                        <div class="mt-3">
+                                            <strong>Abstract:</strong>
+                                            <p id="paper-abstract" class="mt-2 text-muted"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Paper Analysis Details Table -->
+                            <div class="card mb-4">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">Paper Analysis Details</h5>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-primary me-2" onclick="exportTableToCSV()">
+                                            <i class="fas fa-download me-1"></i>Export CSV
+                                        </button>
+                                        <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#analysis-details-collapse">
+                                            <i class="fas fa-chevron-down"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="analysis-details-collapse" class="collapse show">
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-bordered paper-analysis-table w-100">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>PMID</th>
+                                                        <th>Journal</th>
+                                                        <th>Title</th>
+                                                        <th>Year</th>
+                                                        <th>Host</th>
+                                                        <th>Body Site</th>
+                                                        <th>Condition</th>
+                                                        <th>Sequencing Type</th>
+                                                        <th>In BugSigDB?</th>
+                                                        <th>Predicted Prob of Signature</th>
+                                                        <th>Sample Size</th>
+                                                        <th>Taxa Level</th>
+                                                        <th>Statistical Method</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr id="paper-analysis-details" class="analysis-row" style="cursor: pointer;" onclick="toggleDetailedView()">
+                                                        <td id="paper-pmid"></td>
+                                                        <td id="paper-journal-short"></td>
+                                                        <td id="paper-title-short"></td>
+                                                        <td id="paper-year"></td>
+                                                        <td id="paper-host"></td>
+                                                        <td id="paper-body-site"></td>
+                                                        <td id="paper-condition"></td>
+                                                        <td id="paper-sequencing-type"></td>
+                                                        <td id="paper-in-bugsigdb"></td>
+                                                        <td id="paper-signature-prob"></td>
+                                                        <td id="paper-sample-size"></td>
+                                                        <td id="paper-taxa-level"></td>
+                                                        <td id="paper-statistical-method"></td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Analysis Results -->
+                            <div class="card mb-4">
+                                <div class="card-body">
+                                    <h3 class="card-title h5 mb-4">Analysis Results</h3>
+                                    
+                                    <!-- Overall Confidence -->
+                                    <div class="mb-4">
+                                        <h4 class="h6">Overall Confidence</h4>
+                                        <div class="confidence-bar">
+                                            <div id="confidence-fill" class="confidence-fill"></div>
+                                        </div>
+                                        <small class="text-muted" id="confidence-value"></small>
+                                    </div>
+
+                                    <!-- Category Scores -->
+                                    <div class="mb-4">
+                                        <h4 class="h6">Category Scores</h4>
+                                        <div id="category-scores" class="mt-3">
+                                            <div class="category-scores-list">
+                                                <!-- Category scores will be dynamically inserted here -->
+                                            </div>
+                                            <div class="mt-3 small text-muted d-flex justify-content-center gap-4">
+                                                <span><i class="fas fa-circle text-success"></i> High (>70%)</span>
+                                                <span><i class="fas fa-circle text-warning"></i> Medium (30-70%)</span>
+                                                <span><i class="fas fa-circle text-danger"></i> Low (<30%)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Found Terms -->
+                                    <div class="mb-4">
+                                        <h4 class="h6">Found Terms</h4>
+                                        <div id="found-terms"></div>
+                                    </div>
+
+                                    <!-- Key Findings -->
+                                    <div class="mb-4">
+                                        <h4 class="h6">Key Findings</h4>
+                                        <div id="key-findings" class="mt-3">
+                                            <p class="text-muted">Analyzing paper...</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Suggested Topics -->
+                                    <div class="mb-4">
+                                        <h4 class="h6">Suggested Topics</h4>
+                                        <div id="suggested-topics" class="d-flex flex-wrap gap-2"></div>
+                                    </div>
+
+                                    <!-- Analysis Status -->
+                                    <div class="mt-4 text-muted">
+                                        <div class="mb-1">
+                                            <strong>Analysis Status:</strong>
+                                            <span id="analysis-status"></span>
+                                        </div>
+                                        <div>
+                                            <strong>Tokens Generated:</strong>
+                                            <span id="tokens-generated"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Paper Q&A Section -->
+                            <div class="card">
+                                <div class="card-body">
+                                    <h4 class="h6 mb-3">Ask Questions About This Paper</h4>
+                                    <div class="input-group mb-3">
+                                        <input type="text" id="paper-question" class="form-control" placeholder="Ask a question about this paper...">
+                                        <button class="btn btn-outline-primary" onclick="askQuestion()">Ask</button>
+                                    </div>
+                                    <div id="qa-results"></div>
+                                    
+                                    <!-- Chat about paper button -->
+                                    <div class="mt-3 text-center">
+                                        <button id="chat-about-paper-btn" class="btn btn-primary" onclick="switchToChatWithPaper()" disabled>
+                                            <i class="fas fa-comments me-2"></i><span id="chat-btn-text">Continue discussing this paper in Chat</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Chat Tab -->
                     <div class="tab-pane fade" id="chat" role="tabpanel">
-                        <!-- Chat content -->
+                        <div id="connection-status" class="alert mb-3"></div>
+                        
+                        <!-- Current paper indicator -->
+                        <div id="current-paper-indicator" class="alert alert-info mb-3" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-file-alt me-2"></i>
+                                    <span id="current-paper-title">Discussing paper</span>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="clearCurrentPaperContext()">
+                                    <i class="fas fa-times"></i> Clear paper context
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="chat-tab-header mb-3">
+                            <input type="text" id="chat-search" class="form-control" placeholder="Search chat history...">
+                        </div>
+                        <div id="chat-container" class="chat-container"></div>
+                        <div class="chat-input-container">
+                            <input type="text" id="message-input" placeholder="Type your message..." disabled>
+                            <button id="send-button" onclick="sendMessage()" disabled>Send</button>
+                        </div>
                     </div>
 
                     <!-- Curation Tab -->
                     <div class="tab-pane fade" id="curation" role="tabpanel">
-                        <!-- Curation content -->
+                        <div class="row justify-content-center mb-4">
+                            <div class="col-md-8">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">Paper Upload & Curation Assistant</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="text-muted mb-4">Upload a scientific paper (PDF or text) and get AI-assisted curation for BugSigDB.</p>
+                                        
+                                        <div class="mb-4">
+                                            <h6>Upload Paper</h6>
+                                            <div class="input-group mb-3">
+                                                <input type="file" class="form-control" id="paper-file" accept=".pdf,.txt">
+                                                <button class="btn btn-primary" id="upload-paper-btn" onclick="uploadPaper()">Upload</button>
+                                            </div>
+                                            <div class="form-text">Supported formats: PDF, TXT (max 10MB)</div>
+                                        </div>
+                                        
+                                        <div class="mb-4">
+                                            <h6>Or Enter Paper Details</h6>
+                                            <div class="mb-3">
+                                                <label for="paper-pmid-input" class="form-label">PubMed ID</label>
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control" id="paper-pmid-input" placeholder="Enter PMID">
+                                                    <button class="btn btn-outline-primary" onclick="fetchPaperByPMID()">Fetch</button>
+                                                </div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="paper-doi-input" class="form-label">DOI</label>
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control" id="paper-doi-input" placeholder="Enter DOI">
+                                                    <button class="btn btn-outline-primary" onclick="fetchPaperByDOI()">Fetch</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div id="curation-loading" class="loading" style="display: none;">
+                                            <div class="whirl-container">
+                                                <div id="curation-whirl-spinner" class="custom-spinner"></div>
+                                            </div>
+                                            <p class="mt-2 text-center">Processing paper...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="curation-results" style="display: none;">
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Curation Form</h5>
+                                </div>
+                                <div class="card-body">
+                                    <form id="curation-form">
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label for="curation-pmid" class="form-label">PMID</label>
+                                                <input type="text" class="form-control" id="curation-pmid" readonly>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="curation-year" class="form-label">Year</label>
+                                                <input type="text" class="form-control" id="curation-year">
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="curation-title" class="form-label">Title</label>
+                                            <input type="text" class="form-control" id="curation-title">
+                                        </div>
+                                        
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label for="curation-host" class="form-label">Host</label>
+                                                <select class="form-select" id="curation-host">
+                                                    <option value="">Select host...</option>
+                                                    <option value="human">Human</option>
+                                                    <option value="mouse">Mouse</option>
+                                                    <option value="rat">Rat</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="curation-body-site" class="form-label">Body Site</label>
+                                                <select class="form-select" id="curation-body-site">
+                                                    <option value="">Select body site...</option>
+                                                    <option value="gut">Gut</option>
+                                                    <option value="oral">Oral</option>
+                                                    <option value="skin">Skin</option>
+                                                    <option value="vaginal">Vaginal</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label for="curation-condition" class="form-label">Condition</label>
+                                                <input type="text" class="form-control" id="curation-condition">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="curation-seq-type" class="form-label">Sequencing Type</label>
+                                                <select class="form-select" id="curation-seq-type">
+                                                    <option value="">Select sequencing type...</option>
+                                                    <option value="16S rRNA">16S rRNA</option>
+                                                    <option value="shotgun">Shotgun Metagenomics</option>
+                                                    <option value="metatranscriptomics">Metatranscriptomics</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="curation-taxa" class="form-label">Signature Taxa</label>
+                                            <textarea class="form-control" id="curation-taxa" rows="3" placeholder="Enter taxa separated by commas"></textarea>
+                                            <div class="form-text">Enter the microbial taxa that form the signature</div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="curation-notes" class="form-label">Curation Notes</label>
+                                            <textarea class="form-control" id="curation-notes" rows="3"></textarea>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between">
+                                            <button type="button" class="btn btn-outline-secondary" onclick="resetCurationForm()">Reset</button>
+                                            <button type="button" class="btn btn-primary" onclick="submitCuration()">Submit to BugSigDB</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                            
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h5 class="mb-0">AI Curation Suggestions</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="ai-suggestions">
+                                        <p class="text-muted">AI suggestions will appear here after processing the paper.</p>
+                                    </div>
+                                    
+                                    <div class="mt-3">
+                                        <h6>Ask for Curation Help</h6>
+                                        <div class="input-group mb-3">
+                                            <input type="text" class="form-control" id="curation-question" placeholder="Ask a question about curating this paper...">
+                                            <button class="btn btn-outline-primary" onclick="askCurationQuestion()">Ask</button>
+                                        </div>
+                                        <div id="curation-qa-results"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -843,7 +1190,7 @@
             <select class="form-select" id="themeSelect">
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
-                <option value="contrast">High Contrast</option>
+                <option value="auto">System Default</option>
             </select>
         </div>
 
@@ -1255,188 +1602,156 @@
         }
 
         async function analyzePaper() {
-            // Get PMID from input or use current if available
-            let pmid = document.getElementById('pmid').value.trim();
-            if (!pmid && currentPaper) {
-                pmid = currentPaper;
-                document.getElementById('pmid').value = pmid;
-                console.log("analyzePaper - Using existing currentPaper:", pmid);
-            }
-            
+            const pmid = document.getElementById('pmid').value.trim();
             if (!pmid) {
                 alert('Please enter a PubMed ID');
                 return;
             }
 
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('results').style.display = 'none';
+            // Show loading indicator
+            const loadingDiv = document.getElementById('loading');
+            const resultsDiv = document.getElementById('results');
             
-            // Reset the chat button state
-            const chatBtn = document.getElementById('chat-about-paper-btn');
-            chatBtn.disabled = true;
-            document.getElementById('chat-btn-text').textContent = 'Analyzing paper...';
+            if (loadingDiv) loadingDiv.style.display = 'block';
+            if (resultsDiv) resultsDiv.style.display = 'none';
 
             try {
-                // Include username in the request
-                const apiUrl = `/analyze/${pmid}?username=${encodeURIComponent(username)}`;
-                console.log("Analyzing paper with URL:", apiUrl);
+                console.log("Analyzing paper with PMID:", pmid);
+                const response = await fetch(`/analyze/${pmid}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'same-origin' // Include cookies if any
+                });
                 
-                const response = await fetch(apiUrl);
+                console.log("Response status:", response.status);
+                console.log("Response headers:", Object.fromEntries(response.headers.entries()));
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error("Error response:", errorText);
+                    throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
                 }
                 
                 const data = await response.json();
+                console.log("Received data:", data);
 
                 if (data.error) {
                     throw new Error(data.error);
                 }
 
                 // Update paper metadata
-                document.getElementById('paper-title').textContent = data.metadata.title;
-                document.getElementById('paper-abstract').textContent = data.metadata.abstract;
-                document.getElementById('paper-metadata').style.display = 'block';
-                
-                // Update paper analysis details table
-                document.getElementById('paper-pmid').textContent = pmid;
-                
-                // Store paper info in global variable and localStorage
-                currentPaper = pmid;
-                localStorage.setItem('currentPaper', pmid);
-                localStorage.setItem('paperTitle', data.metadata.title);
-                console.log("analyzePaper - Set currentPaper to:", pmid);
-                console.log("analyzePaper - Set paperTitle to:", data.metadata.title);
-                console.log("analyzePaper - localStorage values after setting:", {
-                    currentPaper: localStorage.getItem('currentPaper'),
-                    paperTitle: localStorage.getItem('paperTitle')
-                });
-
-                // Update confidence bar
-                const confidenceFill = document.getElementById('confidence-fill');
-                confidenceFill.style.width = `${data.analysis.confidence * 100}%`;
-                document.getElementById('confidence-value').textContent = 
-                    `${(data.analysis.confidence * 100).toFixed(1)}%`;
-
-                // Update category scores using the function from app.js
-                if (data.analysis && data.analysis.category_scores) {
-                    updateCategoryScores(data.analysis.category_scores);
+                if (data.metadata) {
+                    const titleEl = document.getElementById('paper-title');
+                    const authorsEl = document.getElementById('paper-authors');
+                    const journalEl = document.getElementById('paper-journal');
+                    const abstractEl = document.getElementById('paper-abstract');
+                    
+                    if (titleEl) titleEl.textContent = data.metadata.title || 'N/A';
+                    if (authorsEl) authorsEl.textContent = data.metadata.authors || 'N/A';
+                    if (journalEl) journalEl.textContent = data.metadata.journal || 'N/A';
+                    if (abstractEl) abstractEl.textContent = data.metadata.abstract || 'N/A';
                 }
 
-                // Update found terms
-                const foundTermsDiv = document.getElementById('found-terms');
-                foundTermsDiv.innerHTML = '';
-                let foundTerms = data.analysis.found_terms || {};
-                
-                // Use provided found terms as fallback for testing
-                if (!foundTerms || Object.keys(foundTerms).length === 0) {
-                    foundTerms = {
-                        "microbiome": ["microbiota", "microbiome", "bacterial", "bacteria", "16S rRNA", "sequencing"],
-                        "methods": ["sequencing"],
-                        "body sites": ["oral"],
-                        "diseases": ["disease"]
-                    };
-                }
-
-                Object.entries(foundTerms).forEach(([category, terms]) => {
-                    if (terms && terms.length > 0) {
-                        const categoryDiv = document.createElement('div');
-                        categoryDiv.className = 'mb-2';
-                        categoryDiv.innerHTML = `<small class="text-muted">${category}:</small>`;
-                        terms.forEach(term => {
-                            const termSpan = document.createElement('span');
-                            termSpan.className = 'found-term';
-                            termSpan.textContent = term;
-                            categoryDiv.appendChild(termSpan);
-                        });
-                        foundTermsDiv.appendChild(categoryDiv);
+                // Update confidence score
+                if (data.analysis) {
+                    const confidenceFill = document.getElementById('confidence-fill');
+                    const confidenceValue = document.getElementById('confidence-value');
+                    
+                    if (confidenceFill && confidenceValue) {
+                        const confidence = data.analysis.confidence || 0;
+                        confidenceFill.style.width = `${confidence * 100}%`;
+                        confidenceValue.textContent = `${(confidence * 100).toFixed(1)}%`;
                     }
-                });
 
-                // Update key findings
-                const keyFindingsDiv = document.getElementById('key-findings');
-                keyFindingsDiv.innerHTML = '';
-                const findings = Array.isArray(data.analysis.key_findings) ? data.analysis.key_findings : [];
-                if (findings.length > 0) {
-                    const findingsList = document.createElement('ul');
-                    findingsList.className = 'list-unstyled';
-                    findings.forEach(finding => {
-                        if (finding && typeof finding === 'string' && finding.trim()) {
-                            const li = document.createElement('li');
-                            li.className = 'mb-2 finding-item';
-                            li.innerHTML = `<i class="fas fa-${data.analysis.warning ? 'info text-info' : 'check text-success'} me-2"></i>${finding.trim()}`;
-                            findingsList.appendChild(li);
-                        }
-                    });
-                    if (findingsList.children.length > 0) {
-                        keyFindingsDiv.appendChild(findingsList);
-                    } else {
-                        keyFindingsDiv.innerHTML = '<p class="text-muted">No valid findings available</p>';
+                    // Update category scores
+                    if (data.analysis.category_scores) {
+                        updateCategoryScores(data.analysis.category_scores);
                     }
-                } else {
-                    keyFindingsDiv.innerHTML = '<p class="text-muted">No findings available</p>';
-                }
 
-                // Update suggested topics
-                const suggestedTopicsDiv = document.getElementById('suggested-topics');
-                suggestedTopicsDiv.innerHTML = '';
-                if (Array.isArray(data.analysis.suggested_topics) && data.analysis.suggested_topics.length > 0) {
-                    data.analysis.suggested_topics.forEach(topic => {
-                        if (topic && typeof topic === 'string') {
-                            const topicTag = document.createElement('span');
-                            topicTag.className = 'badge bg-secondary';
-                            topicTag.textContent = topic;
-                            suggestedTopicsDiv.appendChild(topicTag);
+                    // Update found terms
+                    if (data.analysis.found_terms) {
+                        const foundTermsDiv = document.getElementById('found-terms');
+                        if (foundTermsDiv) {
+                            foundTermsDiv.innerHTML = '';
+                            Object.entries(data.analysis.found_terms).forEach(([category, terms]) => {
+                                if (terms && terms.length > 0) {
+                                    const categoryDiv = document.createElement('div');
+                                    categoryDiv.className = 'mb-2';
+                                    categoryDiv.innerHTML = `<small class="text-muted">${category}:</small>`;
+                                    terms.forEach(term => {
+                                        const termSpan = document.createElement('span');
+                                        termSpan.className = 'found-term';
+                                        termSpan.textContent = term;
+                                        categoryDiv.appendChild(termSpan);
+                                    });
+                                    foundTermsDiv.appendChild(categoryDiv);
+                                }
+                            });
                         }
-                    });
-                } else {
-                    suggestedTopicsDiv.innerHTML = '<p class="text-muted">No suggested topics available</p>';
-                }
+                    }
 
-                // Update analysis status
-                document.getElementById('analysis-status').textContent = data.analysis.status;
-                document.getElementById('tokens-generated').textContent = data.analysis.num_tokens;
+                    // Update key findings
+                    if (data.analysis.key_findings) {
+                        const keyFindingsDiv = document.getElementById('key-findings');
+                        if (keyFindingsDiv) {
+                            keyFindingsDiv.innerHTML = '';
+                            const findingsList = document.createElement('ul');
+                            findingsList.className = 'list-unstyled';
+                            data.analysis.key_findings.forEach(finding => {
+                                if (finding && typeof finding === 'string') {
+                                    const li = document.createElement('li');
+                                    li.className = 'mb-2';
+                                    li.innerHTML = `<i class="fas fa-check text-success me-2"></i>${finding}`;
+                                    findingsList.appendChild(li);
+                                }
+                            });
+                            keyFindingsDiv.appendChild(findingsList);
+                        }
+                    }
+
+                    // Update suggested topics
+                    if (data.analysis.suggested_topics) {
+                        const suggestedTopicsDiv = document.getElementById('suggested-topics');
+                        if (suggestedTopicsDiv) {
+                            suggestedTopicsDiv.innerHTML = '';
+                            data.analysis.suggested_topics.forEach(topic => {
+                                if (topic && typeof topic === 'string') {
+                                    const topicSpan = document.createElement('span');
+                                    topicSpan.className = 'badge bg-secondary me-2 mb-2';
+                                    topicSpan.textContent = topic;
+                                    suggestedTopicsDiv.appendChild(topicSpan);
+                                }
+                            });
+                        }
+                    }
+
+                    // Update analysis status
+                    const statusEl = document.getElementById('analysis-status');
+                    const tokensEl = document.getElementById('tokens-generated');
+                    
+                    if (statusEl) statusEl.textContent = data.analysis.status || 'Unknown';
+                    if (tokensEl) tokensEl.textContent = data.analysis.num_tokens || '0';
+                }
 
                 // Show results
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('results').style.display = 'block';
-                document.getElementById('results').style.opacity = '0';
-                setTimeout(() => {
-                    document.getElementById('results').style.opacity = '1';
-                    
-                    // Enable the "Continue discussing" button
-                    document.getElementById('chat-about-paper-btn').disabled = false;
-                    
-                    // Show success message
-                    const successMessage = document.createElement('div');
-                    successMessage.className = 'alert alert-success mt-3';
-                    successMessage.textContent = 'Paper analysis complete! You can now ask questions about this paper.';
-                    successMessage.style.opacity = '1';
-                    
-                    // Add to the top of the results
-                    const resultsDiv = document.getElementById('results');
-                    resultsDiv.insertBefore(successMessage, resultsDiv.firstChild);
-                    
-                    // Auto-scroll to the paper question section
-                    document.getElementById('paper-question').scrollIntoView({behavior: 'smooth'});
-                    
-                    // Remove the message after 5 seconds
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                if (resultsDiv) {
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.style.opacity = '0';
                     setTimeout(() => {
-                        successMessage.style.opacity = '0';
-                        setTimeout(() => {
-                            if (successMessage.parentNode) {
-                                successMessage.parentNode.removeChild(successMessage);
-                            }
-                        }, 500);
-                    }, 5000);
-                }, 100);
+                        resultsDiv.style.opacity = '1';
+                    }, 100);
+                }
+
             } catch (error) {
                 console.error('Error analyzing paper:', error);
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('results').style.display = 'none';
                 
-                // Reset the chat button
-                document.getElementById('chat-btn-text').textContent = 'Continue discussing this paper in Chat';
+                // Hide loading and show error
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                if (resultsDiv) resultsDiv.style.display = 'none';
                 
                 // Show error message
                 const errorDiv = document.createElement('div');
@@ -1445,14 +1760,16 @@
                 
                 // Add error to the top of the page
                 const container = document.querySelector('.container');
-                container.insertBefore(errorDiv, container.firstChild);
-                
-                // Remove error after 10 seconds
-                setTimeout(() => {
-                    if (errorDiv.parentNode) {
-                        errorDiv.parentNode.removeChild(errorDiv);
-                    }
-                }, 10000);
+                if (container) {
+                    container.insertBefore(errorDiv, container.firstChild);
+                    
+                    // Remove error after 10 seconds
+                    setTimeout(() => {
+                        if (errorDiv.parentNode) {
+                            errorDiv.parentNode.removeChild(errorDiv);
+                        }
+                    }, 10000);
+                }
             }
         }
 
@@ -2235,6 +2552,58 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Initialize interface
             document.getElementById('main-interface').style.display = 'none';
+        });
+
+        // Initialize UI
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOMContentLoaded - Starting initialization");
+            
+            // Initialize WebSocket
+            initWebSocket();
+
+            // Add event listeners
+            const analyzeButton = document.getElementById('analyze-button');
+            if (analyzeButton) {
+                analyzeButton.addEventListener('click', analyzePaper);
+            }
+
+            const pmidInput = document.getElementById('pmid');
+            if (pmidInput) {
+                pmidInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        analyzePaper();
+                    }
+                });
+            }
+
+            // Handle tab changes
+            document.querySelectorAll('.nav-link').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    console.log("Tab changed to:", this.id);
+                    
+                    // Sync paper context from localStorage
+                    syncPaperContext();
+                    
+                    // If switching to analyze tab and we have a currentPaper, make sure it's loaded
+                    if (this.id === 'analyze-tab' && currentPaper) {
+                        document.getElementById('pmid').value = currentPaper;
+                        console.log("Tab change - Set pmid input to:", currentPaper);
+                    }
+                });
+            });
+
+            // Load current paper if it exists
+            syncPaperContext();
+            
+            if (currentPaper) {
+                document.getElementById('pmid').value = currentPaper;
+                console.log("DOMContentLoaded - Set pmid input to:", currentPaper);
+                // Only auto-load if we're on the analyze tab
+                if (document.getElementById('analyze-tab').classList.contains('active')) {
+                    console.log("DOMContentLoaded - Analyze tab is active, calling analyzePaper()");
+                    analyzePaper();
+                }
+            }
         });
     </script>
     <script src="/static/js/app.js"></script>

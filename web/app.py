@@ -85,26 +85,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-static_dir = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
+# Initialize components
 text_processor = AdvancedTextProcessor()
-
-# Skip local model
 model = None
 print(f"Model Status: Using {DEFAULT_MODEL} as primary model")
-
-# Initialize PubMedRetriever with NCBI API key
 retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 
-class Message(BaseModel):
-    content: str
-    role: str = "user"
-    model: Optional[str] = None
-
-class Question(BaseModel):
-    question: str
-
+# Define API routes first
 @app.get("/")
 async def root():
     return RedirectResponse(url="/static/index.html")
@@ -299,6 +286,18 @@ async def analyze_paper(pmid: str, request: Request):
         print(f"Unexpected error in analyze_paper endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
 
+# Mount static files after API routes
+static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+class Message(BaseModel):
+    content: str
+    role: str = "user"
+    model: Optional[str] = None
+
+class Question(BaseModel):
+    question: str
+
 async def process_message(message):
     """Process incoming WebSocket messages"""
     try:
@@ -345,19 +344,85 @@ async def process_message(message):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    print("WebSocket connection accepted")
     try:
         while True:
             data = await websocket.receive_text()
             try:
                 message = json.loads(data)
-                response = await process_message(message)
-                await websocket.send_json(response)
+                if message.get('type') == 'analyze_paper':
+                    # Handle paper analysis request
+                    pmid = message.get('pmid')
+                    if not pmid:
+                        await websocket.send_json({"error": "No PMID provided"})
+                        continue
+                    
+                    try:
+                        # Get paper metadata
+                        metadata = retriever.get_paper_metadata(pmid)
+                        if not metadata:
+                            await websocket.send_json({"error": f"Paper with PMID {pmid} not found"})
+                            continue
+                        
+                        # Get full text if available
+                        full_text = ""
+                        try:
+                            full_text = retriever.get_pmc_fulltext(pmid)
+                        except Exception as e:
+                            print(f"Warning: Could not retrieve full text for PMID {pmid}: {str(e)}")
+                        
+                        # Analyze paper using OpenAI
+                        if model_config.openai_available:
+                            response = await client.chat.completions.create(
+                                model="gpt-3.5-turbo",
+                                messages=[
+                                    {"role": "system", "content": "You are a helpful assistant analyzing scientific papers. Extract key findings, suggested topics, and categorize the content."},
+                                    {"role": "user", "content": f"Analyze this paper:\nTitle: {metadata['title']}\nAbstract: {metadata['abstract']}\nFull Text: {full_text}"}
+                                ],
+                                temperature=0.7,
+                                max_tokens=1000
+                            )
+                            
+                            analysis_text = response.choices[0].message.content
+                            analysis_result = {
+                                "type": "analysis_result",
+                                "title": metadata["title"],
+                                "authors": metadata.get("authors", "N/A"),
+                                "journal": metadata.get("journal", "N/A"),
+                                "date": metadata.get("publication_date", "N/A"),
+                                "doi": metadata.get("doi", "N/A"),
+                                "abstract": metadata.get("abstract", "N/A"),
+                                "key_findings": [line.strip() for line in analysis_text.split('\n') if line.strip()],
+                                "confidence": 0.8,
+                                "status": "success",
+                                "suggested_topics": [],
+                                "found_terms": {},
+                                "category_scores": {},
+                                "num_tokens": len(analysis_text.split())
+                            }
+                            await websocket.send_json(analysis_result)
+                        else:
+                            await websocket.send_json({"error": "No AI models available for analysis"})
+                    except Exception as e:
+                        print(f"Error analyzing paper: {str(e)}")
+                        await websocket.send_json({"error": f"Error analyzing paper: {str(e)}"})
+                else:
+                    # Handle chat messages
+                    response = await process_message(message)
+                    await websocket.send_json(response)
             except json.JSONDecodeError:
                 await websocket.send_json({"error": "Invalid JSON format"})
             except Exception as e:
+                print(f"Error processing message: {str(e)}")
                 await websocket.send_json({"error": str(e)})
     except WebSocketDisconnect:
         print("WebSocket disconnected")
+    except Exception as e:
+        print(f"WebSocket error: {str(e)}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
 
 @app.post("/ask_question/{pmid}")
 async def ask_question(pmid: str, question: Question):

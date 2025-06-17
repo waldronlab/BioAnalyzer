@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="bugsigdb-miner",
+    name="bugsigdb-analyzer",
     version="0.1.0",
     packages=find_packages(include=['retrieve', 'retrieve.*', 'models', 'models.*', 'utils', 'utils.*']),
     install_requires=[

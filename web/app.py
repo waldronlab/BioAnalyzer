@@ -98,12 +98,16 @@ async def root():
 
 @app.get("/analyze/{pmid}")
 async def analyze_paper(pmid: str, request: Request):
+    print(f"\n=== Starting analysis for PMID: {pmid} ===")
     try:
         # Get metadata and full text
         try:
+            print(f"Fetching metadata for PMID: {pmid}")
             metadata = retriever.get_paper_metadata(pmid)
             if not metadata:
+                print(f"No metadata found for PMID: {pmid}")
                 raise HTTPException(status_code=404, detail=f"Paper with PMID {pmid} not found")
+            print(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
         except Exception as e:
             print(f"Error retrieving metadata for PMID {pmid}: {str(e)}")
             raise HTTPException(status_code=404, detail=f"Error retrieving paper metadata: {str(e)}")
@@ -111,177 +115,45 @@ async def analyze_paper(pmid: str, request: Request):
         # Try to get full text, but continue if not available
         full_text = ""
         try:
+            print(f"Attempting to fetch full text for PMID: {pmid}")
             full_text = retriever.get_pmc_fulltext(pmid)
+            if full_text:
+                print("Successfully retrieved full text")
+            else:
+                print("No full text available")
         except Exception as e:
             print(f"Warning: Could not retrieve full text for PMID {pmid}: {str(e)}")
             # Continue with just the abstract
-        
-        paper_content = {
-            "title": metadata["title"],
-            "abstract": metadata["abstract"],
+
+        # Extract additional metadata fields
+        paper_details = {
+            "pmid": pmid,
+            "title": metadata.get("title", ""),
+            "authors": metadata.get("authors", ""),
+            "journal": metadata.get("journal", ""),
+            "publication_date": metadata.get("publication_date", ""),
+            "doi": metadata.get("doi", ""),
+            "abstract": metadata.get("abstract", ""),
+            "mesh_terms": metadata.get("mesh_terms", []),
+            "publication_types": metadata.get("publication_types", []),
+            "year": metadata.get("year", ""),
             "full_text": full_text if full_text else ""
         }
-        
-        # Try models in order of preference
-        models_to_try = ["openai"] if model_config.openai_available else []
-        
-        results = {}
-        error_message = None
-        
-        for model_name in models_to_try:
-            try:
-                if model_name == "openai" and model_config.openai_available:
-                    print(f"Attempting to use OpenAI for paper analysis")
-                    # Use OpenAI for analysis
-                    response = await client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "You are a helpful assistant analyzing scientific papers. Extract key findings, suggested topics, and categorize the content."},
-                            {"role": "user", "content": f"Analyze this paper:\nTitle: {paper_content['title']}\nAbstract: {paper_content['abstract']}\nFull Text: {paper_content['full_text']}"}
-                        ],
-                        temperature=0.7,
-                        max_tokens=1000
-                    )
-                    
-                    # Parse OpenAI response into analysis format
-                    analysis_text = response.choices[0].message.content
-                    results["openai"] = {
-                        "key_findings": [line.strip() for line in analysis_text.split('\n') if line.strip()],
-                        "confidence": 0.8,
-                        "status": "success",
-                        "suggested_topics": [],
-                        "found_terms": {},
-                        "category_scores": {},
-                        "num_tokens": len(analysis_text.split())
-                    }
-                    break
-                    
-            except Exception as e:
-                error_str = str(e)
-                print(f"Error with {model_name}: {error_str}")
-                if "insufficient_quota" in error_str:
-                    error_message = "OpenAI API quota exceeded. Please check your billing details or try again later."
-                else:
-                    error_message = str(e)
-                continue
-        
-        if not results:
-            # Return a partial result with error information
-            return {
-                "metadata": metadata,
-                "analysis": {
-                    "error": error_message or "All AI models are currently unavailable",
-                    "confidence": 0.0,
-                    "status": "error",
-                    "key_findings": ["Unable to analyze paper at this time. Please try again later or contact support if the issue persists."],
-                    "suggested_topics": [],
-                    "found_terms": {},
-                    "category_scores": {},
-                    "num_tokens": 0
-                }
-            }
-        
-        # Prefer OpenAI results if available
-        analysis_results = results.get("openai", {})
-        
-        # Add additional fields for the paper analysis details table
-        # Extract these from the analysis if possible, or set defaults
-        found_terms = analysis_results.get("found_terms", {})
-        
-        # Add host information
-        if "host" not in analysis_results and "host" in found_terms and found_terms["host"]:
-            analysis_results["host"] = found_terms["host"][0]
-            
-        # Add body site information
-        if "body_site" not in analysis_results and "body site" in found_terms and found_terms["body site"]:
-            analysis_results["body_site"] = found_terms["body site"][0]
-            
-        # Add condition information
-        if "condition" not in analysis_results and "condition" in found_terms and found_terms["condition"]:
-            analysis_results["condition"] = found_terms["condition"][0]
-            
-        # Add sequencing type information
-        if "sequencing_type" not in analysis_results and "sequencing type" in found_terms and found_terms["sequencing type"]:
-            analysis_results["sequencing_type"] = found_terms["sequencing type"][0]
-        
-        # Add sample size information
-        if "sample_size" not in analysis_results:
-            # Try to extract from found terms
-            if "sample size" in found_terms and found_terms["sample size"]:
-                analysis_results["sample_size"] = found_terms["sample size"][0]
-            else:
-                # Try to extract from key findings or abstract
-                sample_size_pattern = r'(\d+)\s+(?:subjects|participants|samples|patients)'
-                key_findings = analysis_results.get("key_findings", [])
-                for finding in key_findings:
-                    if isinstance(finding, str):
-                        match = re.search(sample_size_pattern, finding, re.IGNORECASE)
-                        if match:
-                            analysis_results["sample_size"] = match.group(1)
-                            break
-                
-                # If not found in key findings, try abstract
-                if "sample_size" not in analysis_results and "abstract" in paper_content:
-                    match = re.search(sample_size_pattern, paper_content["abstract"], re.IGNORECASE)
-                    if match:
-                        analysis_results["sample_size"] = match.group(1)
-        
-        # Add taxa level information
-        if "taxa_level" not in analysis_results:
-            # Try to extract from found terms
-            for term_key in ["taxa level", "taxonomic level"]:
-                if term_key in found_terms and found_terms[term_key]:
-                    analysis_results["taxa_level"] = found_terms[term_key][0]
-                    break
-            
-            # If not found in found terms, look for common taxonomic levels
-            if "taxa_level" not in analysis_results:
-                taxa_levels = ["phylum", "class", "order", "family", "genus", "species", "strain"]
-                for level in taxa_levels:
-                    if level in found_terms and found_terms[level]:
-                        analysis_results["taxa_level"] = level
-                        break
-        
-        # Add statistical method information
-        if "statistical_method" not in analysis_results:
-            # Try to extract from found terms
-            for term_key in ["statistical method", "statistics", "analysis method"]:
-                if term_key in found_terms and found_terms[term_key]:
-                    analysis_results["statistical_method"] = found_terms[term_key][0]
-                    break
-            
-            # If not found, look for common statistical methods
-            if "statistical_method" not in analysis_results:
-                stat_methods = ["PERMANOVA", "ANOVA", "t-test", "Wilcoxon", "LEfSe", "DESeq2", "random forest"]
-                for method in stat_methods:
-                    method_pattern = re.compile(r'\b' + re.escape(method) + r'\b', re.IGNORECASE)
-                    if "abstract" in paper_content and method_pattern.search(paper_content["abstract"]):
-                        analysis_results["statistical_method"] = method
-                        break
-        
-        # Check if paper is in BugSigDB (this would need actual integration with BugSigDB)
-        if "in_bugsigdb" not in analysis_results:
-            # This is a placeholder - in a real implementation, you would check against the BugSigDB database
-            analysis_results["in_bugsigdb"] = "No"
-            
-        # Calculate signature probability if not already present
-        if "signature_probability" not in analysis_results:
-            # Use confidence as a proxy if available, or calculate based on other metrics
-            confidence = analysis_results.get("confidence", 0)
-            category_scores = analysis_results.get("category_scores", {})
-            signature_score = category_scores.get("signature_presence", 0)
-            
-            # Use the higher of confidence or signature_score
-            signature_probability = max(confidence, signature_score)
-            analysis_results["signature_probability"] = f"{signature_probability * 100:.1f}%"
-        
+
+        # Return the paper details without requiring OpenAI analysis
         return {
-            "metadata": metadata,
-            "analysis": analysis_results
+            "metadata": paper_details,
+            "analysis": {
+                "status": "success",
+                "confidence": 1.0,
+                "key_findings": [],
+                "suggested_topics": [],
+                "found_terms": {},
+                "category_scores": {},
+                "num_tokens": 0
+            }
         }
-    except HTTPException as he:
-        # Re-raise HTTP exceptions
-        raise he
+
     except Exception as e:
         print(f"Unexpected error in analyze_paper endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")

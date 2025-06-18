@@ -1,3 +1,4 @@
+console.log("app.js loaded!");
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize state
     let ws = null;
@@ -126,10 +127,12 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Displaying analysis results:', data);
         
         // Update paper metadata
-        const titleEl = document.getElementById('paper-title');
-        const authorsEl = document.getElementById('paper-authors');
-        const journalEl = document.getElementById('paper-journal');
-        const abstractEl = document.getElementById('paper-abstract');
+        const titleEl = getElement('paper-title');
+        const authorsEl = getElement('paper-authors');
+        const journalEl = getElement('paper-journal');
+        const abstractEl = getElement('paper-abstract');
+        const dateEl = getElement('paper-date');
+        const doiEl = getElement('paper-doi');
         
         if (titleEl && data.metadata?.title) {
             titleEl.textContent = data.metadata.title;
@@ -146,10 +149,64 @@ document.addEventListener('DOMContentLoaded', () => {
         if (abstractEl && data.metadata?.abstract) {
             abstractEl.textContent = data.metadata.abstract;
         }
+
+        if (dateEl && data.metadata?.publication_date) {
+            dateEl.textContent = data.metadata.publication_date;
+        }
+
+        if (doiEl && data.metadata?.doi) {
+            doiEl.textContent = data.metadata.doi;
+        }
+
+        // Update paper analysis details table
+        const pmidEl = getElement('paper-pmid');
+        const journalShortEl = getElement('paper-journal-short');
+        const titleShortEl = getElement('paper-title-short');
+        const yearEl = getElement('paper-year');
+
+        if (pmidEl && data.metadata?.pmid) {
+            pmidEl.textContent = data.metadata.pmid;
+        }
+
+        if (journalShortEl && data.metadata?.journal) {
+            journalShortEl.textContent = data.metadata.journal;
+        }
+
+        if (titleShortEl && data.metadata?.title) {
+            titleShortEl.textContent = data.metadata.title;
+        }
+
+        if (yearEl && data.metadata?.year) {
+            yearEl.textContent = data.metadata.year;
+        }
+
+        // Update MeSH terms if available
+        const meshTermsEl = getElement('found-terms');
+        if (meshTermsEl && data.metadata?.mesh_terms) {
+            meshTermsEl.innerHTML = `
+                <h6 class="mb-2">MeSH Terms</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    ${data.metadata.mesh_terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}
+                </div>
+            `;
+        }
+
+        // Update publication types if available
+        if (meshTermsEl && data.metadata?.publication_types) {
+            const pubTypesDiv = document.createElement('div');
+            pubTypesDiv.className = 'mt-3';
+            pubTypesDiv.innerHTML = `
+                <h6 class="mb-2">Publication Types</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    ${data.metadata.publication_types.map(type => `<span class="badge bg-info">${type}</span>`).join('')}
+                </div>
+            `;
+            meshTermsEl.appendChild(pubTypesDiv);
+        }
         
         // Update confidence score
-        const confidenceFill = document.getElementById('confidence-fill');
-        const confidenceValue = document.getElementById('confidence-value');
+        const confidenceFill = getElement('confidence-fill');
+        const confidenceValue = getElement('confidence-value');
         if (confidenceFill && confidenceValue && data.analysis?.confidence) {
             const confidence = data.analysis.confidence * 100;
             confidenceFill.style.width = `${confidence}%`;
@@ -162,27 +219,8 @@ document.addEventListener('DOMContentLoaded', () => {
             updateCategoryScores(data.analysis.category_scores);
         }
         
-        // Update found terms
-        const foundTermsEl = document.getElementById('found-terms');
-        if (foundTermsEl && data.analysis?.found_terms) {
-            foundTermsEl.innerHTML = '';
-            for (const [category, terms] of Object.entries(data.analysis.found_terms)) {
-                if (terms && terms.length > 0) {
-                    const categoryDiv = document.createElement('div');
-                    categoryDiv.className = 'mb-3';
-                    categoryDiv.innerHTML = `
-                        <h6 class="mb-2">${category}</h6>
-                        <div class="d-flex flex-wrap gap-2">
-                            ${terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}
-                        </div>
-                    `;
-                    foundTermsEl.appendChild(categoryDiv);
-                }
-            }
-        }
-        
         // Update key findings
-        const keyFindingsEl = document.getElementById('key-findings');
+        const keyFindingsEl = getElement('key-findings');
         if (keyFindingsEl && data.analysis?.key_findings) {
             keyFindingsEl.innerHTML = data.analysis.key_findings
                 .map(finding => `<li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i>${finding}</li>`)
@@ -190,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Update suggested topics
-        const suggestedTopicsEl = document.getElementById('suggested-topics');
+        const suggestedTopicsEl = getElement('suggested-topics');
         if (suggestedTopicsEl && data.analysis?.suggested_topics) {
             suggestedTopicsEl.innerHTML = data.analysis.suggested_topics
                 .map(topic => `<li class="mb-2"><i class="fas fa-tag text-primary me-2"></i>${topic}</li>`)
@@ -198,20 +236,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Update analysis status
-        const statusEl = document.getElementById('analysis-status');
+        const statusEl = getElement('analysis-status');
         if (statusEl && data.analysis?.status) {
             statusEl.textContent = data.analysis.status;
             statusEl.className = `badge ${data.analysis.status === 'success' ? 'bg-success' : 'bg-danger'}`;
         }
         
         // Update tokens generated
-        const tokensEl = document.getElementById('tokens-generated');
+        const tokensEl = getElement('tokens-generated');
         if (tokensEl && data.analysis?.num_tokens) {
             tokensEl.textContent = data.analysis.num_tokens;
         }
         
         // Show results container
-        const resultsDiv = document.getElementById('results');
+        const resultsDiv = getElement('results');
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.opacity = '0';
@@ -277,27 +315,60 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Analyze paper
+    console.log("analyzePaper called!");
     async function analyzePaper() {
-        const pmid = document.getElementById('pmid').value.trim();
+        console.log('Analyze button clicked');
+        
+        const pmid = document.getElementById('pmid')?.value?.trim();
+        console.log('PMID value:', pmid);
+        
         if (!pmid) {
+            console.log('No PMID provided');
             showError('Please enter a PubMed ID');
             return;
         }
 
-        // Show loading indicator
+        console.log('Starting paper analysis for PMID:', pmid);
+
+        // Show loading indicator and hide results
         const loadingDiv = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
+        const analyzeButton = document.getElementById('analyze-button');
         
-        if (loadingDiv) loadingDiv.style.display = 'block';
-        if (resultsDiv) resultsDiv.style.display = 'none';
+        if (loadingDiv) {
+            console.log('Showing loading indicator');
+            loadingDiv.style.display = 'block';
+            // Disable the analyze button while loading
+            if (analyzeButton) {
+                analyzeButton.disabled = true;
+                analyzeButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Analyzing...';
+            }
+        } else {
+            console.error('Loading indicator element not found');
+        }
+        
+        if (resultsDiv) {
+            console.log('Hiding results div');
+            resultsDiv.style.display = 'none';
+        } else {
+            console.error('Results div element not found');
+        }
 
         try {
             console.log('Sending request to analyze paper:', pmid);
-            const response = await fetch(`/analyze/${pmid}`);
-            console.log('Received response:', response);
+            const response = await fetch(`/analyze/${pmid}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
+            console.log('Response status:', response.status);
+            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
             
             if (!response.ok) {
                 const errorData = await response.json();
+                console.error('Error response:', errorData);
                 throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
             }
             
@@ -305,11 +376,13 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Received data:', data);
             
             if (data.analysis?.error) {
+                console.error('Analysis error:', data.analysis.error);
                 throw new Error(data.analysis.error);
             }
 
             // Show results
             if (resultsDiv) {
+                console.log('Displaying results');
                 resultsDiv.style.display = 'block';
                 displayAnalysisResults(data);
             } else {
@@ -320,8 +393,14 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error analyzing paper:', error);
             showError('Error analyzing paper: ' + error.message);
         } finally {
+            // Hide loading indicator and re-enable analyze button
             if (loadingDiv) {
+                console.log('Hiding loading indicator');
                 loadingDiv.style.display = 'none';
+            }
+            if (analyzeButton) {
+                analyzeButton.disabled = false;
+                analyzeButton.textContent = 'Analyze';
             }
         }
     }
@@ -351,6 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add event listeners
         const analyzeButton = document.getElementById('analyze-button');
         if (analyzeButton) {
+            console.log("Attaching analyzePaper to analyzeButton", analyzeButton);
             analyzeButton.addEventListener('click', analyzePaper);
         }
 
@@ -544,5 +624,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Start waiting for element
         waitForElement();
+    }
+
+    // Helper function to safely get element
+    function getElement(id) {
+        const element = document.getElementById(id);
+        if (!element) {
+            console.warn(`Element with id '${id}' not found`);
+        }
+        return element;
     }
 });

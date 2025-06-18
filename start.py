@@ -18,7 +18,7 @@ def main():
     args = parser.parse_args()
     
     # Build command
-    cmd = [sys.executable, "-m", "web.app_test"]
+    cmd = [sys.executable, "-m", "web.app"]
     
     # Add arguments
     if args.https:

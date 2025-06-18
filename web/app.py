@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocketDisconnect
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 import json
@@ -24,6 +24,16 @@ from utils.config import (
 import re
 import openai
 import asyncio
+import logging
+import sys
+import os
+
+# Add the project root to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="BugSigDB Analyzer")
 
@@ -90,73 +100,6 @@ text_processor = AdvancedTextProcessor()
 model = None
 print(f"Model Status: Using {DEFAULT_MODEL} as primary model")
 retriever = PubMedRetriever(api_key=NCBI_API_KEY)
-
-# Define API routes first
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/static/index.html")
-
-@app.get("/analyze/{pmid}")
-async def analyze_paper(pmid: str, request: Request):
-    print(f"\n=== Starting analysis for PMID: {pmid} ===")
-    try:
-        # Get metadata and full text
-        try:
-            print(f"Fetching metadata for PMID: {pmid}")
-            metadata = retriever.get_paper_metadata(pmid)
-            if not metadata:
-                print(f"No metadata found for PMID: {pmid}")
-                raise HTTPException(status_code=404, detail=f"Paper with PMID {pmid} not found")
-            print(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
-        except Exception as e:
-            print(f"Error retrieving metadata for PMID {pmid}: {str(e)}")
-            raise HTTPException(status_code=404, detail=f"Error retrieving paper metadata: {str(e)}")
-        
-        # Try to get full text, but continue if not available
-        full_text = ""
-        try:
-            print(f"Attempting to fetch full text for PMID: {pmid}")
-            full_text = retriever.get_pmc_fulltext(pmid)
-            if full_text:
-                print("Successfully retrieved full text")
-            else:
-                print("No full text available")
-        except Exception as e:
-            print(f"Warning: Could not retrieve full text for PMID {pmid}: {str(e)}")
-            # Continue with just the abstract
-
-        # Extract additional metadata fields
-        paper_details = {
-            "pmid": pmid,
-            "title": metadata.get("title", ""),
-            "authors": metadata.get("authors", ""),
-            "journal": metadata.get("journal", ""),
-            "publication_date": metadata.get("publication_date", ""),
-            "doi": metadata.get("doi", ""),
-            "abstract": metadata.get("abstract", ""),
-            "mesh_terms": metadata.get("mesh_terms", []),
-            "publication_types": metadata.get("publication_types", []),
-            "year": metadata.get("year", ""),
-            "full_text": full_text if full_text else ""
-        }
-
-        # Return the paper details without requiring OpenAI analysis
-        return {
-            "metadata": paper_details,
-            "analysis": {
-                "status": "success",
-                "confidence": 1.0,
-                "key_findings": [],
-                "suggested_topics": [],
-                "found_terms": {},
-                "category_scores": {},
-                "num_tokens": 0
-            }
-        }
-
-    except Exception as e:
-        print(f"Unexpected error in analyze_paper endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
 
 # Mount static files after API routes
 static_dir = Path(__file__).parent / "static"
@@ -569,6 +512,62 @@ async def analyze_by_url(url: str, request: Request):
     except Exception as e:
         print(f"Error analyzing paper by URL: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
+
+@app.get("/")
+async def root():
+    return {"message": "BugSigDB Analyzer API is running"}
+
+@app.get("/analyze/{pmid}")
+async def analyze_paper(pmid: str, request: Request):
+    try:
+        logger.info(f"=== Starting analysis for PMID: {pmid} ===")
+        
+        # Get paper metadata
+        logger.info(f"Fetching metadata for PMID: {pmid}")
+        metadata = retriever.get_paper_metadata(pmid)
+        
+        if not metadata:
+            raise HTTPException(status_code=404, detail="Paper not found")
+            
+        logger.info(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
+        
+        # Try to get full text (optional)
+        try:
+            logger.info(f"Attempting to fetch full text for PMID: {pmid}")
+            full_text = retriever.get_pmc_fulltext(pmid)
+        except Exception as e:
+            logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
+            full_text = None
+            
+        # Prepare response
+        response = {
+            "metadata": metadata,
+            "analysis": {
+                "status": "success",
+                "confidence": 0.85,  # Example confidence score
+                "category_scores": {
+                    "relevance": 0.9,
+                    "methodology": 0.8,
+                    "significance": 0.75
+                },
+                "key_findings": [
+                    "Finding 1",
+                    "Finding 2",
+                    "Finding 3"
+                ],
+                "suggested_topics": [
+                    "Topic 1",
+                    "Topic 2",
+                    "Topic 3"
+                ]
+            }
+        }
+        
+        return JSONResponse(content=response)
+        
+    except Exception as e:
+        logger.error(f"Error analyzing paper {pmid}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

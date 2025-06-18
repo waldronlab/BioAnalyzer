@@ -315,93 +315,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Analyze paper
-    console.log("analyzePaper called!");
     async function analyzePaper() {
-        console.log('Analyze button clicked');
-        
-        const pmid = document.getElementById('pmid')?.value?.trim();
-        console.log('PMID value:', pmid);
-        
+        const pmid = document.getElementById('pmid').value.trim();
         if (!pmid) {
-            console.log('No PMID provided');
-            showError('Please enter a PubMed ID');
+            showError('Please enter a PMID');
             return;
         }
 
-        console.log('Starting paper analysis for PMID:', pmid);
-
-        // Show loading indicator and hide results
-        const loadingDiv = document.getElementById('loading');
-        const resultsDiv = document.getElementById('results');
-        const analyzeButton = document.getElementById('analyze-button');
+        // Show loader and disable button
+        const loader = document.getElementById('loading');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const results = document.getElementById('results');
         
-        if (loadingDiv) {
-            console.log('Showing loading indicator');
-            loadingDiv.style.display = 'block';
-            // Disable the analyze button while loading
-            if (analyzeButton) {
-                analyzeButton.disabled = true;
-                analyzeButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Analyzing...';
-            }
-        } else {
-            console.error('Loading indicator element not found');
-        }
-        
-        if (resultsDiv) {
-            console.log('Hiding results div');
-            resultsDiv.style.display = 'none';
-        } else {
-            console.error('Results div element not found');
-        }
+        if (loader) loader.style.display = 'block';
+        if (analyzeBtn) analyzeBtn.disabled = true;
+        if (results) results.style.display = 'none';
 
         try {
-            console.log('Sending request to analyze paper:', pmid);
-            const response = await fetch(`/analyze/${pmid}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                }
-            });
-            console.log('Response status:', response.status);
-            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+            console.log(`Starting analysis for PMID: ${pmid}`);
+            const response = await fetch(`/analyze/${pmid}`);
             
             if (!response.ok) {
-                const errorData = await response.json();
-                console.error('Error response:', errorData);
-                throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             const data = await response.json();
-            console.log('Received data:', data);
+            console.log('Analysis response:', data);
             
-            if (data.analysis?.error) {
-                console.error('Analysis error:', data.analysis.error);
-                throw new Error(data.analysis.error);
+            if (data.error) {
+                throw new Error(data.error);
             }
 
-            // Show results
-            if (resultsDiv) {
-                console.log('Displaying results');
-                resultsDiv.style.display = 'block';
-                displayAnalysisResults(data);
-            } else {
-                console.error('Results div not found');
-                showError('Results container not found');
+            // Display results
+            displayAnalysisResults(data);
+            
+            // Show results container
+            if (results) {
+                results.style.display = 'block';
+                results.style.opacity = '1';
             }
+
         } catch (error) {
-            console.error('Error analyzing paper:', error);
-            showError('Error analyzing paper: ' + error.message);
+            console.error('Analysis error:', error);
+            showError(error.message || 'Failed to analyze paper');
         } finally {
-            // Hide loading indicator and re-enable analyze button
-            if (loadingDiv) {
-                console.log('Hiding loading indicator');
-                loadingDiv.style.display = 'none';
-            }
-            if (analyzeButton) {
-                analyzeButton.disabled = false;
-                analyzeButton.textContent = 'Analyze';
-            }
+            // Hide loader and enable button
+            if (loader) loader.style.display = 'none';
+            if (analyzeBtn) analyzeBtn.disabled = false;
         }
     }
 

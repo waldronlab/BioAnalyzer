@@ -37,7 +37,7 @@ class PubMedRetriever:
         for attempt in range(config.MAX_RETRIES):
             try:
                 handle = func(*args, **kwargs)
-                return Entrez.read(handle)
+                return Entrez.read(handle, validate=False)
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
                 if attempt < config.MAX_RETRIES - 1:

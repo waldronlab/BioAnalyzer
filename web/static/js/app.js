@@ -1,5 +1,6 @@
 console.log("app.js loaded!");
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOMContentLoaded: Initializing app.js and page settings');
     // Initialize state
     let ws = null;
     let currentPaper = null;
@@ -58,50 +59,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize WebSocket connection
     function initWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
-        
-        ws = new WebSocket(wsUrl);
-        
-        ws.onopen = function() {
-            console.log('WebSocket connection established');
-            isConnected = true;
-            updateConnectionStatus('Connected', 'success');
-            const messageInput = document.getElementById('message-input');
-            const sendButton = document.getElementById('send-button');
-            if (messageInput) messageInput.disabled = false;
-            if (sendButton) sendButton.disabled = false;
-        };
-        
-        ws.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            console.log('Received message:', data);
-            if (data.type === 'analysis_result') {
-                displayAnalysisResults(data);
-            } else if (data.error) {
-                showError(data.error);
-            } else if (data.response) {
-                displayChatMessage(data.response, 'assistant');
-            }
-        };
-        
-        ws.onclose = function() {
-            console.log('WebSocket connection closed');
-            isConnected = false;
-            updateConnectionStatus('Disconnected', 'danger');
-            const messageInput = document.getElementById('message-input');
-            const sendButton = document.getElementById('send-button');
-            if (messageInput) messageInput.disabled = true;
-            if (sendButton) sendButton.disabled = true;
+        try {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            ws = new WebSocket(wsUrl);
             
-            // Attempt to reconnect after 5 seconds
-            setTimeout(initWebSocket, 5000);
-        };
-        
-        ws.onerror = function(error) {
-            console.error('WebSocket error:', error);
-            updateConnectionStatus('Connection error', 'danger');
-        };
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus('Connection failed', 'danger');
+            };
+        } catch (error) {
+            console.error('Failed to initialize WebSocket:', error);
+        }
     }
 
     // Update connection status display
@@ -124,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Display analysis results
     function displayAnalysisResults(data) {
-        console.log('Displaying analysis results:', data);
+        console.log('[displayAnalysisResults] Data:', data);
         
         // Show top-level warning or error if present
         const resultsDiv = getElement('results');
@@ -136,27 +105,30 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.warning) {
                 const warnDiv = document.createElement('div');
                 warnDiv.className = 'alert alert-warning backend-alert';
-                warnDiv.textContent = data.warning;
+                warnDiv.innerHTML = `<strong>Warning:</strong> <span style="font-size:1.05em;">${data.warning}</span>`;
                 resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
             }
             // Show error
             if (data.error) {
                 const errDiv = document.createElement('div');
                 errDiv.className = 'alert alert-danger backend-alert';
-                errDiv.textContent = data.error;
+                errDiv.innerHTML = `<strong>Error:</strong> <span style="font-size:1.05em;">${data.error}</span>`;
+                if (data.full_text_type) {
+                    errDiv.innerHTML += `<br><small>Full text type: <code>${data.full_text_type}</code></small>`;
+                }
                 resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
             }
             // Show analysis warning/error if present
             if (data.analysis?.warning) {
                 const warnDiv = document.createElement('div');
                 warnDiv.className = 'alert alert-warning backend-alert';
-                warnDiv.textContent = data.analysis.warning;
+                warnDiv.innerHTML = `<strong>Analysis Warning:</strong> <span style="font-size:1.05em;">${data.analysis.warning}</span>`;
                 resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
             }
             if (data.analysis?.error) {
                 const errDiv = document.createElement('div');
                 errDiv.className = 'alert alert-danger backend-alert';
-                errDiv.textContent = data.analysis.error;
+                errDiv.innerHTML = `<strong>Analysis Error:</strong> <span style="font-size:1.05em;">${data.analysis.error}</span>`;
                 resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
             }
         }
@@ -306,9 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Show error message
-    function showError(message) {
-        console.error('Error:', message);
-        
+    function showError(message, errorObj = null) {
+        console.error('Error:', message, errorObj);
         // Create or get error container
         let errorContainer = document.getElementById('error-container');
         if (!errorContainer) {
@@ -324,23 +295,28 @@ document.addEventListener('DOMContentLoaded', () => {
             errorContainer.style.textAlign = 'center';
             document.body.appendChild(errorContainer);
         }
-
         // Set error message
+        let detailsHtml = '';
+        if (errorObj) {
+            detailsHtml = `<details style="text-align:left;max-width:600px;overflow-x:auto;margin-top:8px;">
+                <summary style="cursor:pointer;">Show technical details</summary>
+                <pre>${typeof errorObj === 'object' ? JSON.stringify(errorObj, null, 2) : errorObj}</pre>
+            </details>`;
+        }
         errorContainer.innerHTML = `
-            <strong>Error:</strong> ${message}
+            <strong style="font-size:1.1em;">Error:</strong> <span style="font-size:1.05em;">${message}</span>
             <button type="button" class="btn-close" style="float: right;" onclick="this.parentElement.style.display='none'"></button>
+            ${detailsHtml}
         `;
         errorContainer.style.display = 'block';
-
         // Also show in results area if it exists
         const resultsDiv = document.getElementById('results');
         if (resultsDiv) {
             const resultsError = document.createElement('div');
             resultsError.className = 'alert alert-danger mt-3';
-            resultsError.innerHTML = `<strong>Error:</strong> ${message}`;
+            resultsError.innerHTML = `<strong>Error:</strong> ${message}${detailsHtml}`;
             resultsDiv.insertBefore(resultsError, resultsDiv.firstChild);
         }
-
         // Hide loading indicator if it exists
         const loadingDiv = document.getElementById('loading');
         if (loadingDiv) {
@@ -356,54 +332,49 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Show loader/message and disable button
+        // Show loader immediately
         const loader = document.getElementById('loading');
         const analyzeBtn = document.getElementById('analyze-btn') || document.getElementById('analyze-button');
-        const results = document.getElementById('results');
-        
         if (loader) {
-            loader.innerHTML = `
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2">Analyzing paper...</p>
-            `;
             loader.style.display = 'block';
         }
-        if (analyzeBtn) analyzeBtn.disabled = true;
-        if (results) results.style.display = 'none';
+        if (analyzeBtn) {
+            analyzeBtn.disabled = true;
+        }
 
         try {
-            console.log(`Starting analysis for PMID: ${pmid}`);
             const response = await fetch(`/analyze/${pmid}`);
-            
+            console.log('[analyzePaper] Raw fetch response:', response);
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const text = await response.text();
+                console.error('[analyzePaper] Non-OK response:', response.status, text);
+                throw new Error(`HTTP error! status: ${response.status} - ${text}`);
             }
-            
             const data = await response.json();
-            console.log('Analysis response:', data);
-            
+            console.log('[analyzePaper] Parsed JSON:', data);
+            if (!data || Object.keys(data).length === 0) {
+                showError('No data returned from backend.');
+                return;
+            }
             if (data.error) {
                 throw new Error(data.error);
             }
-
-            // Display results
             displayAnalysisResults(data);
-            
-            // Show results container
             if (results) {
                 results.style.display = 'block';
                 results.style.opacity = '1';
             }
-
         } catch (error) {
-            console.error('Analysis error:', error);
+            console.error('[analyzePaper] Analysis error:', error);
             showError(error.message || 'Failed to analyze paper');
         } finally {
-            // Hide loader/message and enable button
-            if (loader) loader.style.display = 'none';
-            if (analyzeBtn) analyzeBtn.disabled = false;
+            // Always hide loader and enable button
+            if (loader) {
+                loader.style.display = 'none';
+            }
+            if (analyzeBtn) {
+                analyzeBtn.disabled = false;
+            }
         }
     }
 
@@ -486,55 +457,63 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('DOMContentLoaded', initializeUI);
 
     // Page Settings Event Handlers
-    document.addEventListener('DOMContentLoaded', function() {
-        // Font size control
-        const fontSizeSlider = document.getElementById('fontSize');
-        const fontSizeValue = document.getElementById('fontSizeValue');
-        
+    const fontSizeSlider = document.getElementById('fontSize');
+    const fontSizeValue = document.getElementById('fontSizeValue');
+    if (!fontSizeSlider || !fontSizeValue) {
+        console.warn('Font size slider or value element missing');
+    } else {
         fontSizeSlider.addEventListener('input', function() {
             const size = this.value;
+            console.log('Font size changed to:', size);
             document.body.style.fontSize = size + 'px';
             fontSizeValue.textContent = size + 'px';
             localStorage.setItem('fontSize', size);
         });
-
-
-        // Zoom level control
-        const zoomSlider = document.getElementById('zoomLevel');
-        const zoomValue = document.getElementById('zoomLevelValue');
-        
+    }
+    const zoomSlider = document.getElementById('zoomLevel');
+    const zoomValue = document.getElementById('zoomLevelValue');
+    if (!zoomSlider || !zoomValue) {
+        console.warn('Zoom slider or value element missing');
+    } else {
         zoomSlider.addEventListener('input', function() {
             const zoom = this.value;
+            console.log('Zoom level changed to:', zoom);
             document.body.style.zoom = zoom + '%';
             zoomValue.textContent = zoom + '%';
             localStorage.setItem('zoomLevel', zoom);
         });
-
-        // Theme selection
-        const themeSelect = document.getElementById('themeSelect');
-        
+    }
+    const themeSelect = document.getElementById('themeSelect');
+    if (!themeSelect) {
+        console.warn('Theme select element missing');
+    } else {
         themeSelect.addEventListener('change', function() {
             const theme = this.value;
-            document.body.className = theme;
+            console.log('Theme changed to:', theme);
+            document.body.classList.remove('dark', 'light');
+            document.body.classList.add(theme);
             localStorage.setItem('theme', theme);
         });
-
-        // Load saved settings
-        const savedFontSize = localStorage.getItem('fontSize') || '16';
-        const savedZoom = localStorage.getItem('zoomLevel') || '100';
-        const savedTheme = localStorage.getItem('theme') || 'light';
-
+    }
+    // Load saved settings
+    const savedFontSize = localStorage.getItem('fontSize') || '16';
+    const savedZoom = localStorage.getItem('zoomLevel') || '100';
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    if (fontSizeSlider && fontSizeValue) {
         fontSizeSlider.value = savedFontSize;
         document.body.style.fontSize = savedFontSize + 'px';
         fontSizeValue.textContent = savedFontSize + 'px';
-
+    }
+    if (zoomSlider && zoomValue) {
         zoomSlider.value = savedZoom;
         document.body.style.zoom = savedZoom + '%';
         zoomValue.textContent = savedZoom + '%';
-
+    }
+    if (themeSelect) {
         themeSelect.value = savedTheme;
-        document.body.className = savedTheme;
-    });
+        document.body.classList.remove('dark', 'light');
+        document.body.classList.add(savedTheme);
+    }
 
     function getScoreColor(score) {
         const percentage = score * 100;
@@ -636,4 +615,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return element;
     }
+
+    const analyzeButton = document.getElementById('analyze-button');
+    if (analyzeButton) {
+        analyzeButton.addEventListener('click', analyzePaper);
+        console.log('Analyze button listener registered');
+    } else {
+        console.error('Analyze button not found');
+    }
+    initWebSocket();
 });

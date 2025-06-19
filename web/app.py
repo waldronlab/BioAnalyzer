@@ -26,6 +26,7 @@ import asyncio
 import logging
 import sys
 import os
+from bs4 import BeautifulSoup
 
 # Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -243,60 +244,36 @@ async def upload_paper(file: UploadFile = File(...), username: str = Form(None))
         # Check file type
         if file.content_type not in ["application/pdf", "text/plain"]:
             raise HTTPException(status_code=400, detail="Only PDF and text files are supported")
-        
         # Read file content
         content = await file.read()
-        
         # Process the file based on type
         if file.content_type == "application/pdf":
-            # For PDF files, we would use a PDF parser here
-            # This is a placeholder for actual PDF parsing
             paper_content = {
                 "title": "Extracted from PDF",
                 "abstract": "Abstract would be extracted from the PDF",
                 "full_text": "Full text would be extracted from the PDF"
             }
         else:
-            # For text files, use the content directly
             text_content = content.decode("utf-8")
             paper_content = {
                 "title": file.filename,
-                "abstract": text_content[:500] + "...",  # Use first 500 chars as abstract
+                "abstract": text_content[:500] + "...",
                 "full_text": text_content
             }
-        
         # Use QA system to analyze the paper
         results = await qa_system.analyze_paper(paper_content)
-        
-        # Prefer Gemini results if available
         analysis_results = results.get("gemini", {})
-        
-        # Add additional fields for curation
         analysis_results["taxa"] = extract_taxa(paper_content["full_text"])
-        
-        # Create response with metadata and analysis
         response = {
             "metadata": {
                 "title": paper_content["title"],
                 "abstract": paper_content["abstract"],
-                "pmid": "",  # No PMID for uploaded files
-                "doi": "",   # No DOI for uploaded files
-                "publication_date": ""  # No date for uploaded files
+                "pmid": "",
+                "doi": "",
+                "publication_date": ""
             },
             "analysis": analysis_results
         }
-        
-        # If username is provided, update user session
-        if username:
-            try:
-                session = user_manager.get_session(username)
-                if not session:
-                    session = user_manager.start_session(username)
-                session.set_current_paper(file.filename)  # Use filename as identifier
-                user_manager.save_session(username)
-            except Exception as e:
-                print(f"Error updating user session for {username}: {str(e)}")
-        
         return response
     except HTTPException as he:
         raise he
@@ -448,7 +425,7 @@ async def root():
     return RedirectResponse(url="/static/index.html")
 
 @app.get("/analyze/{pmid}")
-async def analyze_paper(pmid: str, request: Request):
+async def analyze_paper(pmid: str):
     warning = None
     error = None
     try:
@@ -461,6 +438,21 @@ async def analyze_paper(pmid: str, request: Request):
         try:
             logger.info(f"Attempting to fetch full text for PMID: {pmid}")
             full_text = retriever.get_pmc_fulltext(pmid)
+            # Robustly handle different types
+            if isinstance(full_text, str):
+                try:
+                    soup = BeautifulSoup(full_text, 'lxml')
+                    full_text = retriever._extract_text_from_pmc_xml(soup)
+                except Exception as e:
+                    logger.warning(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
+            elif isinstance(full_text, list):
+                logger.warning(f"PMC full text result is a list for PMID {pmid}, joining as string.")
+                full_text = '\n'.join(str(x) for x in full_text)
+            elif full_text is None:
+                logger.warning(f"PMC full text result is None for PMID {pmid}.")
+            else:
+                logger.warning(f"PMC full text result is not a string or list: {type(full_text)}")
+                full_text = str(full_text)
         except Exception as e:
             logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
             full_text = None
@@ -518,7 +510,8 @@ async def analyze_paper(pmid: str, request: Request):
             "metadata": metadata,
             "analysis": analysis,
             "error": error,
-            "warning": warning
+            "warning": warning,
+            "full_text_type": str(type(full_text)),
         }
         return JSONResponse(content=response)
     except Exception as e:

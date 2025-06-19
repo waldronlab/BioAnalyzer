@@ -10,9 +10,9 @@ sys.path.append(str(project_root))
 
 from utils.config import (
     NCBI_API_KEY,
-    OPENAI_API_KEY,
+    GEMINI_API_KEY,
     EMAIL,
-    validate_openai_key,
+    validate_gemini_key,
     check_required_vars
 )
 
@@ -23,19 +23,19 @@ def main():
     # Check required environment variables
     print("\nRequired Environment Variables:")
     print(f"NCBI_API_KEY: {'✓ Set' if NCBI_API_KEY else '✗ Missing'}")
-    print(f"OPENAI_API_KEY: {'✓ Set' if OPENAI_API_KEY else '✗ Missing'}")
+    print(f"GEMINI_API_KEY: {'✓ Set' if GEMINI_API_KEY else '✗ Missing'}")
     print(f"EMAIL: {'✓ Set' if EMAIL else '✗ Missing'}")
     
     # Validate API keys
     print("\nAPI Key Validation:")
-    print(f"OpenAI API: {'✓ Valid' if validate_openai_key() else '✗ Invalid'}")
+    print(f"Gemini API: {'✓ Valid' if validate_gemini_key() else '✗ Invalid'}")
     
     # Check if all required variables are set
     if check_required_vars():
         print("\n✓ All required environment variables are set and valid.")
     else:
         print("\n✗ Some required environment variables are missing or invalid.")
-        print("\nNote: OpenAI API key is required.")
+        print("\nNote: Gemini API key is required.")
 
 if __name__ == "__main__":
     main() 

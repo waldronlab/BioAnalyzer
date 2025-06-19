@@ -17,12 +17,11 @@ from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor
 from utils.config import (
     NCBI_API_KEY, 
-    OPENAI_API_KEY, 
+    GEMINI_API_KEY, 
     DEFAULT_MODEL,
     AVAILABLE_MODELS
 )
 import re
-import openai
 import asyncio
 import logging
 import sys
@@ -37,56 +36,6 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="BugSigDB Analyzer")
 
-# Configure API keys
-openai.api_key = OPENAI_API_KEY
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
-# Model configuration
-class ModelConfig:
-    def __init__(self):
-        self.openai_available = bool(OPENAI_API_KEY)
-        self.available_models = []
-        self.default_model = None
-        self.initialize_models()
-
-    def initialize_models(self):
-        # Initialize OpenAI
-        if self.openai_available:
-            self.available_models.append("openai")
-            self.default_model = "openai"
-            print("OpenAI model initialized successfully")
-
-        print(f"Available models: {self.available_models}")
-        print(f"Default model: {self.default_model}")
-
-    def get_model(self, preferred_model: Optional[str] = None) -> str:
-        """Get the model to use, considering preferences and availability"""
-        if preferred_model and preferred_model in self.available_models:
-            return preferred_model
-        return self.default_model
-
-    def is_model_available(self, model_name: str) -> bool:
-        """Check if a specific model is available"""
-        return model_name in self.available_models
-
-# Initialize model configuration
-model_config = ModelConfig()
-
-# Initialize UnifiedQA with OpenAI only
-qa_system = UnifiedQA(
-    use_openai=model_config.openai_available,
-    use_gemini=False,
-    openai_api_key=OPENAI_API_KEY,
-    gemini_api_key=None
-)
-
-# Update available models based on successful initialization
-AVAILABLE_MODELS = model_config.available_models
-DEFAULT_MODEL = model_config.default_model
-
-print(f"Final available models: {AVAILABLE_MODELS}")
-print(f"Final default model: {DEFAULT_MODEL}")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -98,8 +47,16 @@ app.add_middleware(
 # Initialize components
 text_processor = AdvancedTextProcessor()
 model = None
-print(f"Model Status: Using {DEFAULT_MODEL} as primary model")
+if GEMINI_API_KEY:
+    print("Model Status: Using gemini as primary model")
+else:
+    print("Model Status: No Gemini API key found. No LLM available.")
 retriever = PubMedRetriever(api_key=NCBI_API_KEY)
+
+qa_system = UnifiedQA(
+    use_gemini=bool(GEMINI_API_KEY),
+    gemini_api_key=GEMINI_API_KEY
+)
 
 # Mount static files after API routes
 static_dir = Path(__file__).parent / "static"
@@ -114,15 +71,11 @@ class Question(BaseModel):
     question: str
 
 async def process_message(message):
-    """Process incoming WebSocket messages"""
     try:
         content = message.get('content', '')
         current_paper = message.get('currentPaper')
-        
         if not content:
             return {"error": "No message content provided"}
-            
-        # Create context from current paper if available
         context = ""
         if current_paper:
             try:
@@ -131,27 +84,18 @@ async def process_message(message):
                     context = f"Title: {metadata['title']}\nAbstract: {metadata['abstract']}"
             except Exception as e:
                 print(f"Error getting paper metadata: {str(e)}")
-        
-        # Use OpenAI for chat
-        if model_config.openai_available:
+        # Use Gemini for chat (simulate with analyze_paper for now)
+        if GEMINI_API_KEY:
             try:
-                response = await client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant analyzing scientific papers. " + 
-                         ("Here is the current paper context:\n" + context if context else "")},
-                        {"role": "user", "content": content}
-                    ],
-                    temperature=0.7,
-                    max_tokens=500
-                )
-                return {"response": response.choices[0].message.content}
+                # For chat, we can use the same analyze_paper logic for now
+                paper_content = {"title": context, "abstract": content, "full_text": ""}
+                response = await qa_system.analyze_paper(paper_content)
+                return {"response": "\n".join(response.get("key_findings", []))}
             except Exception as e:
-                print(f"Error with OpenAI: {str(e)}")
+                print(f"Error with Gemini: {str(e)}")
                 return {"error": f"Error processing message: {str(e)}"}
         else:
             return {"error": "No AI models available"}
-            
     except Exception as e:
         print(f"Error processing message: {str(e)}")
         return {"error": str(e)}
@@ -186,19 +130,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         except Exception as e:
                             print(f"Warning: Could not retrieve full text for PMID {pmid}: {str(e)}")
                         
-                        # Analyze paper using OpenAI
-                        if model_config.openai_available:
-                            response = await client.chat.completions.create(
-                                model="gpt-3.5-turbo",
-                                messages=[
-                                    {"role": "system", "content": "You are a helpful assistant analyzing scientific papers. Extract key findings, suggested topics, and categorize the content."},
-                                    {"role": "user", "content": f"Analyze this paper:\nTitle: {metadata['title']}\nAbstract: {metadata['abstract']}\nFull Text: {full_text}"}
-                                ],
-                                temperature=0.7,
-                                max_tokens=1000
+                        # Analyze paper using Gemini
+                        if GEMINI_API_KEY:
+                            response = await qa_system.analyze_paper(
+                                {"title": metadata["title"], "abstract": metadata["abstract"], "full_text": full_text}
                             )
                             
-                            analysis_text = response.choices[0].message.content
+                            analysis_text = response.get("key_findings", [])
                             analysis_result = {
                                 "type": "analysis_result",
                                 "title": metadata["title"],
@@ -206,14 +144,14 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "journal": metadata.get("journal", "N/A"),
                                 "date": metadata.get("publication_date", "N/A"),
                                 "doi": metadata.get("doi", "N/A"),
-                                "abstract": metadata.get("abstract", "N/A"),
-                                "key_findings": [line.strip() for line in analysis_text.split('\n') if line.strip()],
+                                "abstract": metadata["abstract"],
+                                "key_findings": analysis_text,
                                 "confidence": 0.8,
                                 "status": "success",
                                 "suggested_topics": [],
                                 "found_terms": {},
                                 "category_scores": {},
-                                "num_tokens": len(analysis_text.split())
+                                "num_tokens": len(analysis_text)
                             }
                             await websocket.send_json(analysis_result)
                         else:
@@ -262,25 +200,19 @@ async def ask_question(pmid: str, question: Question):
             # Continue with just the abstract
         
         # Try models in order of preference
-        models_to_try = ["openai"] if "openai" in AVAILABLE_MODELS else AVAILABLE_MODELS
+        models_to_try = ["gemini"] if "gemini" in AVAILABLE_MODELS else AVAILABLE_MODELS
         answer = None
         confidence = 0.0
         
         for model_name in models_to_try:
             try:
-                if model_name == "openai" and model_config.openai_available:
-                    print(f"Attempting to use OpenAI for question answering")
-                    response = await client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": f"You are a helpful assistant analyzing a scientific paper. Here is the paper content:\n\n{context}"},
-                            {"role": "user", "content": question.question}
-                        ],
-                        temperature=0.7,
-                        max_tokens=500
+                if model_name == "gemini" and GEMINI_API_KEY:
+                    print(f"Attempting to use Gemini for question answering")
+                    response = await qa_system.analyze_paper(
+                        {"title": context, "abstract": question.question, "full_text": ""}
                     )
-                    answer = response.choices[0].message.content
-                    confidence = 0.8  # OpenAI responses are generally reliable
+                    answer = response.get("key_findings", [])
+                    confidence = 0.8  # Gemini responses are generally reliable
                     break
                     
             except Exception as e:
@@ -336,8 +268,8 @@ async def upload_paper(file: UploadFile = File(...), username: str = Form(None))
         # Use QA system to analyze the paper
         results = await qa_system.analyze_paper(paper_content)
         
-        # Prefer OpenAI results if available
-        analysis_results = results.get("openai", {})
+        # Prefer Gemini results if available
+        analysis_results = results.get("gemini", {})
         
         # Add additional fields for curation
         analysis_results["taxa"] = extract_taxa(paper_content["full_text"])
@@ -450,12 +382,10 @@ async def get_model_status():
     """Get the status of available AI models."""
     try:
         status = {
-            "available_models": model_config.available_models,
-            "default_model": model_config.default_model,
-            "openai_available": model_config.openai_available,
-            "gemini_available": False,  # Commented out Gemini
-            "openai_key_present": bool(OPENAI_API_KEY),
-            "gemini_key_present": False  # Commented out Gemini
+            "available_models": AVAILABLE_MODELS,
+            "default_model": DEFAULT_MODEL,
+            "gemini_available": bool(GEMINI_API_KEY),
+            "gemini_key_present": bool(GEMINI_API_KEY)
         }
         return status
     except Exception as e:
@@ -515,22 +445,18 @@ async def analyze_by_url(url: str, request: Request):
 
 @app.get("/")
 async def root():
-    return {"message": "BugSigDB Analyzer API is running"}
+    return RedirectResponse(url="/static/index.html")
 
 @app.get("/analyze/{pmid}")
 async def analyze_paper(pmid: str, request: Request):
+    warning = None
+    error = None
     try:
         logger.info(f"=== Starting analysis for PMID: {pmid} ===")
-        
-        # Get paper metadata
-        logger.info(f"Fetching metadata for PMID: {pmid}")
         metadata = retriever.get_paper_metadata(pmid)
-        
         if not metadata:
-            raise HTTPException(status_code=404, detail="Paper not found")
-            
+            return JSONResponse(content={"error": "Paper not found"}, status_code=200)
         logger.info(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
-        
         # Try to get full text (optional)
         try:
             logger.info(f"Attempting to fetch full text for PMID: {pmid}")
@@ -538,36 +464,66 @@ async def analyze_paper(pmid: str, request: Request):
         except Exception as e:
             logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
             full_text = None
-            
-        # Prepare response
-        response = {
-            "metadata": metadata,
-            "analysis": {
-                "status": "success",
-                "confidence": 0.85,  # Example confidence score
-                "category_scores": {
-                    "relevance": 0.9,
-                    "methodology": 0.8,
-                    "significance": 0.75
-                },
-                "key_findings": [
-                    "Finding 1",
-                    "Finding 2",
-                    "Finding 3"
-                ],
-                "suggested_topics": [
-                    "Topic 1",
-                    "Topic 2",
-                    "Topic 3"
-                ]
-            }
+        paper_content = {
+            "title": metadata.get("title", ""),
+            "abstract": metadata.get("abstract", ""),
+            "full_text": full_text or ""
         }
-        
+        # Run analysis using the QA system
+        try:
+            analysis = await qa_system.analyze_paper(paper_content)
+            if analysis.get("error"):
+                warning = (
+                    "The Gemini API key has IP address restrictions. "
+                    "Your current IP address is not authorized to use this API key. "
+                    "Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
+                )
+                analysis["warning"] = warning
+        except Exception as e:
+            logger.error(f"Error during analysis: {str(e)}")
+            warning = (
+                "The Gemini API key has IP address restrictions. "
+                "Your current IP address is not authorized to use this API key. "
+                "Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
+            )
+            analysis = {
+                "has_signatures": False,
+                "confidence": 0.0,
+                "key_findings": [],
+                "suggested_topics": [],
+                "category_scores": {
+                    "microbiome": 0,
+                    "methods": 0,
+                    "analysis": 0,
+                    "body_sites": 0,
+                    "diseases": 0
+                },
+                "found_terms": {
+                    "microbiome": [],
+                    "methods": [],
+                    "analysis": [],
+                    "body_sites": [],
+                    "diseases": []
+                },
+                "is_complete": False,
+                "num_tokens": 0,
+                "status": "error",
+                "warning": warning,
+                "error": str(e)
+            }
+            error = str(e)
+        # Compose the response for the frontend
+        response = {
+            "pmid": pmid,
+            "metadata": metadata,
+            "analysis": analysis,
+            "error": error,
+            "warning": warning
+        }
         return JSONResponse(content=response)
-        
     except Exception as e:
         logger.error(f"Error analyzing paper {pmid}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(content={"error": str(e)}, status_code=200)
 
 if __name__ == "__main__":
     import uvicorn

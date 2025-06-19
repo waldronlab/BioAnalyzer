@@ -24,8 +24,8 @@ from pydantic import validator
 import asyncio
 from utils.config import (
     NCBI_API_KEY,
-    OPENAI_API_KEY,
-    DEFAULT_MODEL,
+    GEMINI_API_KEY,
+    EMAIL,
     AVAILABLE_MODELS
 )
 from fastapi.testclient import TestClient
@@ -33,7 +33,6 @@ import pytz
 from models.unified_qa import UnifiedQA
 from retrieve.data_retrieval import PubMedRetriever
 from utils.user_manager import UserManager
-import openai
 import pytest
 
 class Message(BaseModel):
@@ -122,23 +121,18 @@ class AnalysisResponse(BaseModel):
 # Initialize FastAPI app
 app = FastAPI(title="BugSigDB Analyzer Test")
 
-# Configure API keys
-openai.api_key = OPENAI_API_KEY
-
 # Model configuration
 class ModelConfig:
     def __init__(self):
-        self.openai_available = bool(OPENAI_API_KEY)
         self.available_models = []
         self.default_model = None
         self.initialize_models()
 
     def initialize_models(self):
-        # Initialize OpenAI
-        if self.openai_available:
-            self.available_models.append("openai")
-            self.default_model = "openai"
-            print("OpenAI model initialized successfully")
+        # Initialize Gemini
+        self.available_models.append("gemini")
+        self.default_model = "gemini"
+        print("Gemini model initialized successfully")
 
         print(f"Available models: {self.available_models}")
         print(f"Default model: {self.default_model}")
@@ -156,12 +150,10 @@ class ModelConfig:
 # Initialize model configuration
 model_config = ModelConfig()
 
-# Initialize UnifiedQA with OpenAI only
+# Initialize UnifiedQA with Gemini only
 qa_system = UnifiedQA(
-    use_openai=model_config.openai_available,
-    use_gemini=False,  # Disabled Gemini
-    openai_api_key=OPENAI_API_KEY,
-    gemini_api_key=None  # No Gemini API key
+    use_gemini=True,  # Enabled Gemini
+    gemini_api_key=GEMINI_API_KEY  # Gemini API key
 )
 
 # Update available models based on successful initialization
@@ -221,7 +213,7 @@ async def get_model_status():
     return {
         "available_models": model_config.available_models,
         "default_model": model_config.default_model,
-        "openai_available": model_config.openai_available
+        "gemini_available": model_config.is_model_available("gemini")
     }
 
 @app.post("/cleanup_session/{name}")
@@ -278,7 +270,7 @@ def test_model_status():
     assert response.status_code == 200
     assert "available_models" in response.json()
     assert "default_model" in response.json()
-    assert "openai_available" in response.json()
+    assert "gemini_available" in response.json()
 
 def test_cleanup_session():
     response = client.post("/cleanup_session/test_user")

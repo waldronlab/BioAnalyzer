@@ -16,7 +16,7 @@ import pytz
 
 # Add parent directory to path to allow importing utils.config
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.config import NCBI_API_KEY, OPENAI_API_KEY, EMAIL
+from utils.config import NCBI_API_KEY, GEMINI_API_KEY, EMAIL
 from utils.data_processor import clean_scientific_text
 
 # Configure logging
@@ -58,12 +58,10 @@ async def analyze_paper(
     Returns:
         Dictionary containing analysis results
     """
-    # Initialize UnifiedQA with OpenAI
+    # Initialize UnifiedQA with Gemini
     qa_system = UnifiedQA(
-        use_openai=True,
-        use_gemini=False,
-        openai_api_key=OPENAI_API_KEY,
-        gemini_api_key=None
+        use_gemini=True,
+        gemini_api_key=GEMINI_API_KEY
     )
     
     # Run analysis
@@ -90,7 +88,6 @@ def main():
     parser.add_argument("--abstract", help="Paper abstract")
     parser.add_argument("--full_text", help="Paper full text")
     parser.add_argument("--output_dir", help="Directory to save results")
-    parser.add_argument("--models", nargs="+", help="Specific models to use (openai)")
     
     args = parser.parse_args()
     
@@ -104,7 +101,6 @@ def main():
     # Run analysis
     results = asyncio.run(analyze_paper(
         paper_content=paper_content,
-        models_to_use=args.models,
         output_dir=args.output_dir
     ))
     

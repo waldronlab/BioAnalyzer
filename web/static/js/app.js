@@ -126,6 +126,41 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayAnalysisResults(data) {
         console.log('Displaying analysis results:', data);
         
+        // Show top-level warning or error if present
+        const resultsDiv = getElement('results');
+        if (resultsDiv) {
+            // Remove previous alerts
+            const oldAlerts = resultsDiv.querySelectorAll('.backend-alert');
+            oldAlerts.forEach(el => el.remove());
+            // Show warning
+            if (data.warning) {
+                const warnDiv = document.createElement('div');
+                warnDiv.className = 'alert alert-warning backend-alert';
+                warnDiv.textContent = data.warning;
+                resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
+            }
+            // Show error
+            if (data.error) {
+                const errDiv = document.createElement('div');
+                errDiv.className = 'alert alert-danger backend-alert';
+                errDiv.textContent = data.error;
+                resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
+            }
+            // Show analysis warning/error if present
+            if (data.analysis?.warning) {
+                const warnDiv = document.createElement('div');
+                warnDiv.className = 'alert alert-warning backend-alert';
+                warnDiv.textContent = data.analysis.warning;
+                resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
+            }
+            if (data.analysis?.error) {
+                const errDiv = document.createElement('div');
+                errDiv.className = 'alert alert-danger backend-alert';
+                errDiv.textContent = data.analysis.error;
+                resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
+            }
+        }
+
         // Update paper metadata
         const titleEl = getElement('paper-title');
         const authorsEl = getElement('paper-authors');
@@ -249,7 +284,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Show results container
-        const resultsDiv = getElement('results');
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.opacity = '0';
@@ -322,12 +356,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Show loader and disable button
+        // Show loader/message and disable button
         const loader = document.getElementById('loading');
-        const analyzeBtn = document.getElementById('analyze-btn');
+        const analyzeBtn = document.getElementById('analyze-btn') || document.getElementById('analyze-button');
         const results = document.getElementById('results');
         
-        if (loader) loader.style.display = 'block';
+        if (loader) {
+            loader.innerHTML = `
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Analyzing paper...</p>
+            `;
+            loader.style.display = 'block';
+        }
         if (analyzeBtn) analyzeBtn.disabled = true;
         if (results) results.style.display = 'none';
 
@@ -359,7 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Analysis error:', error);
             showError(error.message || 'Failed to analyze paper');
         } finally {
-            // Hide loader and enable button
+            // Hide loader/message and enable button
             if (loader) loader.style.display = 'none';
             if (analyzeBtn) analyzeBtn.disabled = false;
         }

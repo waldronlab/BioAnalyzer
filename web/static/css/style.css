@@ -610,3 +610,25 @@ body.light {
         position: static;
     }
 }
+
+/* Sidebar should always be visible */
+.sidebar.right-sidebar {
+    display: block !important;
+    visibility: visible !important;
+    background: #f8f9fa;
+    border-left: 2px solid #dee2e6;
+    min-width: 260px;
+    max-width: 320px;
+    padding: 20px 16px;
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 1000;
+    overflow-y: auto;
+}
+
+/* Ensure main content does not overlap sidebar */
+.main-content {
+    margin-right: 320px;
+}

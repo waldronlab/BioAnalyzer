@@ -740,6 +740,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Switch to chat tab
         document.getElementById('chat-tab').click();
         setTimeout(() => {
+            // Pre-fill chat input with a reference to the paper
+            const messageInput = document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.value = `I want to discuss the paper: \"${title}\" (PMID: ${pmid})`;
+                messageInput.focus();
+            }
             displayAssistantMessage(`What would you like to know about this paper: "${title}" (PMID: ${pmid})?`);
         }, 500);
     }
@@ -747,17 +753,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make sendMessage globally available
     window.sendMessage = sendMessage;
 
-    // Add a placeholder askQuestion if not defined
-    if (typeof askQuestion !== 'function') {
-        window.askQuestion = function() {
-            const qaResults = document.getElementById('qa-results');
-            if (qaResults) {
-                qaResults.innerHTML = '<div class="alert alert-info">Q&A functionality coming soon!</div>';
-            }
+    // Implement askQuestion logic
+    window.askQuestion = async function() {
+        const questionInput = document.getElementById('paper-question');
+        const qaResults = document.getElementById('qa-results');
+        const pmid = document.getElementById('paper-pmid')?.textContent?.trim();
+        if (!questionInput || !qaResults || !pmid) {
+            qaResults.innerHTML = '<div class="alert alert-danger">Unable to find paper or question input.</div>';
+            return;
         }
-    } else {
-        window.askQuestion = askQuestion;
-    }
+        const question = questionInput.value.trim();
+        if (!question) {
+            qaResults.innerHTML = '<div class="alert alert-warning">Please enter a question.</div>';
+            return;
+        }
+        qaResults.innerHTML = '<div class="alert alert-info">Asking your question...</div>';
+        try {
+            const response = await fetch(`/ask_question/${pmid}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question })
+            });
+            if (!response.ok) {
+                throw new Error('Server error: ' + response.status);
+            }
+            const data = await response.json();
+            let answer = data.answer;
+            if (Array.isArray(answer)) answer = answer.join('<br>');
+            let userRef = window.userName ? window.userName : 'User';
+            qaResults.innerHTML = `<div class="alert alert-success"><strong>Answer for ${userRef}:</strong><br>${answer}</div>`;
+        } catch (err) {
+            qaResults.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+        }
+    };
 
     // Make switchToChatWithPaper globally available
     window.switchToChatWithPaper = switchToChatWithPaper;

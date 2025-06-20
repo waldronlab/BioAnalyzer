@@ -98,49 +98,55 @@
         .chat-container {
             height: 400px;
             overflow-y: auto;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            padding: 15px;
+            border: none;
+            border-radius: 0;
+            padding: 0 0 0 0;
             margin-bottom: 15px;
-            background-color: #f8f9fa;
+            background: #fff;
+            box-shadow: none;
+            position: relative;
         }
         .message {
-            margin: 10px 0;
-            padding: 12px 15px;
-            border-radius: 15px;
-            max-width: 80%;
+            margin: 32px 0 32px 0;
+            padding: 16px 20px;
+            border-radius: 18px;
+            max-width: 60%;
             position: relative;
             clear: both;
+            font-size: 1.1em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
         .user-message {
-            background-color: #0d6efd;
-            color: white;
+            background-color: #23272f;
+            color: #fff;
             float: right;
-            border-bottom-right-radius: 5px;
-            margin-left: 20%;
+            border-bottom-right-radius: 8px;
+            margin-left: 30%;
         }
         .assistant-message {
-            background-color: #e9ecef;
-            color: #212529;
+            background-color: #222b3a;
+            color: #e6e6e6;
             float: left;
-            border-bottom-left-radius: 5px;
-            margin-right: 20%;
+            border-bottom-left-radius: 8px;
+            margin-right: 30%;
         }
         .system-message {
-            background-color: #ffc107;
-            color: #212529;
+            background-color: #2d3748;
+            color: #f6e05e;
             text-align: center;
-            margin: 10px auto;
+            margin: 20px auto;
             float: none;
-            font-size: 0.9em;
+            font-size: 1em;
+            border-radius: 10px;
         }
         .error-message {
             background-color: #dc3545;
             color: white;
             text-align: center;
-            margin: 10px auto;
+            margin: 20px auto;
             float: none;
-            font-size: 0.9em;
+            font-size: 1em;
+            border-radius: 10px;
         }
         .message-sender {
             font-size: 0.8em;
@@ -644,6 +650,7 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            z-index: 10;
         }
         
         .download-chat:hover {
@@ -937,6 +944,23 @@
                                                             </div>
                                                         </div>
                                                     </div>
+                                                    <!-- Paper Q&A Section -->
+                                                    <div class="card mt-4">
+                                                        <div class="card-body">
+                                                            <h4 class="h6 mb-3">Ask Questions About This Paper</h4>
+                                                            <div class="input-group mb-3">
+                                                                <input type="text" id="paper-question" class="form-control" placeholder="Ask a question about this paper...">
+                                                                <button class="btn btn-outline-primary" onclick="askQuestion()">Ask</button>
+                                                            </div>
+                                                            <div id="qa-results"></div>
+                                                            <!-- Chat about paper button -->
+                                                            <div class="mt-3 text-center">
+                                                                <button id="chat-about-paper-btn" class="btn btn-primary" onclick="switchToChatWithPaper()" disabled>
+                                                                    <i class="fas fa-comments me-2"></i><span id="chat-btn-text">Continue discussing this paper in Chat</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -965,7 +989,9 @@
                             <div class="chat-tab-header mb-3">
                                 <input type="text" id="chat-search" class="form-control" placeholder="Search chat history...">
                             </div>
-                            <div id="chat-container" class="chat-container"></div>
+                            <div id="chat-container" class="chat-container">
+                                <button class="download-chat" onclick="downloadChat()">Download Chat</button>
+                            </div>
                             <div class="chat-input-container">
                                 <input type="text" id="message-input" placeholder="Type your message..." disabled>
                                 <button id="send-button" onclick="sendMessage()" disabled>Send</button>

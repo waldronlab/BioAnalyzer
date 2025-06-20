@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPaper = null;
     let isAnalyzing = false;
     let isConnected = false;
+    let userName = null;
+    let currentPaperMeta = null;
 
     // Ensure all required elements are available
     function checkElements() {
@@ -63,13 +65,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
             ws = new WebSocket(wsUrl);
-            
+            ws.onopen = function() {
+                isConnected = true;
+                updateConnectionStatus('Connected', 'success');
+                // Show welcome message if chat is empty
+                const chatContainer = document.getElementById('chat-container');
+                if (chatContainer && chatContainer.children.length === 1) { // Only download button present
+                    displayChatMessage('Hey there! How can I help you today?', 'assistant');
+                }
+            };
+            ws.onclose = function() {
+                isConnected = false;
+                updateConnectionStatus('Disconnected', 'danger');
+            };
             ws.onerror = function(error) {
-                console.error('WebSocket error:', error);
+                isConnected = false;
                 updateConnectionStatus('Connection failed', 'danger');
             };
         } catch (error) {
-            console.error('Failed to initialize WebSocket:', error);
+            isConnected = false;
+            updateConnectionStatus('Connection failed', 'danger');
         }
     }
 
@@ -624,4 +639,154 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Analyze button not found');
     }
     initWebSocket();
+
+    // Download chat as .txt file
+    window.downloadChat = function() {
+        const chatContainer = document.getElementById('chat-container');
+        if (!chatContainer) return;
+        const messages = chatContainer.querySelectorAll('.message, .system-message, .error-message');
+        let chatText = '';
+        messages.forEach(msg => {
+            let sender = '';
+            if (msg.classList.contains('user-message')) sender = 'You: ';
+            else if (msg.classList.contains('assistant-message')) sender = 'Assistant: ';
+            else if (msg.classList.contains('system-message')) sender = 'System: ';
+            else if (msg.classList.contains('error-message')) sender = 'Error: ';
+            chatText += sender + msg.textContent.trim() + '\n\n';
+        });
+        const blob = new Blob([chatText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'chat_history.txt';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    }
+
+    // Ensure chat input is enabled when chat tab is active
+    function enableChatInput() {
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        if (messageInput) messageInput.disabled = false;
+        if (sendButton) sendButton.disabled = false;
+    }
+
+    // Listen for tab change to enable chat input and show personalized welcome
+    const chatTab = document.getElementById('chat-tab');
+    if (chatTab) {
+        chatTab.addEventListener('click', enableChatInput);
+        chatTab.addEventListener('click', showPersonalizedWelcome);
+    }
+
+    // Also enable chat input on DOMContentLoaded if chat tab is already active
+    if (document.getElementById('chat').classList.contains('active')) {
+        enableChatInput();
+    }
+
+    // Helper: display assistant message
+    function displayAssistantMessage(msg) {
+        displayChatMessage(msg, 'assistant');
+    }
+
+    // Helper: display user message
+    function displayUserMessage(msg) {
+        displayChatMessage(msg, 'user');
+    }
+
+    // On chat tab open, show personalized welcome if no username
+    function showPersonalizedWelcome() {
+        const chatContainer = document.getElementById('chat-container');
+        if (chatContainer && chatContainer.children.length === 1 && !userName) {
+            displayAssistantMessage('Welcome to BugSigDB Analyzer.');
+            setTimeout(() => {
+                displayAssistantMessage('Could you let me know your name please?');
+            }, 500);
+        }
+    }
+
+    // Listen for user name input (first message after welcome)
+    function handleUserNameInput() {
+        const messageInput = document.getElementById('message-input');
+        if (!userName && messageInput) {
+            const originalSend = sendMessage;
+            window.sendMessage = function() {
+                const msg = messageInput.value.trim();
+                if (!msg) return;
+                if (!userName) {
+                    userName = msg;
+                    displayUserMessage(msg);
+                    displayAssistantMessage(`Nice to meet you, ${userName}! How can I help you today?`);
+                    messageInput.value = '';
+                    // Restore sendMessage for normal chat
+                    window.sendMessage = originalSend;
+                    return;
+                }
+                originalSend();
+            }
+        }
+    }
+    document.addEventListener('DOMContentLoaded', handleUserNameInput);
+
+    // Paper chat: store paper meta and greet
+    window.switchToChatWithPaper = function() {
+        // Get paper title and PMID from DOM
+        const title = document.getElementById('paper-title-short')?.textContent || '';
+        const pmid = document.getElementById('paper-pmid')?.textContent || '';
+        currentPaperMeta = { title, pmid };
+        // Switch to chat tab
+        document.getElementById('chat-tab').click();
+        setTimeout(() => {
+            // Pre-fill chat input with a reference to the paper
+            const messageInput = document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.value = `I want to discuss the paper: \"${title}\" (PMID: ${pmid})`;
+                messageInput.focus();
+            }
+            displayAssistantMessage(`What would you like to know about this paper: "${title}" (PMID: ${pmid})?`);
+        }, 500);
+    }
+
+    // Make sendMessage globally available
+    window.sendMessage = sendMessage;
+
+    // Implement askQuestion logic
+    window.askQuestion = async function() {
+        const questionInput = document.getElementById('paper-question');
+        const qaResults = document.getElementById('qa-results');
+        const pmid = document.getElementById('paper-pmid')?.textContent?.trim();
+        if (!questionInput || !qaResults || !pmid) {
+            qaResults.innerHTML = '<div class="alert alert-danger">Unable to find paper or question input.</div>';
+            return;
+        }
+        const question = questionInput.value.trim();
+        if (!question) {
+            qaResults.innerHTML = '<div class="alert alert-warning">Please enter a question.</div>';
+            return;
+        }
+        qaResults.innerHTML = '<div class="alert alert-info">Asking your question...</div>';
+        try {
+            const response = await fetch(`/ask_question/${pmid}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question })
+            });
+            if (!response.ok) {
+                throw new Error('Server error: ' + response.status);
+            }
+            const data = await response.json();
+            let answer = data.answer;
+            if (Array.isArray(answer)) answer = answer.join('<br>');
+            let userRef = window.userName ? window.userName : 'User';
+            qaResults.innerHTML = `<div class="alert alert-success"><strong>Answer for ${userRef}:</strong><br>${answer}</div>`;
+        } catch (err) {
+            qaResults.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+        }
+    };
+
+    // Make switchToChatWithPaper globally available
+    window.switchToChatWithPaper = switchToChatWithPaper;
 });

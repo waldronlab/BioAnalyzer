@@ -342,6 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Analyze paper
     async function analyzePaper() {
         const pmid = document.getElementById('pmid').value.trim();
+        console.log("Analyze clicked, pmid:", pmid);
         if (!pmid) {
             showError('Please enter a PMID');
             return;
@@ -350,11 +351,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show loader immediately
         const loader = document.getElementById('loading');
         const analyzeBtn = document.getElementById('analyze-btn') || document.getElementById('analyze-button');
+        const resultsDiv = document.getElementById('results');
         if (loader) {
             loader.style.display = 'block';
         }
         if (analyzeBtn) {
             analyzeBtn.disabled = true;
+        }
+        if (resultsDiv) {
+            resultsDiv.style.display = 'block';
+            resultsDiv.style.opacity = '0.5';
+            resultsDiv.innerHTML = '';
         }
 
         try {
@@ -369,19 +376,27 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[analyzePaper] Parsed JSON:', data);
             if (!data || Object.keys(data).length === 0) {
                 showError('No data returned from backend.');
+                if (resultsDiv) {
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.style.opacity = '1';
+                }
                 return;
             }
             if (data.error) {
                 throw new Error(data.error);
             }
             displayAnalysisResults(data);
-            if (results) {
-                results.style.display = 'block';
-                results.style.opacity = '1';
+            if (resultsDiv) {
+                resultsDiv.style.display = 'block';
+                resultsDiv.style.opacity = '1';
             }
         } catch (error) {
             console.error('[analyzePaper] Analysis error:', error);
             showError(error.message || 'Failed to analyze paper');
+            if (resultsDiv) {
+                resultsDiv.style.display = 'block';
+                resultsDiv.style.opacity = '1';
+            }
         } finally {
             // Always hide loader and enable button
             if (loader) {

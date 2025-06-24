@@ -148,128 +148,149 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Update paper metadata
+        // Update paper metadata (always show, with fallback)
         const titleEl = getElement('paper-title');
         const authorsEl = getElement('paper-authors');
         const journalEl = getElement('paper-journal');
         const abstractEl = getElement('paper-abstract');
         const dateEl = getElement('paper-date');
         const doiEl = getElement('paper-doi');
-        
-        if (titleEl && data.metadata?.title) {
-            titleEl.textContent = data.metadata.title;
+        if (titleEl) {
+            titleEl.textContent = data.metadata?.title || 'No data available';
         }
-        
-        if (authorsEl && data.metadata?.authors) {
-            authorsEl.textContent = data.metadata.authors;
+        if (authorsEl) {
+            authorsEl.textContent = data.metadata?.authors || 'No data available';
         }
-        
-        if (journalEl && data.metadata?.journal) {
-            journalEl.textContent = data.metadata.journal;
+        if (journalEl) {
+            journalEl.textContent = data.metadata?.journal || 'No data available';
         }
-        
-        if (abstractEl && data.metadata?.abstract) {
-            abstractEl.textContent = data.metadata.abstract;
+        if (abstractEl) {
+            abstractEl.textContent = data.metadata?.abstract || 'No data available';
         }
-
-        if (dateEl && data.metadata?.publication_date) {
-            dateEl.textContent = data.metadata.publication_date;
+        if (dateEl) {
+            dateEl.textContent = data.metadata?.publication_date || 'No data available';
+        }
+        if (doiEl) {
+            doiEl.textContent = data.metadata?.doi || 'No data available';
         }
 
-        if (doiEl && data.metadata?.doi) {
-            doiEl.textContent = data.metadata.doi;
-        }
-
-        // Update paper analysis details table
+        // Update paper analysis details table (always show, with fallback)
         const pmidEl = getElement('paper-pmid');
         const journalShortEl = getElement('paper-journal-short');
         const titleShortEl = getElement('paper-title-short');
         const yearEl = getElement('paper-year');
-
-        if (pmidEl && data.metadata?.pmid) {
-            pmidEl.textContent = data.metadata.pmid;
+        if (pmidEl) {
+            pmidEl.textContent = data.metadata?.pmid || 'No data available';
+        }
+        if (journalShortEl) {
+            journalShortEl.textContent = data.metadata?.journal || 'No data available';
+        }
+        if (titleShortEl) {
+            titleShortEl.textContent = data.metadata?.title || 'No data available';
+        }
+        if (yearEl) {
+            yearEl.textContent = data.metadata?.year || 'No data available';
         }
 
-        if (journalShortEl && data.metadata?.journal) {
-            journalShortEl.textContent = data.metadata.journal;
-        }
-
-        if (titleShortEl && data.metadata?.title) {
-            titleShortEl.textContent = data.metadata.title;
-        }
-
-        if (yearEl && data.metadata?.year) {
-            yearEl.textContent = data.metadata.year;
-        }
-
-        // Update MeSH terms if available
+        // Update MeSH terms if available, else show fallback
         const meshTermsEl = getElement('found-terms');
-        if (meshTermsEl && data.metadata?.mesh_terms) {
-            meshTermsEl.innerHTML = `
-                <h6 class="mb-2">MeSH Terms</h6>
-                <div class="d-flex flex-wrap gap-2">
-                    ${data.metadata.mesh_terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}
-                </div>
-            `;
+        if (meshTermsEl) {
+            if (data.metadata?.mesh_terms && data.metadata.mesh_terms.length > 0) {
+                meshTermsEl.innerHTML = `
+                    <h6 class="mb-2">MeSH Terms</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        ${data.metadata.mesh_terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}
+                    </div>
+                `;
+            } else {
+                meshTermsEl.innerHTML = '<span class="text-muted">No MeSH terms available</span>';
+            }
+            // Publication types
+            if (data.metadata?.publication_types && data.metadata.publication_types.length > 0) {
+                const pubTypesDiv = document.createElement('div');
+                pubTypesDiv.className = 'mt-3';
+                pubTypesDiv.innerHTML = `
+                    <h6 class="mb-2">Publication Types</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        ${data.metadata.publication_types.map(type => `<span class="badge bg-info">${type}</span>`).join('')}
+                    </div>
+                `;
+                meshTermsEl.appendChild(pubTypesDiv);
+            }
         }
 
-        // Update publication types if available
-        if (meshTermsEl && data.metadata?.publication_types) {
-            const pubTypesDiv = document.createElement('div');
-            pubTypesDiv.className = 'mt-3';
-            pubTypesDiv.innerHTML = `
-                <h6 class="mb-2">Publication Types</h6>
-                <div class="d-flex flex-wrap gap-2">
-                    ${data.metadata.publication_types.map(type => `<span class="badge bg-info">${type}</span>`).join('')}
-                </div>
-            `;
-            meshTermsEl.appendChild(pubTypesDiv);
-        }
-        
-        // Update confidence score
+        // Update confidence score (show fallback if missing)
         const confidenceFill = getElement('confidence-fill');
         const confidenceValue = getElement('confidence-value');
-        if (confidenceFill && confidenceValue && data.analysis?.confidence) {
-            const confidence = data.analysis.confidence * 100;
-            confidenceFill.style.width = `${confidence}%`;
-            confidenceFill.className = `progress-bar ${getScoreColor(data.analysis.confidence)}`;
-            confidenceValue.textContent = `${confidence.toFixed(1)}%`;
+        if (confidenceFill && confidenceValue) {
+            if (data.analysis?.confidence !== undefined && data.analysis?.confidence !== null) {
+                const confidence = data.analysis.confidence * 100;
+                confidenceFill.style.width = `${confidence}%`;
+                confidenceFill.className = `progress-bar ${getScoreColor(data.analysis.confidence)}`;
+                confidenceValue.textContent = `${confidence.toFixed(1)}%`;
+            } else {
+                confidenceFill.style.width = '0%';
+                confidenceFill.className = 'progress-bar bg-secondary';
+                confidenceValue.textContent = 'No data available';
+            }
         }
-        
-        // Update category scores
-        if (data.analysis?.category_scores) {
+
+        // Update category scores (show fallback if missing)
+        if (data.analysis?.category_scores && Object.keys(data.analysis.category_scores).length > 0) {
             updateCategoryScores(data.analysis.category_scores);
+        } else {
+            const categoryScoresDiv = getElement('category-scores');
+            if (categoryScoresDiv) {
+                categoryScoresDiv.innerHTML = '<span class="text-muted">No category scores available</span>';
+            }
         }
-        
-        // Update key findings
+
+        // Update key findings (show fallback if missing)
         const keyFindingsEl = getElement('key-findings');
-        if (keyFindingsEl && data.analysis?.key_findings) {
-            keyFindingsEl.innerHTML = data.analysis.key_findings
-                .map(finding => `<li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i>${finding}</li>`)
-                .join('');
+        if (keyFindingsEl) {
+            if (data.analysis?.key_findings && data.analysis.key_findings.length > 0) {
+                keyFindingsEl.innerHTML = data.analysis.key_findings
+                    .map(finding => `<li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i>${finding}</li>`)
+                    .join('');
+            } else {
+                keyFindingsEl.innerHTML = '<li class="text-muted">No key findings available</li>';
+            }
         }
-        
-        // Update suggested topics
+
+        // Update suggested topics (show fallback if missing)
         const suggestedTopicsEl = getElement('suggested-topics');
-        if (suggestedTopicsEl && data.analysis?.suggested_topics) {
-            suggestedTopicsEl.innerHTML = data.analysis.suggested_topics
-                .map(topic => `<li class="mb-2"><i class="fas fa-tag text-primary me-2"></i>${topic}</li>`)
-                .join('');
+        if (suggestedTopicsEl) {
+            if (data.analysis?.suggested_topics && data.analysis.suggested_topics.length > 0) {
+                suggestedTopicsEl.innerHTML = data.analysis.suggested_topics
+                    .map(topic => `<li class="mb-2"><i class="fas fa-tag text-primary me-2"></i>${topic}</li>`)
+                    .join('');
+            } else {
+                suggestedTopicsEl.innerHTML = '<li class="text-muted">No suggested topics available</li>';
+            }
         }
-        
-        // Update analysis status
+
+        // Update analysis status (show fallback if missing)
         const statusEl = getElement('analysis-status');
-        if (statusEl && data.analysis?.status) {
-            statusEl.textContent = data.analysis.status;
-            statusEl.className = `badge ${data.analysis.status === 'success' ? 'bg-success' : 'bg-danger'}`;
+        if (statusEl) {
+            if (data.analysis?.status) {
+                statusEl.textContent = data.analysis.status;
+                statusEl.className = `badge ${data.analysis.status === 'success' ? 'bg-success' : 'bg-danger'}`;
+            } else {
+                statusEl.textContent = 'No data available';
+                statusEl.className = 'badge bg-secondary';
+            }
         }
-        
-        // Update tokens generated
+
+        // Update tokens generated (show fallback if missing)
         const tokensEl = getElement('tokens-generated');
-        if (tokensEl && data.analysis?.num_tokens) {
-            tokensEl.textContent = data.analysis.num_tokens;
+        if (tokensEl) {
+            if (data.analysis?.num_tokens !== undefined && data.analysis?.num_tokens !== null) {
+                tokensEl.textContent = data.analysis.num_tokens;
+            } else {
+                tokensEl.textContent = 'No data available';
+            }
         }
-        
+
         // Show results container
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
@@ -361,7 +382,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.opacity = '0.5';
-            resultsDiv.innerHTML = '';
         }
 
         try {
@@ -381,9 +401,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     resultsDiv.style.opacity = '1';
                 }
                 return;
-            }
-            if (data.error) {
-                throw new Error(data.error);
             }
             displayAnalysisResults(data);
             if (resultsDiv) {
@@ -455,16 +472,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     sendMessage();
                 }
             });
-        }
-
-        // Create results container if it doesn't exist
-        const analyzeTab = document.getElementById('analyze');
-        if (analyzeTab && !document.getElementById('results')) {
-            const resultsDiv = document.createElement('div');
-            resultsDiv.id = 'results';
-            resultsDiv.className = 'mt-4';
-            resultsDiv.style.display = 'none';
-            analyzeTab.appendChild(resultsDiv);
         }
 
         // Create loading indicator if it doesn't exist

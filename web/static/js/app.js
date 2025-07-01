@@ -82,6 +82,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 isConnected = false;
                 updateConnectionStatus('Connection failed', 'danger');
             };
+            // Add onmessage handler to display assistant replies
+            ws.onmessage = function(event) {
+                console.log("Received from backend:", event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.response) {
+                        displayChatMessage(data.response, 'assistant');
+                        // Optionally display confidence
+                        if (data.confidence !== undefined && data.confidence !== null) {
+                            displayChatMessage(`Confidence: ${(data.confidence * 100).toFixed(1)}%`, 'system');
+                        }
+                    } else if (data.error) {
+                        displayChatMessage("Error: " + data.error, 'error');
+                    }
+                } catch (e) {
+                    console.error("Error parsing WebSocket message:", e, event.data);
+                }
+            };
         } catch (error) {
             isConnected = false;
             updateConnectionStatus('Connection failed', 'danger');
@@ -110,21 +128,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayAnalysisResults(data) {
         console.log('[displayAnalysisResults] Data:', data);
         
-        // Show top-level warning or error if present
+        // Show top-level warning or error if present (suppress duplicates)
         const resultsDiv = getElement('results');
         if (resultsDiv) {
             // Remove previous alerts
             const oldAlerts = resultsDiv.querySelectorAll('.backend-alert');
             oldAlerts.forEach(el => el.remove());
-            // Show warning
-            if (data.warning) {
-                const warnDiv = document.createElement('div');
-                warnDiv.className = 'alert alert-warning backend-alert';
-                warnDiv.innerHTML = `<strong>Warning:</strong> <span style="font-size:1.05em;">${data.warning}</span>`;
-                resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
-            }
-            // Show error
-            if (data.error) {
+            // Only show the first available error/warning
+            let shown = false;
+            if (!shown && data.error) {
                 const errDiv = document.createElement('div');
                 errDiv.className = 'alert alert-danger backend-alert';
                 errDiv.innerHTML = `<strong>Error:</strong> <span style="font-size:1.05em;">${data.error}</span>`;
@@ -132,19 +144,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     errDiv.innerHTML += `<br><small>Full text type: <code>${data.full_text_type}</code></small>`;
                 }
                 resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
-            }
-            // Show analysis warning/error if present
-            if (data.analysis?.warning) {
+                shown = true;
+            } else if (!shown && data.warning) {
                 const warnDiv = document.createElement('div');
                 warnDiv.className = 'alert alert-warning backend-alert';
-                warnDiv.innerHTML = `<strong>Analysis Warning:</strong> <span style="font-size:1.05em;">${data.analysis.warning}</span>`;
+                warnDiv.innerHTML = `<strong>Warning:</strong> <span style="font-size:1.05em;">${data.warning}</span>`;
                 resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
-            }
-            if (data.analysis?.error) {
+                shown = true;
+            } else if (!shown && data.analysis?.error) {
                 const errDiv = document.createElement('div');
                 errDiv.className = 'alert alert-danger backend-alert';
                 errDiv.innerHTML = `<strong>Analysis Error:</strong> <span style="font-size:1.05em;">${data.analysis.error}</span>`;
                 resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
+                shown = true;
+            } else if (!shown && data.analysis?.warning) {
+                const warnDiv = document.createElement('div');
+                warnDiv.className = 'alert alert-warning backend-alert';
+                warnDiv.innerHTML = `<strong>Analysis Warning:</strong> <span style="font-size:1.05em;">${data.analysis.warning}</span>`;
+                resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
+                shown = true;
             }
         }
 
@@ -155,6 +173,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const abstractEl = getElement('paper-abstract');
         const dateEl = getElement('paper-date');
         const doiEl = getElement('paper-doi');
+        const dateDetailEl = getElement('paper-date-detail');
+        const doiDetailEl = getElement('paper-doi-detail');
         if (titleEl) {
             titleEl.textContent = data.metadata?.title || 'No data available';
         }
@@ -173,51 +193,53 @@ document.addEventListener('DOMContentLoaded', () => {
         if (doiEl) {
             doiEl.textContent = data.metadata?.doi || 'No data available';
         }
+        if (dateDetailEl) {
+            dateDetailEl.textContent = data.metadata?.publication_date || 'No data available';
+        }
+        if (doiDetailEl) {
+            doiDetailEl.textContent = data.metadata?.doi || 'No data available';
+        }
+
+        // Show MeSH Terms and Publication Types in a prominent section
+        const meshTermsSection = document.getElementById('mesh-terms-section');
+        if (meshTermsSection) {
+            let html = '';
+            if (data.metadata?.mesh_terms && data.metadata.mesh_terms.length > 0) {
+                html += `<h6 class="mb-2">MeSH Terms</h6><div class="d-flex flex-wrap gap-2">${data.metadata.mesh_terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}</div>`;
+            }
+            if (data.metadata?.publication_types && data.metadata.publication_types.length > 0) {
+                html += `<h6 class="mb-2 mt-3">Publication Types</h6><div class="d-flex flex-wrap gap-2">${data.metadata.publication_types.map(type => `<span class="badge bg-info">${type}</span>`).join('')}</div>`;
+            }
+            meshTermsSection.innerHTML = html;
+        }
 
         // Update paper analysis details table (always show, with fallback)
         const pmidEl = getElement('paper-pmid');
         const journalShortEl = getElement('paper-journal-short');
         const titleShortEl = getElement('paper-title-short');
         const yearEl = getElement('paper-year');
-        if (pmidEl) {
-            pmidEl.textContent = data.metadata?.pmid || 'No data available';
-        }
-        if (journalShortEl) {
-            journalShortEl.textContent = data.metadata?.journal || 'No data available';
-        }
-        if (titleShortEl) {
-            titleShortEl.textContent = data.metadata?.title || 'No data available';
-        }
-        if (yearEl) {
-            yearEl.textContent = data.metadata?.year || 'No data available';
-        }
-
-        // Update MeSH terms if available, else show fallback
-        const meshTermsEl = getElement('found-terms');
-        if (meshTermsEl) {
-            if (data.metadata?.mesh_terms && data.metadata.mesh_terms.length > 0) {
-                meshTermsEl.innerHTML = `
-                    <h6 class="mb-2">MeSH Terms</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        ${data.metadata.mesh_terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}
-                    </div>
-                `;
-            } else {
-                meshTermsEl.innerHTML = '<span class="text-muted">No MeSH terms available</span>';
-            }
-            // Publication types
-            if (data.metadata?.publication_types && data.metadata.publication_types.length > 0) {
-                const pubTypesDiv = document.createElement('div');
-                pubTypesDiv.className = 'mt-3';
-                pubTypesDiv.innerHTML = `
-                    <h6 class="mb-2">Publication Types</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        ${data.metadata.publication_types.map(type => `<span class="badge bg-info">${type}</span>`).join('')}
-                    </div>
-                `;
-                meshTermsEl.appendChild(pubTypesDiv);
-            }
-        }
+        const hostEl = getElement('paper-host');
+        const bodySiteEl = getElement('paper-body-site');
+        const conditionEl = getElement('paper-condition');
+        const sequencingTypeEl = getElement('paper-sequencing-type');
+        const inBugSigDBEl = getElement('paper-in-bugsigdb');
+        const signatureProbEl = getElement('paper-signature-prob');
+        const sampleSizeEl = getElement('paper-sample-size');
+        const taxaLevelEl = getElement('paper-taxa-level');
+        const statMethodEl = getElement('paper-statistical-method');
+        if (pmidEl) pmidEl.textContent = data.metadata?.pmid || 'No data available';
+        if (journalShortEl) journalShortEl.textContent = data.metadata?.journal || 'No data available';
+        if (titleShortEl) titleShortEl.textContent = data.metadata?.title || 'No data available';
+        if (yearEl) yearEl.textContent = data.metadata?.year || 'No data available';
+        if (hostEl) hostEl.textContent = data.metadata?.host || 'No data available';
+        if (bodySiteEl) bodySiteEl.textContent = data.metadata?.body_site || 'No data available';
+        if (conditionEl) conditionEl.textContent = data.metadata?.condition || 'No data available';
+        if (sequencingTypeEl) sequencingTypeEl.textContent = data.metadata?.sequencing_type || 'No data available';
+        if (inBugSigDBEl) inBugSigDBEl.textContent = data.metadata?.in_bugsigdb || 'No data available';
+        if (signatureProbEl) signatureProbEl.textContent = data.metadata?.signature_probability || 'No data available';
+        if (sampleSizeEl) sampleSizeEl.textContent = data.metadata?.sample_size || 'No data available';
+        if (taxaLevelEl) taxaLevelEl.textContent = data.metadata?.taxa_level || 'No data available';
+        if (statMethodEl) statMethodEl.textContent = data.metadata?.statistical_method || 'No data available';
 
         // Update confidence score (show fallback if missing)
         const confidenceFill = getElement('confidence-fill');
@@ -312,6 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatContainer.appendChild(messageElement);
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
+    window.displayChatMessage = displayChatMessage;
 
     // Show error message
     function showError(message, errorObj = null) {
@@ -811,4 +834,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Make switchToChatWithPaper globally available
     window.switchToChatWithPaper = switchToChatWithPaper;
+
+    window.analyzePaper = analyzePaper;
 });

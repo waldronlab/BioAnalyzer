@@ -27,6 +27,7 @@ import logging
 import sys
 import os
 from bs4 import BeautifulSoup
+import csv
 
 # Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -72,34 +73,27 @@ class Question(BaseModel):
     question: str
 
 async def process_message(message):
-    try:
-        content = message.get('content', '')
-        current_paper = message.get('currentPaper')
-        if not content:
-            return {"error": "No message content provided"}
-        context = ""
-        if current_paper:
-            try:
-                metadata = retriever.get_paper_metadata(current_paper)
-                if metadata:
-                    context = f"Title: {metadata['title']}\nAbstract: {metadata['abstract']}"
-            except Exception as e:
-                print(f"Error getting paper metadata: {str(e)}")
-        # Use Gemini for chat (simulate with analyze_paper for now)
-        if GEMINI_API_KEY:
-            try:
-                # For chat, we can use the same analyze_paper logic for now
-                paper_content = {"title": context, "abstract": content, "full_text": ""}
-                response = await qa_system.analyze_paper(paper_content)
-                return {"response": "\n".join(response.get("key_findings", []))}
-            except Exception as e:
-                print(f"Error with Gemini: {str(e)}")
-                return {"error": f"Error processing message: {str(e)}"}
-        else:
-            return {"error": "No AI models available"}
-    except Exception as e:
-        print(f"Error processing message: {str(e)}")
-        return {"error": str(e)}
+    content = message.get('content', '')
+    current_paper = message.get('currentPaper')
+    if not content:
+        return {"error": "No message content provided"}
+
+    # If the user is discussing a paper, include its context
+    if current_paper:
+        metadata = retriever.get_paper_metadata(current_paper)
+        context = f"Title: {metadata['title']}\nAbstract: {metadata['abstract']}\n"
+        prompt = f"{context}\nUser question: {content}"
+    else:
+        # Otherwise, treat as a general chat
+        prompt = content
+
+    # Call Gemini chat with the prompt
+    response = await qa_system.chat(prompt)
+    return {
+        "response": response["text"],
+        "confidence": response.get("confidence"),
+        # ... other fields as needed
+    }
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -154,6 +148,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "category_scores": {},
                                 "num_tokens": len(analysis_text)
                             }
+                            print("Sending analysis result to frontend:", analysis_result)
                             await websocket.send_json(analysis_result)
                         else:
                             await websocket.send_json({"error": "No AI models available for analysis"})
@@ -163,6 +158,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 else:
                     # Handle chat messages
                     response = await process_message(message)
+                    print("Sending chat response to frontend:", response)
                     await websocket.send_json(response)
             except json.JSONDecodeError:
                 await websocket.send_json({"error": "Invalid JSON format"})
@@ -431,8 +427,17 @@ async def analyze_paper(pmid: str):
     try:
         logger.info(f"=== Starting analysis for PMID: {pmid} ===")
         metadata = retriever.get_paper_metadata(pmid)
+        # Try to supplement metadata with CSV fields if available
+        csv_metadata = get_paper_metadata_from_csv(pmid)
+        if csv_metadata:
+            metadata.update(csv_metadata)
         if not metadata:
-            return JSONResponse(content={"error": "Paper not found"}, status_code=200)
+            # Fallback: fetch from NCBI if not found in CSV
+            try:
+                metadata = retriever.get_paper_metadata(pmid)
+            except Exception as e:
+                logger.error(f"NCBI fallback failed for PMID {pmid}: {str(e)}")
+                return JSONResponse(content={"error": f"Paper not found in CSV or NCBI: {str(e)}"}, status_code=200)
         logger.info(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
         # Try to get full text (optional)
         try:
@@ -513,10 +518,57 @@ async def analyze_paper(pmid: str):
             "warning": warning,
             "full_text_type": str(type(full_text)),
         }
+        # Ensure all expected fields are present
+        expected_fields = [
+            'pmid', 'title', 'authors', 'journal', 'year', 'host', 'body_site', 'condition',
+            'sequencing_type', 'in_bugsigdb', 'sample_size', 'taxa_level', 'statistical_method',
+            'doi', 'publication_date', 'signature_probability'
+        ]
+        for field in expected_fields:
+            if field not in metadata:
+                metadata[field] = ''
         return JSONResponse(content=response)
     except Exception as e:
         logger.error(f"Error analyzing paper {pmid}: {str(e)}")
         return JSONResponse(content={"error": str(e)}, status_code=200)
+
+def get_paper_metadata_from_csv(pmid, csv_path='data/full_dump.csv'):
+    with open(csv_path, newline='', encoding='utf-8') as csvfile:
+        # Skip comment lines (starting with #) or skip first 2 lines
+        while True:
+            pos = csvfile.tell()
+            line = csvfile.readline()
+            if not line:
+                return None  # End of file, not found
+            if isinstance(line, str) and not line.startswith('#'):
+                csvfile.seek(pos)
+                break
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            if row.get('PMID') == pmid:
+                # Combine both group sample sizes if present
+                group0 = row.get('Group 0 sample size', '')
+                group1 = row.get('Group 1 sample size', '')
+                sample_size = f"Group 0: {group0}, Group 1: {group1}" if group0 or group1 else ''
+                return {
+                    'pmid': row.get('PMID', ''),
+                    'title': row.get('Title', ''),
+                    'authors': row.get('Authors list', ''),
+                    'journal': row.get('Journal', ''),
+                    'year': row.get('Year', ''),
+                    'host': row.get('Host species', ''),
+                    'body_site': row.get('Body site', ''),
+                    'condition': row.get('Condition', ''),
+                    'sequencing_type': row.get('Sequencing type', ''),
+                    'in_bugsigdb': row.get('In BugSigDB', ''),
+                    'sample_size': sample_size,
+                    'taxa_level': row.get('Taxa Level', ''),
+                    'statistical_method': row.get('Statistical test', ''),
+                    'doi': row.get('DOI', ''),
+                    'publication_date': row.get('Publication Date', ''),
+                    'signature_probability': row.get('Signature Probability', ''),
+                }
+    return None
 
 if __name__ == "__main__":
     import uvicorn

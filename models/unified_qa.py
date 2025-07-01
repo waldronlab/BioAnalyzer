@@ -25,7 +25,7 @@ class UnifiedQA:
             try:
                 self.models['gemini'] = GeminiQA(
                     api_key=gemini_api_key,
-                    model="gemini-pro"
+                    model="models/gemini-1.5-pro-latest"
                 )
                 logger.info("Gemini model initialized successfully")
             except Exception as e:
@@ -69,6 +69,22 @@ class UnifiedQA:
                 "found_terms": {},
                 "category_scores": {},
                 "num_tokens": 0
+            }
+
+    async def chat(self, prompt: str) -> dict:
+        """Chat with Gemini (conversational, not paper analysis)."""
+        if 'gemini' not in self.models:
+            return {
+                "text": "[Error: Gemini model not available]",
+                "confidence": 0.0
+            }
+        try:
+            return await self.models['gemini'].chat(prompt)
+        except Exception as e:
+            logger.error(f"Error with Gemini chat: {str(e)}")
+            return {
+                "text": f"[Error: {str(e)}]",
+                "confidence": 0.0
             }
 
     def get_available_models(self) -> List[str]:

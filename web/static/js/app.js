@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isConnected = false;
     let userName = null;
     let currentPaperMeta = null;
+    let lastUserMessage = '';
 
     // Ensure all required elements are available
     function checkElements() {
@@ -85,14 +86,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add onmessage handler to display assistant replies
             ws.onmessage = function(event) {
                 console.log("Received from backend:", event.data);
+                console.log("[DEBUG] lastUserMessage before handling:", lastUserMessage);
                 try {
                     const data = JSON.parse(event.data);
                     if (data.response) {
                         displayChatMessage(data.response, 'assistant');
-                        // Optionally display confidence
-                        if (data.confidence !== undefined && data.confidence !== null) {
+                        // Only display confidence if user asked for it
+                        let showConfidence = false;
+                        if (
+                            data.confidence !== undefined && data.confidence !== null &&
+                            typeof lastUserMessage === 'string' &&
+                            /confidence|how sure|certainty|how certain/i.test(lastUserMessage)
+                        ) {
+                            showConfidence = true;
+                        }
+                        console.log('[DEBUG] showConfidence:', showConfidence, '| lastUserMessage:', lastUserMessage);
+                        if (showConfidence) {
                             displayChatMessage(`Confidence: ${(data.confidence * 100).toFixed(1)}%`, 'system');
                         }
+                        lastUserMessage = '';
                     } else if (data.error) {
                         displayChatMessage("Error: " + data.error, 'error');
                     }
@@ -456,6 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const message = messageInput.value.trim();
         if (!message) return;
 
+        lastUserMessage = message; // Track last user message
         displayChatMessage(message, 'user');
         ws.send(JSON.stringify({
             content: message,
@@ -763,6 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!msg) return;
                 if (!userName) {
                     userName = msg;
+                    lastUserMessage = msg;
                     displayUserMessage(msg);
                     displayAssistantMessage(`Nice to meet you, ${userName}! How can I help you today?`);
                     messageInput.value = '';
@@ -789,6 +803,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageInput = document.getElementById('message-input');
             if (messageInput) {
                 messageInput.value = `I want to discuss the paper: \"${title}\" (PMID: ${pmid})`;
+                lastUserMessage = messageInput.value;
                 messageInput.focus();
             }
             displayAssistantMessage(`What would you like to know about this paper: "${title}" (PMID: ${pmid})?`);

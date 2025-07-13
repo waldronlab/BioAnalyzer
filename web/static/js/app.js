@@ -140,8 +140,32 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayAnalysisResults(data) {
         console.log('[displayAnalysisResults] Data:', data);
         
+        // Show curation status at the top
+        let resultsDiv = getElement('results');
+        if (resultsDiv) {
+            let curationStatusDiv = document.getElementById('curation-status');
+            if (!curationStatusDiv) {
+                curationStatusDiv = document.createElement('div');
+                curationStatusDiv.id = 'curation-status';
+                curationStatusDiv.className = 'mb-3';
+                resultsDiv.insertBefore(curationStatusDiv, resultsDiv.firstChild);
+            }
+            // Set badge color and text
+            let statusMsg = data.curation_status_message || '';
+            let badgeClass = 'alert-secondary';
+            if (data.curated) badgeClass = 'alert-success';
+            else if (data.in_bugsigdb) badgeClass = 'alert-warning';
+            else if (statusMsg.toLowerCase().includes('ready')) badgeClass = 'alert-primary';
+            else if (statusMsg.toLowerCase().includes('not ready')) badgeClass = 'alert-danger';
+            curationStatusDiv.className = `alert ${badgeClass} mb-3`;
+            curationStatusDiv.textContent = statusMsg;
+            if (data.missing_curation_fields && data.missing_curation_fields.length > 0 && !data.curated) {
+                curationStatusDiv.textContent += ' (Missing: ' + data.missing_curation_fields.join(', ') + ')';
+            }
+        }
+
         // Show top-level warning or error if present (suppress duplicates)
-        const resultsDiv = getElement('results');
+        resultsDiv = getElement('results');
         if (resultsDiv) {
             // Remove previous alerts
             const oldAlerts = resultsDiv.querySelectorAll('.backend-alert');
@@ -472,7 +496,8 @@ document.addEventListener('DOMContentLoaded', () => {
         displayChatMessage(message, 'user');
         ws.send(JSON.stringify({
             content: message,
-            role: 'user'
+            role: 'user',
+            currentPaper: currentPaperMeta ? currentPaperMeta.pmid : null
         }));
 
         messageInput.value = '';

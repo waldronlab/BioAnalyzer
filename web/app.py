@@ -509,6 +509,33 @@ async def analyze_paper(pmid: str):
                 "error": str(e)
             }
             error = str(e)
+
+        # --- Curation status logic ---
+        # Determine if paper is in BugSigDB
+        in_bugsigdb = False
+        curated = False
+        curation_status_message = ""
+        # Check using metadata fields
+        in_bugsigdb_val = metadata.get("in_bugsigdb", "")
+        if isinstance(in_bugsigdb_val, str):
+            in_bugsigdb = in_bugsigdb_val.strip().lower() in ["yes", "true", "1", "y"]
+        elif isinstance(in_bugsigdb_val, bool):
+            in_bugsigdb = in_bugsigdb_val
+        # Define required fields for curation
+        required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
+        missing_fields = [f for f in required_fields if not metadata.get(f)]
+        if in_bugsigdb:
+            if not missing_fields:
+                curated = True
+                curation_status_message = "Already curated in BugSigDB."
+            else:
+                curated = False
+                curation_status_message = "In BugSigDB, but not fully curated. Ready for curation."
+        else:
+            if not missing_fields:
+                curation_status_message = "Ready for curation. Not yet in BugSigDB."
+            else:
+                curation_status_message = "Not ready for curation. Missing required fields."
         # Compose the response for the frontend
         response = {
             "pmid": pmid,
@@ -517,6 +544,10 @@ async def analyze_paper(pmid: str):
             "error": error,
             "warning": warning,
             "full_text_type": str(type(full_text)),
+            "in_bugsigdb": in_bugsigdb,
+            "curated": curated,
+            "curation_status_message": curation_status_message,
+            "missing_curation_fields": missing_fields,
         }
         # Ensure all expected fields are present
         expected_fields = [

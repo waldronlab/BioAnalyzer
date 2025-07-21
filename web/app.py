@@ -429,8 +429,10 @@ async def analyze_paper(pmid: str):
         metadata = retriever.get_paper_metadata(pmid)
         # Try to supplement metadata with CSV fields if available
         csv_metadata = get_paper_metadata_from_csv(pmid)
+        found_in_csv = False
         if csv_metadata:
             metadata.update(csv_metadata)
+            found_in_csv = True
         if not metadata:
             # Fallback: fetch from NCBI if not found in CSV
             try:
@@ -510,32 +512,23 @@ async def analyze_paper(pmid: str):
             }
             error = str(e)
 
-        # --- Curation status logic ---
-        # Determine if paper is in BugSigDB
+        # --- Curation status logic (CSV is source of truth) ---
         in_bugsigdb = False
         curated = False
         curation_status_message = ""
-        # Check using metadata fields
-        in_bugsigdb_val = metadata.get("in_bugsigdb", "")
-        if isinstance(in_bugsigdb_val, str):
-            in_bugsigdb = in_bugsigdb_val.strip().lower() in ["yes", "true", "1", "y"]
-        elif isinstance(in_bugsigdb_val, bool):
-            in_bugsigdb = in_bugsigdb_val
-        # Define required fields for curation
         required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
         missing_fields = [f for f in required_fields if not metadata.get(f)]
-        if in_bugsigdb:
-            if not missing_fields:
-                curated = True
-                curation_status_message = "Already curated in BugSigDB."
-            else:
-                curated = False
-                curation_status_message = "In BugSigDB, but not fully curated. Ready for curation."
+        if found_in_csv:
+            in_bugsigdb = True
+            curated = True
+            curation_status_message = "This paper is in BugSigDB and already curated."
         else:
+            in_bugsigdb = False
+            curated = False
             if not missing_fields:
-                curation_status_message = "Ready for curation. Not yet in BugSigDB."
+                curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
             else:
-                curation_status_message = "Not ready for curation. Missing required fields."
+                curation_status_message = "This paper is not in BugSigDB and is not ready for curation. Missing required fields."
         # Compose the response for the frontend
         response = {
             "pmid": pmid,

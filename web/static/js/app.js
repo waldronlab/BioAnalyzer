@@ -271,7 +271,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bodySiteEl) bodySiteEl.textContent = data.metadata?.body_site || 'No data available';
         if (conditionEl) conditionEl.textContent = data.metadata?.condition || 'No data available';
         if (sequencingTypeEl) sequencingTypeEl.textContent = data.metadata?.sequencing_type || 'No data available';
-        if (inBugSigDBEl) inBugSigDBEl.textContent = data.metadata?.in_bugsigdb || 'No data available';
+        // Only use the top-level in_bugsigdb boolean or string for display
+        if (inBugSigDBEl) {
+            console.log('in_bugsigdb value:', data.in_bugsigdb);
+            if (typeof data.in_bugsigdb === 'boolean') {
+                inBugSigDBEl.textContent = data.in_bugsigdb ? 'Yes' : 'No';
+            } else if (typeof data.in_bugsigdb === 'string') {
+                const val = data.in_bugsigdb.trim().toLowerCase();
+                inBugSigDBEl.textContent = ['true', 'yes', '1', 'y'].includes(val) ? 'Yes' : 'No';
+            } else {
+                inBugSigDBEl.textContent = 'No data available';
+            }
+        }
         if (signatureProbEl) signatureProbEl.textContent = data.metadata?.signature_probability || 'No data available';
         if (sampleSizeEl) sampleSizeEl.textContent = data.metadata?.sample_size || 'No data available';
         if (taxaLevelEl) taxaLevelEl.textContent = data.metadata?.taxa_level || 'No data available';

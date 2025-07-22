@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, HTTPException, Request, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, HTTPException, Request, UploadFile, File, Form, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocketDisconnect
@@ -157,9 +157,29 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"error": f"Error analyzing paper: {str(e)}"})
                 else:
                     # Handle chat messages
-                    response = await process_message(message)
+                    user_message = message.get('content', '')
+                    paper_ctx = message.get('paperContext')
+                    chat_history = message.get('chatHistory', [])
+                    if paper_ctx and paper_ctx.get('pmid'):
+                        # Prepend paper metadata to prompt
+                        context = f"You are discussing the following paper:\nTitle: {paper_ctx.get('title','')}\nAuthors: {paper_ctx.get('authors','')}\nJournal: {paper_ctx.get('journal','')}\nYear: {paper_ctx.get('year','')}\nPMID: {paper_ctx.get('pmid','')}\nAbstract: {paper_ctx.get('abstract','')}\n\nUser question: {user_message}"
+                    elif chat_history:
+                        # Build conversation context
+                        history_str = ''
+                        for msg in chat_history:
+                            if msg.get('role') == 'user':
+                                history_str += f"User: {msg.get('content','')}\n"
+                            elif msg.get('role') == 'assistant':
+                                history_str += f"Assistant: {msg.get('content','')}\n"
+                        context = history_str + f"User: {user_message}"
+                    else:
+                        context = user_message
+                    response = await qa_system.chat(context)
                     print("Sending chat response to frontend:", response)
-                    await websocket.send_json(response)
+                    await websocket.send_json({
+                        "response": response["text"],
+                        "confidence": response.get("confidence")
+                    })
             except json.JSONDecodeError:
                 await websocket.send_json({"error": "Invalid JSON format"})
             except Exception as e:
@@ -556,6 +576,62 @@ async def analyze_paper(pmid: str):
         logger.error(f"Error analyzing paper {pmid}: {str(e)}")
         return JSONResponse(content={"error": str(e)}, status_code=200)
 
+@app.post("/analyze_batch")
+async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size: int = Query(20)):
+    start = (page - 1) * page_size
+    end = start + page_size
+    pmids_batch = pmids[start:end]
+    results = []
+    for pmid in pmids_batch:
+        # 1. Try CSV, else PubMed
+        csv_metadata = get_paper_metadata_from_csv(pmid)
+        if csv_metadata:
+            metadata = csv_metadata
+            found_in_csv = True
+        else:
+            metadata = retriever.get_paper_metadata(pmid)
+            found_in_csv = False
+        if not metadata:
+            continue
+        # 2. Analyze
+        paper_content = {
+            "title": metadata.get("title", ""),
+            "abstract": metadata.get("abstract", ""),
+            "full_text": ""
+        }
+        try:
+            analysis = await qa_system.analyze_paper(paper_content)
+        except Exception as e:
+            analysis = {"has_signatures": False, "key_findings": [], "confidence": 0.0}
+        # 3. Enhanced curation criteria
+        has_signature = analysis.get('has_signatures', False)
+        has_citation = all(metadata.get(f) for f in ['title', 'authors', 'journal', 'year', 'doi'])
+        abstract = metadata.get('abstract', '').lower()
+        has_microbiome_keyword = any(kw in abstract for kw in ['microbiome', 'microbiota'])
+        if found_in_csv:
+            curation_status = "already_curated"
+        elif has_signature and has_citation and has_microbiome_keyword:
+            curation_status = "ready"
+        else:
+            curation_status = "not_ready"
+        # 4. Compose summary
+        results.append({
+            "pmid": pmid,
+            "title": metadata.get("title", ""),
+            "authors": metadata.get("authors", ""),
+            "journal": metadata.get("journal", ""),
+            "year": metadata.get("year", ""),
+            "doi": metadata.get("doi", ""),
+            "host": metadata.get("host", ""),
+            "body_site": metadata.get("body_site", ""),
+            "sequencing_type": metadata.get("sequencing_type", ""),
+            "curation_status": curation_status,
+            "key_findings": analysis.get("key_findings", []),
+            "has_signature": has_signature,
+            "has_microbiome_keyword": has_microbiome_keyword
+        })
+    return results
+
 def get_paper_metadata_from_csv(pmid, csv_path='data/full_dump.csv'):
     with open(csv_path, newline='', encoding='utf-8') as csvfile:
         # Skip comment lines (starting with #) or skip first 2 lines
@@ -593,6 +669,30 @@ def get_paper_metadata_from_csv(pmid, csv_path='data/full_dump.csv'):
                     'signature_probability': row.get('Signature Probability', ''),
                 }
     return None
+
+@app.get("/list_pmids")
+def list_pmids():
+    pmids = []
+    try:
+        with open('data/full_dump.csv', newline='', encoding='utf-8') as csvfile:
+            # Skip comment lines and header
+            while True:
+                pos = csvfile.tell()
+                line = csvfile.readline()
+                if not line:
+                    break
+                if isinstance(line, str) and not line.startswith('#'):
+                    csvfile.seek(pos)
+                    break
+            import csv as pycsv
+            reader = pycsv.DictReader(csvfile)
+            for row in reader:
+                pmid = row.get('PMID')
+                if pmid and pmid != 'NA':
+                    pmids.append(pmid)
+    except Exception as e:
+        return {"error": str(e)}
+    return pmids
 
 if __name__ == "__main__":
     import uvicorn

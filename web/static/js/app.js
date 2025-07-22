@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let userName = null;
     let currentPaperMeta = null;
     let lastUserMessage = '';
+    let chatPaperContext = null;
+    let chatHistory = [];
 
     // Ensure all required elements are available
     function checkElements() {
@@ -380,6 +382,9 @@ document.addEventListener('DOMContentLoaded', () => {
         messageElement.textContent = message;
         chatContainer.appendChild(messageElement);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        if (type === 'assistant') {
+            chatHistory.push({ role: 'assistant', content: message });
+        }
     }
     window.displayChatMessage = displayChatMessage;
 
@@ -505,10 +510,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         lastUserMessage = message; // Track last user message
         displayChatMessage(message, 'user');
+        // Add to chat history
+        chatHistory.push({ role: 'user', content: message });
+        // Prepare context for backend
+        let contextMessages = [];
+        if (!chatPaperContext) {
+            // Only send history if not in paper context
+            contextMessages = chatHistory.slice(-10); // last 10 messages
+        }
         ws.send(JSON.stringify({
             content: message,
             role: 'user',
-            currentPaper: currentPaperMeta ? currentPaperMeta.pmid : null
+            currentPaper: chatPaperContext ? chatPaperContext.pmid : null,
+            paperContext: chatPaperContext || null,
+            chatHistory: contextMessages
         }));
 
         messageInput.value = '';
@@ -831,7 +846,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Get paper title and PMID from DOM
         const title = document.getElementById('paper-title-short')?.textContent || '';
         const pmid = document.getElementById('paper-pmid')?.textContent || '';
-        currentPaperMeta = { title, pmid };
+        chatPaperContext = { title, pmid };
         // Switch to chat tab
         document.getElementById('chat-tab').click();
         setTimeout(() => {
@@ -887,4 +902,296 @@ document.addEventListener('DOMContentLoaded', () => {
     window.switchToChatWithPaper = switchToChatWithPaper;
 
     window.analyzePaper = analyzePaper;
+
+    // === Browse Papers Tab Logic ===
+    window.browsePapersState = {
+        allPmids: [], // store all PMIDs
+        loadedPages: {}, // cache loaded pages: {pageNum: [papers]}
+        filteredPmids: [], // PMIDs after filtering
+        filters: {
+            curationStatus: '',
+            host: '',
+            keyword: '',
+            year: '',
+            sequencingType: ''
+        },
+        page: 1,
+        pageSize: 20
+    };
+
+    window.loadBrowsePapers = async function() {
+        // Show loading spinner
+        let browseTable = document.getElementById('browse-table-container');
+        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Loading papers...</p></div>';
+        // Fetch PMIDs from backend
+        const pmidResp = await fetch('/list_pmids');
+        const pmids = await pmidResp.json();
+        window.browsePapersState.allPmids = pmids;
+        window.browsePapersState.page = 1;
+        window.browsePapersState.loadedPages = {};
+        applyBrowseFilters(); // will trigger first page load
+    }
+
+    window.applyBrowseFilters = function() {
+        // For now, filtering only by host, year, sequencingType, keyword (not curation status, since that's not in PMIDs)
+        const host = document.getElementById('filter-host')?.value.toLowerCase() || '';
+        const year = document.getElementById('filter-year')?.value.trim() || '';
+        const sequencingType = document.getElementById('filter-sequencing-type')?.value.toLowerCase() || '';
+        const keyword = document.getElementById('filter-keyword')?.value.toLowerCase() || '';
+        let pmids = window.browsePapersState.allPmids;
+        // Filtering is only on metadata, so we filter after loading each page
+        // For now, just use all PMIDs
+        window.browsePapersState.filteredPmids = pmids;
+        window.browsePapersState.page = 1;
+        loadBrowsePage(1);
+    }
+
+    window.loadBrowsePage = async function(page) {
+        const pageSize = window.browsePapersState.pageSize;
+        const pmids = window.browsePapersState.filteredPmids;
+        const totalPages = Math.ceil(pmids.length / pageSize);
+        if (page < 1 || page > totalPages) return;
+        window.browsePapersState.page = page;
+        // Check cache
+        if (window.browsePapersState.loadedPages[page]) {
+            renderBrowseTable(window.browsePapersState.loadedPages[page]);
+            prefetchBrowsePages(page, totalPages, 3); // Prefetch next 3 pages
+            return;
+        }
+        // Show loading spinner
+        let browseTable = document.getElementById('browse-table-container');
+        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Loading papers...</p></div>';
+        // Fetch batch from backend (send full pmids array)
+        const response = await fetch(`/analyze_batch?page=${page}&page_size=${pageSize}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pmids)
+        });
+        const papers = await response.json();
+        window.browsePapersState.loadedPages[page] = papers;
+        renderBrowseTable(papers);
+        prefetchBrowsePages(page, totalPages, 3); // Prefetch next 3 pages
+    }
+
+    window.prefetchBrowsePages = function(currentPage, totalPages, numPagesAhead) {
+        const pageSize = window.browsePapersState.pageSize;
+        const pmids = window.browsePapersState.filteredPmids;
+        for (let i = 1; i <= numPagesAhead; i++) {
+            const nextPage = currentPage + i;
+            if (nextPage > totalPages) break;
+            if (window.browsePapersState.loadedPages[nextPage]) continue;
+            // Prefetch in background (send full pmids array)
+            fetch(`/analyze_batch?page=${nextPage}&page_size=${pageSize}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pmids)
+            })
+            .then(resp => resp.json())
+            .then(papers => {
+                window.browsePapersState.loadedPages[nextPage] = papers;
+            })
+            .catch(() => {});
+        }
+    }
+
+    window.renderBrowseTable = function(papers) {
+        const page = window.browsePapersState.page;
+        const pageSize = window.browsePapersState.pageSize;
+        const pmids = window.browsePapersState.filteredPmids;
+        const totalPages = Math.ceil(pmids.length / pageSize);
+        let html = '<table class="table table-bordered"><thead><tr>' +
+            '<th>PMID</th><th>Title</th><th>Authors</th><th>Journal</th><th>Year</th>' +
+            '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Curation Status</th><th>Actions</th></tr></thead><tbody>';
+        for (const paper of papers) {
+            html += `<tr>
+                <td>${paper.pmid}</td>
+                <td>${paper.title}</td>
+                <td>${paper.authors}</td>
+                <td>${paper.journal}</td>
+                <td>${paper.year}</td>
+                <td>${paper.host}</td>
+                <td>${paper.body_site}</td>
+                <td>${paper.sequencing_type}</td>
+                <td>${paper.curation_status}</td>
+                <td><button class="btn btn-sm btn-info" onclick="viewPaperDetails('${paper.pmid}', event)">Details</button></td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        // Pagination controls
+        html += '<nav><ul class="pagination">';
+        for (let i = 1; i <= totalPages; i++) {
+            html += `<li class="page-item${i === page ? ' active' : ''}"><a class="page-link" href="#" onclick="loadBrowsePage(${i});return false;">${i}</a></li>`;
+        }
+        html += '</ul></nav>';
+        const container = document.getElementById('browse-table-container');
+        container.innerHTML = html;
+        // Scroll to top of table
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    window.gotoBrowsePage = function(page) {
+        loadBrowsePage(page);
+    }
+
+    window.exportBrowseResults = function() {
+        const papers = window.browsePapersState.filteredPapers;
+        if (!papers.length) return;
+        const headers = ['PMID','Title','Authors','Journal','Year','Host','Body Site','Sequencing Type','Curation Status'];
+        const rows = papers.map(p => [
+            p.pmid, p.title, p.authors, p.journal, p.year, p.host, p.body_site, p.sequencing_type, p.curation_status
+        ]);
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'filtered_papers.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    }
+
+    window.viewPaperDetails = async function(pmid, event) {
+        // Remove any existing popover
+        let popover = document.getElementById('details-popover');
+        if (popover) popover.remove();
+
+        // Create popover
+        popover = document.createElement('div');
+        popover.id = 'details-popover';
+        popover.style.position = 'fixed';
+        popover.style.zIndex = 9999;
+        popover.style.top = '50%';
+        popover.style.left = '50%';
+        popover.style.transform = 'translate(-50%, -50%)';
+        popover.style.minWidth = '350px';
+        popover.style.maxWidth = '500px';
+        popover.style.background = '#fff';
+        popover.style.border = '1px solid #ccc';
+        popover.style.borderRadius = '8px';
+        popover.style.boxShadow = '0 4px 16px rgba(0,0,0,0.15)';
+        popover.style.padding = '20px';
+        popover.innerHTML = `<div class='text-center my-2'><div class='spinner-border text-primary' role='status'><span class='visually-hidden'>Loading...</span></div><p>Fetching paper Details...</p></div>
+            <button type='button' class='btn-close' style='position:absolute;top:8px;right:8px;' onclick='closeDetailsPopover()'></button>`;
+
+        document.body.appendChild(popover);
+
+        // Add click-outside-to-close
+        setTimeout(() => {
+            document.addEventListener('mousedown', handlePopoverOutsideClick);
+        }, 0);
+
+        // Fetch details
+        const resp = await fetch(`/analyze/${pmid}`);
+        const data = await resp.json();
+        let html = `<h5>${data.metadata?.title || ''}</h5>`;
+        html += `<p><strong>Authors:</strong> ${data.metadata?.authors || ''}</p>`;
+        html += `<p><strong>Journal:</strong> ${data.metadata?.journal || ''} (${data.metadata?.year || ''})</p>`;
+        html += `<p><strong>Abstract:</strong> ${data.metadata?.abstract || ''}</p>`;
+        html += `<p><strong>Host:</strong> ${data.metadata?.host || ''}</p>`;
+        html += `<p><strong>Body Site:</strong> ${data.metadata?.body_site || ''}</p>`;
+        html += `<p><strong>Curation Status:</strong> ${data.curation_status_message || ''}</p>`;
+        html += `<hr><strong>Key Findings:</strong><ul>`;
+        (data.analysis?.key_findings || []).forEach(f => { html += `<li>${f}</li>`; });
+        html += `</ul>`;
+        html += `<button type='button' class='btn btn-sm btn-secondary mt-2' onclick='closeDetailsPopover()'>Close</button>`;
+        popover.innerHTML = html + `<button type='button' class='btn-close' style='position:absolute;top:8px;right:8px;' onclick='closeDetailsPopover()'></button>`;
+    };
+
+    window.closeDetailsPopover = function() {
+        let popover = document.getElementById('details-popover');
+        if (popover) popover.remove();
+        document.removeEventListener('mousedown', handlePopoverOutsideClick);
+    };
+
+    function handlePopoverOutsideClick(e) {
+        const popover = document.getElementById('details-popover');
+        if (popover && !popover.contains(e.target)) {
+            closeDetailsPopover();
+        }
+    }
+
+    window.showModal = function(title, bodyHtml) {
+        let modal = document.getElementById('browse-details-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'browse-details-modal';
+            modal.className = 'modal fade';
+            modal.tabIndex = -1;
+            modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body"></div>
+                </div>
+            </div>`;
+            document.body.appendChild(modal);
+        }
+        modal.querySelector('.modal-title').innerHTML = title;
+        modal.querySelector('.modal-body').innerHTML = bodyHtml;
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+
+    window.analyzeUserPmids = async function() {
+        let textarea = document.getElementById('user-pmid-list');
+        if (!textarea) return;
+        let raw = textarea.value.trim();
+        if (!raw) return;
+        // Parse PMIDs (comma, space, or newline separated)
+        let pmids = raw.split(/[^0-9A-Za-z]+/).filter(x => x.length > 0);
+        if (!pmids.length) return;
+        // Show loading spinner
+        let browseTable = document.getElementById('browse-table-container');
+        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Loading papers...</p></div>';
+        // Reset browse state
+        window.browsePapersState.allPmids = pmids;
+        window.browsePapersState.filteredPmids = pmids;
+        window.browsePapersState.page = 1;
+        window.browsePapersState.loadedPages = {};
+        // Fetch first page
+        loadBrowsePage(1);
+    }
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+    // Enable sending chat messages with Enter
+    const messageInput = document.getElementById('message-input');
+    if (messageInput) {
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                window.sendMessage();
+            }
+        });
+    }
+    // Enable analyze paper with Enter in PMID input
+    const pmidInput = document.getElementById('pmid');
+    if (pmidInput) {
+        pmidInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.analyzePaper();
+            }
+        });
+    }
+    // Enable Analyze Entered PMIDs with Enter in textarea
+    const userPmidList = document.getElementById('user-pmid-list');
+    if (userPmidList) {
+        userPmidList.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                window.analyzeUserPmids();
+            }
+        });
+    }
 });

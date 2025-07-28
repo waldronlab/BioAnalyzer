@@ -57,6 +57,9 @@ class PubMedRetriever:
         cache_key = create_cache_key("metadata", pmid)
         cache_file = self.cache_dir / f"{cache_key}.json"
         
+        # Ensure cache directory exists
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
         if cache_file.exists():
             return load_json(cache_file)
             
@@ -72,6 +75,10 @@ class PubMedRetriever:
             raise ValueError(f"No metadata found for PMID: {pmid}")
             
         article = result["PubmedArticle"][0]
+        
+        # Extract DOI from article identifiers
+        doi = self._extract_doi(article)
+        
         metadata = {
             "pmid": pmid,
             "title": article["MedlineCitation"]["Article"]["ArticleTitle"],
@@ -79,7 +86,8 @@ class PubMedRetriever:
             "mesh_terms": self._extract_mesh_terms(article),
             "publication_types": self._extract_publication_types(article),
             "journal": article["MedlineCitation"]["Article"]["Journal"]["Title"],
-            "year": article["MedlineCitation"]["Article"]["Journal"]["JournalIssue"]["PubDate"].get("Year", "")
+            "year": article["MedlineCitation"]["Article"]["Journal"]["JournalIssue"]["PubDate"].get("Year", ""),
+            "doi": doi
         }
         
         save_json(metadata, cache_file)
@@ -259,3 +267,46 @@ class PubMedRetriever:
         )
         
         return result.get("IdList", []) 
+
+    def _extract_doi(self, article: Dict) -> str:
+        """Extract DOI from article metadata.
+        
+        Args:
+            article: PubMed article dictionary
+            
+        Returns:
+            DOI string or empty string if not found
+        """
+        try:
+            logger.info(f"Extracting DOI from article structure...")
+            
+            # Method 1: Check for DOI in ArticleIdList (most common location)
+            if "PubmedData" in article and "ArticleIdList" in article["PubmedData"]:
+                logger.info("Checking ArticleIdList for DOI...")
+                for article_id in article["PubmedData"]["ArticleIdList"]:
+                    if isinstance(article_id, dict):
+                        if article_id.get("IdType") == "doi":
+                            doi = article_id.get("Id", "")
+                            logger.info(f"Found DOI in ArticleIdList: {doi}")
+                            return doi
+                    elif isinstance(article_id, str) and article_id.startswith("10."):
+                        logger.info(f"Found DOI string in ArticleIdList: {article_id}")
+                        return article_id
+            
+            # Method 2: Check for DOI in ELocationID
+            if "MedlineCitation" in article and "Article" in article["MedlineCitation"]:
+                article_data = article["MedlineCitation"]["Article"]
+                if "ELocationID" in article_data:
+                    logger.info("Checking ELocationID for DOI...")
+                    for elocation in article_data["ELocationID"]:
+                        if isinstance(elocation, dict) and elocation.get("EIdType") == "doi":
+                            doi = elocation.get("EId", "")
+                            logger.info(f"Found DOI in ELocationID: {doi}")
+                            return doi
+            
+            logger.warning("No DOI found in any expected location")
+            return ""
+            
+        except Exception as e:
+            logger.error(f"Error extracting DOI: {str(e)}")
+            return "" 

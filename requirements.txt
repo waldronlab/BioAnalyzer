@@ -17,6 +17,10 @@ requests>=2.31.0
 beautifulsoup4>=4.12.2
 lxml>=4.9.0
 
+# Excel file processing
+openpyxl>=3.1.0
+xlrd>=2.0.1
+
 # Utilities
 tqdm>=4.65.0
 python-dotenv>=1.0.0

@@ -28,6 +28,21 @@ import sys
 import os
 from bs4 import BeautifulSoup
 import csv
+import io
+
+# Excel file processing imports
+try:
+    import openpyxl
+    from openpyxl import load_workbook
+except ImportError:
+    openpyxl = None
+    print("Warning: openpyxl not available. XLSX files will not be supported.")
+
+try:
+    import xlrd
+except ImportError:
+    xlrd = None
+    print("Warning: xlrd not available. XLS files will not be supported.")
 
 # Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -708,6 +723,179 @@ def list_pmids():
     except Exception as e:
         return {"error": str(e)}
     return pmids
+
+def extract_pmids_from_excel(file_content: bytes, filename: str) -> List[str]:
+    """Extract PMIDs from Excel file (XLS or XLSX)"""
+    pmids = []
+    
+    try:
+        if filename.lower().endswith('.xlsx') and openpyxl:
+            # Handle XLSX files
+            workbook = load_workbook(io.BytesIO(file_content), data_only=True)
+            for sheet_name in workbook.sheetnames:
+                sheet = workbook[sheet_name]
+                for row in sheet.iter_rows(values_only=True):
+                    for cell_value in row:
+                        if cell_value:
+                            # Look for PMID patterns in the cell
+                            pmid_matches = re.findall(r'\b\d{7,8}\b', str(cell_value))
+                            pmids.extend(pmid_matches)
+        
+        elif filename.lower().endswith('.xls') and xlrd:
+            # Handle XLS files
+            workbook = xlrd.open_workbook(file_contents=file_content)
+            for sheet_name in workbook.sheet_names():
+                sheet = workbook.sheet_by_name(sheet_name)
+                for row_idx in range(sheet.nrows):
+                    for col_idx in range(sheet.ncols):
+                        cell_value = sheet.cell_value(row_idx, col_idx)
+                        if cell_value:
+                            # Look for PMID patterns in the cell
+                            pmid_matches = re.findall(r'\b\d{7,8}\b', str(cell_value))
+                            pmids.extend(pmid_matches)
+        
+        else:
+            raise ValueError(f"Unsupported file format or missing library. File: {filename}")
+        
+        # Remove duplicates and filter valid PMIDs
+        unique_pmids = list(set(pmids))
+        valid_pmids = [pmid for pmid in unique_pmids if len(pmid) >= 7 and pmid.isdigit()]
+        
+        return valid_pmids
+        
+    except Exception as e:
+        logger.error(f"Error extracting PMIDs from Excel file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error processing Excel file: {str(e)}")
+
+@app.post("/upload_pmids_file")
+async def upload_pmids_file(file: UploadFile = File(...)):
+    """Upload Excel file with PMIDs and get their curation statuses"""
+    
+    # Validate file type
+    if not file.filename.lower().endswith(('.xls', '.xlsx')):
+        raise HTTPException(status_code=400, detail="Only XLS and XLSX files are supported")
+    
+    # Check if required libraries are available
+    if file.filename.lower().endswith('.xlsx') and not openpyxl:
+        raise HTTPException(status_code=400, detail="XLSX support not available. Please install openpyxl.")
+    if file.filename.lower().endswith('.xls') and not xlrd:
+        raise HTTPException(status_code=400, detail="XLS support not available. Please install xlrd.")
+    
+    try:
+        # Read file content
+        file_content = await file.read()
+        
+        # Extract PMIDs from the file
+        pmids = extract_pmids_from_excel(file_content, file.filename)
+        
+        if not pmids:
+            return {
+                "message": "No valid PMIDs found in the uploaded file",
+                "pmids": [],
+                "results": []
+            }
+        
+        # Analyze each PMID for curation status
+        results = []
+        for pmid in pmids:
+            try:
+                # Get metadata from CSV first, then PubMed
+                csv_metadata = get_paper_metadata_from_csv(pmid)
+                if csv_metadata:
+                    metadata = csv_metadata
+                    found_in_csv = True
+                else:
+                    metadata = retriever.get_paper_metadata(pmid)
+                    found_in_csv = False
+                
+                if not metadata:
+                    results.append({
+                        "pmid": pmid,
+                        "title": "Not found",
+                        "authors": "",
+                        "journal": "",
+                        "year": "",
+                        "host": "",
+                        "body_site": "",
+                        "sequencing_type": "",
+                        "curation_status": "not_found",
+                        "curation_status_message": "Paper not found in PubMed or BugSigDB",
+                        "in_bugsigdb": False,
+                        "curated": False
+                    })
+                    continue
+                
+                # Analyze paper content for curation readiness
+                paper_content = {
+                    "title": metadata.get("title", ""),
+                    "abstract": metadata.get("abstract", ""),
+                    "full_text": ""
+                }
+                
+                try:
+                    analysis = await qa_system.analyze_paper(paper_content)
+                except Exception as e:
+                    analysis = {"has_signatures": False, "key_findings": [], "confidence": 0.0}
+                
+                # Determine curation status
+                has_signature = analysis.get('has_signatures', False)
+                has_citation = all(metadata.get(f) for f in ['title', 'authors', 'journal', 'year'])
+                abstract = metadata.get('abstract', '').lower()
+                has_microbiome_keyword = any(kw in abstract for kw in ['microbiome', 'microbiota'])
+                
+                if found_in_csv:
+                    curation_status = "already_curated"
+                    curation_status_message = "This paper is in BugSigDB and already curated."
+                elif has_signature and has_citation and has_microbiome_keyword:
+                    curation_status = "ready"
+                    curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
+                else:
+                    curation_status = "not_ready"
+                    curation_status_message = "This paper is not ready for curation. Missing required elements."
+                
+                results.append({
+                    "pmid": pmid,
+                    "title": metadata.get("title", ""),
+                    "authors": metadata.get("authors", ""),
+                    "journal": metadata.get("journal", ""),
+                    "year": metadata.get("year", ""),
+                    "host": metadata.get("host", ""),
+                    "body_site": metadata.get("body_site", ""),
+                    "sequencing_type": metadata.get("sequencing_type", ""),
+                    "curation_status": curation_status,
+                    "curation_status_message": curation_status_message,
+                    "in_bugsigdb": found_in_csv,
+                    "curated": found_in_csv,
+                    "confidence": analysis.get("confidence", 0.0),
+                    "curation_analysis": analysis.get("curation_analysis", {})
+                })
+                
+            except Exception as e:
+                logger.error(f"Error processing PMID {pmid}: {str(e)}")
+                results.append({
+                    "pmid": pmid,
+                    "title": "Error processing",
+                    "authors": "",
+                    "journal": "",
+                    "year": "",
+                    "host": "",
+                    "body_site": "",
+                    "sequencing_type": "",
+                    "curation_status": "error",
+                    "curation_status_message": f"Error processing: {str(e)}",
+                    "in_bugsigdb": False,
+                    "curated": False
+                })
+        
+        return {
+            "message": f"Successfully processed {len(pmids)} PMIDs from {file.filename}",
+            "pmids": pmids,
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing uploaded file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -447,12 +447,21 @@ async def analyze_paper(pmid: str):
     try:
         logger.info(f"=== Starting analysis for PMID: {pmid} ===")
         metadata = retriever.get_paper_metadata(pmid)
+        
+        # Debug: Log the initial metadata from PubMed
+        logger.info(f"PubMed metadata DOI: {metadata.get('doi', 'Not found')}")
+        
         # Try to supplement metadata with CSV fields if available
         csv_metadata = get_paper_metadata_from_csv(pmid)
         found_in_csv = False
         if csv_metadata:
+            logger.info(f"CSV metadata DOI: {csv_metadata.get('doi', 'Not found')}")
             metadata.update(csv_metadata)
             found_in_csv = True
+            logger.info(f"After CSV merge, DOI: {metadata.get('doi', 'Not found')}")
+        else:
+            logger.info("No CSV metadata found")
+            
         if not metadata:
             # Fallback: fetch from NCBI if not found in CSV
             try:
@@ -461,6 +470,8 @@ async def analyze_paper(pmid: str):
                 logger.error(f"NCBI fallback failed for PMID {pmid}: {str(e)}")
                 return JSONResponse(content={"error": f"Paper not found in CSV or NCBI: {str(e)}"}, status_code=200)
         logger.info(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
+        logger.info(f"Final DOI: {metadata.get('doi', 'Not found')}")
+        
         # Try to get full text (optional)
         try:
             logger.info(f"Attempting to fetch full text for PMID: {pmid}")
@@ -628,7 +639,11 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             "curation_status": curation_status,
             "key_findings": analysis.get("key_findings", []),
             "has_signature": has_signature,
-            "has_microbiome_keyword": has_microbiome_keyword
+            "has_microbiome_keyword": has_microbiome_keyword,
+            "curation_analysis": analysis.get("curation_analysis", {}),  # Enhanced curation analysis
+            "confidence": analysis.get("confidence", 0.0),
+            "category_scores": analysis.get("category_scores", {}),
+            "suggested_topics": analysis.get("suggested_topics", [])
         })
     return results
 

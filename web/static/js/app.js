@@ -166,6 +166,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        // Display enhanced curation analysis if available
+        if (data.analysis && data.analysis.curation_analysis) {
+            if (typeof displayEnhancedCurationAnalysis === 'function') {
+                displayEnhancedCurationAnalysis(data.analysis.curation_analysis);
+            } else {
+                console.warn('Enhanced curation analysis display function not available');
+            }
+        } else {
+            // Clear curation analysis display if no data
+            if (typeof clearCurationAnalysis === 'function') {
+                clearCurationAnalysis();
+            }
+        }
+
         // Show top-level warning or error if present (suppress duplicates)
         resultsDiv = getElement('results');
         if (resultsDiv) {
@@ -320,9 +334,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const keyFindingsEl = getElement('key-findings');
         if (keyFindingsEl) {
             if (data.analysis?.key_findings && data.analysis.key_findings.length > 0) {
-                keyFindingsEl.innerHTML = data.analysis.key_findings
-                    .map(finding => `<li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i>${finding}</li>`)
-                    .join('');
+                let html = '';
+                
+                data.analysis.key_findings.forEach(finding => {
+                    // Check if this is a heading (contains ** at start and end)
+                    if (finding.startsWith('**') && finding.endsWith('**')) {
+                        // This is a heading - remove ** and make it bold without checkmark
+                        const headingText = finding.replace(/\*\*/g, '');
+                        html += `<li class="finding-heading mb-3"><strong>${headingText}</strong></li>`;
+                    } else {
+                        // This is a regular finding - add checkmark
+                        html += `<li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i>${finding}</li>`;
+                    }
+                });
+                
+                keyFindingsEl.innerHTML = html;
             } else {
                 keyFindingsEl.innerHTML = '<li class="text-muted">No key findings available</li>';
             }
@@ -332,9 +358,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const suggestedTopicsEl = getElement('suggested-topics');
         if (suggestedTopicsEl) {
             if (data.analysis?.suggested_topics && data.analysis.suggested_topics.length > 0) {
-                suggestedTopicsEl.innerHTML = data.analysis.suggested_topics
-                    .map(topic => `<li class="mb-2"><i class="fas fa-tag text-primary me-2"></i>${topic}</li>`)
-                    .join('');
+                let html = '';
+                
+                data.analysis.suggested_topics.forEach(topic => {
+                    // Check if this is a heading (contains ** at start and end)
+                    if (topic.startsWith('**') && topic.endsWith('**')) {
+                        // This is a heading - remove ** and make it bold without tag icon
+                        const headingText = topic.replace(/\*\*/g, '');
+                        html += `<li class="topic-heading mb-3"><strong>${headingText}</strong></li>`;
+                    } else {
+                        // This is a regular topic - add tag icon
+                        html += `<li class="mb-2"><i class="fas fa-tag text-primary me-2"></i>${topic}</li>`;
+                    }
+                });
+                
+                suggestedTopicsEl.innerHTML = html;
             } else {
                 suggestedTopicsEl.innerHTML = '<li class="text-muted">No suggested topics available</li>';
             }
@@ -362,12 +400,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Show results container
+        // Show results container with smooth animation
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.opacity = '0';
+            resultsDiv.style.transform = 'translateY(20px)';
             setTimeout(() => {
                 resultsDiv.style.opacity = '1';
+                resultsDiv.style.transform = 'translateY(0)';
+                resultsDiv.style.transition = 'all 0.4s ease-out';
             }, 100);
         }
     }
@@ -444,15 +485,27 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Show loader immediately
+        // Show enhanced loader immediately
         const loader = document.getElementById('loading');
         const analyzeBtn = document.getElementById('analyze-btn') || document.getElementById('analyze-button');
         const resultsDiv = document.getElementById('results');
+        
         if (loader) {
             loader.style.display = 'block';
+            loader.classList.add('loading-enhanced');
+            loader.innerHTML = `
+                <div class="text-center my-4">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3 text-primary fw-bold">Analyzing Paper...</p>
+                    <p class="text-muted">This may take a few moments as we process the paper content</p>
+                </div>
+            `;
         }
         if (analyzeBtn) {
             analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
         }
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
@@ -496,6 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (analyzeBtn) {
                 analyzeBtn.disabled = false;
+                analyzeBtn.innerHTML = '<i class="fas fa-search me-2"></i>Analyze Paper';
             }
         }
     }
@@ -579,6 +633,248 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize the UI when the DOM is loaded
     document.addEventListener('DOMContentLoaded', initializeUI);
+
+    // Enhanced Tab Management
+    function initializeEnhancedTabManagement() {
+        const tabLinks = document.querySelectorAll('.nav-tabs .nav-link');
+        const tabPanes = document.querySelectorAll('.tab-pane');
+        
+        // Add enhanced tab switching behavior
+        tabLinks.forEach(tab => {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Remove active class from all tabs and panes
+                tabLinks.forEach(t => t.classList.remove('active'));
+                tabPanes.forEach(p => p.classList.remove('active'));
+                
+                // Add active class to clicked tab
+                this.classList.add('active');
+                
+                // Find and activate corresponding pane
+                const targetId = this.getAttribute('href') || this.getAttribute('data-bs-target');
+                const targetPane = document.querySelector(targetId);
+                if (targetPane) {
+                    targetPane.classList.add('active');
+                    
+                    // Scroll to top of the newly active tab
+                    setTimeout(() => {
+                        targetPane.scrollTop = 0;
+                        targetPane.focus();
+                    }, 100);
+                    
+                    // Trigger custom event for tab activation
+                    const event = new CustomEvent('tabActivated', {
+                        detail: { tabId: targetId, tabElement: this, paneElement: targetPane }
+                    });
+                    document.dispatchEvent(event);
+                }
+            });
+        });
+        
+        // Add visual feedback for tab interactions
+        tabLinks.forEach(tab => {
+            tab.addEventListener('mouseenter', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.transform = 'translateY(-1px)';
+                }
+            });
+            
+            tab.addEventListener('mouseleave', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.transform = 'translateY(0)';
+                }
+            });
+        });
+        
+        // Handle keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                const activeTab = document.querySelector('.nav-tabs .nav-link.active');
+                if (activeTab) {
+                    const tabIndex = Array.from(tabLinks).indexOf(activeTab);
+                    
+                    switch(e.key) {
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                            const targetIndex = parseInt(e.key) - 1;
+                            if (targetIndex < tabLinks.length) {
+                                e.preventDefault();
+                                tabLinks[targetIndex].click();
+                            }
+                            break;
+                        case 'ArrowLeft':
+                            e.preventDefault();
+                            const prevIndex = (tabIndex - 1 + tabLinks.length) % tabLinks.length;
+                            tabLinks[prevIndex].click();
+                            break;
+                        case 'ArrowRight':
+                            e.preventDefault();
+                            const nextIndex = (tabIndex + 1) % tabLinks.length;
+                            tabLinks[nextIndex].click();
+                            break;
+                    }
+                }
+            }
+        });
+        
+        // Auto-focus management for active tab content
+        document.addEventListener('tabActivated', function(e) {
+            const pane = e.detail.paneElement;
+            
+            // Focus the first interactive element in the active tab
+            setTimeout(() => {
+                const firstFocusable = pane.querySelector('input, button, select, textarea, [tabindex]:not([tabindex="-1"])');
+                if (firstFocusable) {
+                    firstFocusable.focus();
+                }
+            }, 150);
+        });
+        
+        // Performance optimization: lazy load tab content
+        tabPanes.forEach(pane => {
+            if (!pane.classList.contains('active')) {
+                pane.style.display = 'none';
+            }
+        });
+        
+        document.addEventListener('tabActivated', function(e) {
+            const activePane = e.detail.paneElement;
+            const inactivePanes = Array.from(tabPanes).filter(p => p !== activePane);
+            
+            // Show active pane
+            activePane.style.display = 'block';
+            
+            // Hide inactive panes after animation
+            setTimeout(() => {
+                inactivePanes.forEach(pane => {
+                    pane.style.display = 'none';
+                });
+            }, 300);
+        });
+        
+        // Add tab indicators functionality
+        function updateTabIndicators() {
+            const activeTab = document.querySelector('.nav-tabs .nav-link.active');
+            const allTabs = document.querySelectorAll('.nav-tabs .nav-link');
+            
+            allTabs.forEach(tab => {
+                const indicator = tab.querySelector('.tab-indicator');
+                if (indicator) {
+                    if (tab === activeTab) {
+                        indicator.style.width = '80%';
+                        indicator.style.backgroundColor = '#0d6efd';
+                    } else {
+                        indicator.style.width = '0%';
+                        indicator.style.backgroundColor = '#6ea8fe';
+                    }
+                }
+            });
+        }
+        
+        // Update indicators on tab switch
+        document.addEventListener('tabActivated', updateTabIndicators);
+        
+        // Initialize indicators
+        updateTabIndicators();
+        
+        // Add hover effects for tab indicators
+        tabLinks.forEach(tab => {
+            const indicator = tab.querySelector('.tab-indicator');
+            if (indicator) {
+                tab.addEventListener('mouseenter', function() {
+                    if (!this.classList.contains('active')) {
+                        indicator.style.width = '60%';
+                        indicator.style.backgroundColor = '#6ea8fe';
+                    }
+                });
+                
+                tab.addEventListener('mouseleave', function() {
+                    if (!this.classList.contains('active')) {
+                        indicator.style.width = '0%';
+                    }
+                });
+            }
+        });
+        
+        // Add loading states for tab content
+        function showTabLoading(tabId) {
+            const pane = document.querySelector(tabId);
+            if (pane) {
+                pane.classList.add('loading');
+            }
+        }
+        
+        function hideTabLoading(tabId) {
+            const pane = document.querySelector(tabId);
+            if (pane) {
+                pane.classList.remove('loading');
+            }
+        }
+        
+        // Expose loading functions globally
+        window.showTabLoading = showTabLoading;
+        window.hideTabLoading = hideTabLoading;
+        
+        // Add tab counter functionality
+        function updateTabCounter(tabId, count) {
+            const tab = document.querySelector(`[href="${tabId}"], [data-bs-target="${tabId}"]`);
+            if (tab) {
+                let counter = tab.querySelector('.tab-counter');
+                if (!counter && count > 0) {
+                    counter = document.createElement('span');
+                    counter.className = 'tab-counter';
+                    tab.appendChild(counter);
+                }
+                if (counter) {
+                    counter.textContent = count;
+                    counter.style.display = count > 0 ? 'flex' : 'none';
+                }
+            }
+        }
+        
+        // Expose counter function globally
+        window.updateTabCounter = updateTabCounter;
+        
+        // Add tab status indicators
+        function setTabStatus(tabId, status) {
+            const tab = document.querySelector(`[href="${tabId}"], [data-bs-target="${tabId}"]`);
+            if (tab) {
+                let statusIndicator = tab.querySelector('.tab-status');
+                if (!statusIndicator) {
+                    statusIndicator = document.createElement('span');
+                    statusIndicator.className = 'tab-status';
+                    tab.appendChild(statusIndicator);
+                }
+                
+                // Set status color
+                switch (status) {
+                    case 'success':
+                        statusIndicator.style.backgroundColor = '#28a745';
+                        break;
+                    case 'warning':
+                        statusIndicator.style.backgroundColor = '#ffc107';
+                        break;
+                    case 'error':
+                        statusIndicator.style.backgroundColor = '#dc3545';
+                        break;
+                    case 'info':
+                        statusIndicator.style.backgroundColor = '#17a2b8';
+                        break;
+                    default:
+                        statusIndicator.style.backgroundColor = '#6c757d';
+                }
+            }
+        }
+        
+        // Expose status function globally
+        window.setTabStatus = setTabStatus;
+    }
+    
+    // Initialize enhanced tab management
+    document.addEventListener('DOMContentLoaded', initializeEnhancedTabManagement);
 
     // Page Settings Event Handlers
     const fontSizeSlider = document.getElementById('fontSize');
@@ -1003,6 +1299,31 @@ document.addEventListener('DOMContentLoaded', () => {
             '<th>PMID</th><th>Title</th><th>Authors</th><th>Journal</th><th>Year</th>' +
             '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Curation Status</th><th>Actions</th></tr></thead><tbody>';
         for (const paper of papers) {
+            // Enhanced curation status display
+            let statusBadge = '';
+            let statusText = paper.curation_status || 'Unknown';
+            
+            switch (statusText) {
+                case 'already_curated':
+                    statusBadge = '<span class="badge bg-success">Already Curated</span>';
+                    break;
+                case 'ready':
+                    statusBadge = '<span class="badge bg-primary">Ready for Curation</span>';
+                    break;
+                case 'not_ready':
+                    statusBadge = '<span class="badge bg-warning">Not Ready</span>';
+                    break;
+                default:
+                    statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+            }
+            
+            // Add confidence score if available
+            let confidenceInfo = '';
+            if (paper.curation_analysis && paper.curation_analysis.confidence) {
+                const confidence = (paper.curation_analysis.confidence * 100).toFixed(1);
+                confidenceInfo = `<br><small class="text-muted">Confidence: ${confidence}%</small>`;
+            }
+            
             html += `<tr>
                 <td>${paper.pmid}</td>
                 <td>${paper.title}</td>
@@ -1012,7 +1333,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${paper.host}</td>
                 <td>${paper.body_site}</td>
                 <td>${paper.sequencing_type}</td>
-                <td>${paper.curation_status}</td>
+                <td>${statusBadge}${confidenceInfo}</td>
                 <td><button class="btn btn-sm btn-info" onclick="viewPaperDetails('${paper.pmid}', event)">Details</button></td>
             </tr>`;
         }
@@ -1058,64 +1379,168 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.viewPaperDetails = async function(pmid, event) {
-        // Remove any existing popover
-        let popover = document.getElementById('details-popover');
-        if (popover) popover.remove();
-
-        // Create popover
-        popover = document.createElement('div');
-        popover.id = 'details-popover';
-        popover.style.position = 'fixed';
-        popover.style.zIndex = 9999;
-        popover.style.top = '50%';
-        popover.style.left = '50%';
-        popover.style.transform = 'translate(-50%, -50%)';
-        popover.style.minWidth = '350px';
-        popover.style.maxWidth = '500px';
-        popover.style.background = '#fff';
-        popover.style.border = '1px solid #ccc';
-        popover.style.borderRadius = '8px';
-        popover.style.boxShadow = '0 4px 16px rgba(0,0,0,0.15)';
-        popover.style.padding = '20px';
-        popover.innerHTML = `<div class='text-center my-2'><div class='spinner-border text-primary' role='status'><span class='visually-hidden'>Loading...</span></div><p>Fetching paper Details...</p></div>
-            <button type='button' class='btn-close' style='position:absolute;top:8px;right:8px;' onclick='closeDetailsPopover()'></button>`;
-
-        document.body.appendChild(popover);
-
-        // Add click-outside-to-close
-        setTimeout(() => {
-            document.addEventListener('mousedown', handlePopoverOutsideClick);
-        }, 0);
-
-        // Fetch details
-        const resp = await fetch(`/analyze/${pmid}`);
-        const data = await resp.json();
-        let html = `<h5>${data.metadata?.title || ''}</h5>`;
-        html += `<p><strong>Authors:</strong> ${data.metadata?.authors || ''}</p>`;
-        html += `<p><strong>Journal:</strong> ${data.metadata?.journal || ''} (${data.metadata?.year || ''})</p>`;
-        html += `<p><strong>Abstract:</strong> ${data.metadata?.abstract || ''}</p>`;
-        html += `<p><strong>Host:</strong> ${data.metadata?.host || ''}</p>`;
-        html += `<p><strong>Body Site:</strong> ${data.metadata?.body_site || ''}</p>`;
-        html += `<p><strong>Curation Status:</strong> ${data.curation_status_message || ''}</p>`;
-        html += `<hr><strong>Key Findings:</strong><ul>`;
-        (data.analysis?.key_findings || []).forEach(f => { html += `<li>${f}</li>`; });
-        html += `</ul>`;
-        html += `<button type='button' class='btn btn-sm btn-secondary mt-2' onclick='closeDetailsPopover()'>Close</button>`;
-        popover.innerHTML = html + `<button type='button' class='btn-close' style='position:absolute;top:8px;right:8px;' onclick='closeDetailsPopover()'></button>`;
-    };
-
-    window.closeDetailsPopover = function() {
-        let popover = document.getElementById('details-popover');
-        if (popover) popover.remove();
-        document.removeEventListener('mousedown', handlePopoverOutsideClick);
-    };
-
-    function handlePopoverOutsideClick(e) {
-        const popover = document.getElementById('details-popover');
-        if (popover && !popover.contains(e.target)) {
-            closeDetailsPopover();
+        console.log('=== viewPaperDetails called ===');
+        console.log('PMID:', pmid);
+        console.log('Event:', event);
+        
+        // Prevent any default behavior
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
         }
-    }
+        
+        // Clear any existing popups first (just in case)
+        const existingPopup = document.getElementById('enhanced-details-popup');
+        const existingBackdrop = document.getElementById('popup-backdrop');
+        if (existingPopup) existingPopup.remove();
+        if (existingBackdrop) existingBackdrop.remove();
+        
+        console.log('Navigating to paper details page...');
+        
+        // Force a hard navigation to ensure no caching issues
+        window.location.replace(`paper-details.html?pmid=${pmid}&v=${Date.now()}`);
+    };
+
+    // Remove popup-related functions that are no longer needed
+    // window.closeEnhancedDetailsPopup = function() {
+    //     const popup = document.getElementById('enhanced-details-popup');
+    //     const backdrop = document.getElementById('popup-backdrop');
+    //     const scrollBtn = document.getElementById('scroll-to-top-btn');
+        
+    //     if (popup) {
+    //         popup.classList.add('fade-out');
+    //     }
+    //     if (backdrop) {
+    //         backdrop.classList.add('fade-out');
+    //     }
+    //     if (scrollBtn) {
+    //         scrollBtn.classList.add('fade-out');
+    //     }
+        
+    //     // Remove after animation
+    //     setTimeout(() => {
+    //         if (popup) popup.remove();
+    //         if (backdrop) backdrop.remove();
+    //         if (scrollBtn) scrollBtn.remove();
+    //     }, 200);
+        
+    //     // Remove keyboard listener
+    //     document.removeEventListener('keydown', handlePopupKeyboard);
+    // };
+
+    // function handlePopupKeyboard(e) {
+    //     if (e.key === 'Escape') {
+    //         closeEnhancedDetailsPopup();
+    //     }
+    // }
+
+    // function getCurationBadgeClass(statusMessage) {
+    //     if (!statusMessage) return 'info';
+    //     const status = statusMessage.toLowerCase();
+    //     if (status.includes('ready')) return 'success';
+    //     if (status.includes('not ready')) return 'warning';
+    //     if (status.includes('already curated')) return 'info';
+    //     if (status.includes('error')) return 'danger';
+    //     return 'info';
+    // }
+
+    // function buildEnhancedPopupContent(data, pmid) {
+    //     let content = '';
+        
+    //     // Paper Metadata Section
+    //     content += `
+    //         <div class="popup-section">
+    //             <h6><i class="fas fa-info-circle"></i>Paper Information</h6>
+    //             <p><strong>Title:</strong> ${data.metadata?.title || 'Not available'}</p>
+    //             <p><strong>Authors:</strong> ${data.metadata?.authors || 'Not available'}</p>
+    //             <p><strong>Journal:</strong> ${data.metadata?.journal || 'Not available'} (${data.metadata?.year || 'N/A'})</p>
+    //             <p><strong>PMID:</strong> ${pmid}</p>
+    //             ${data.metadata?.doi ? `<p><strong>DOI:</strong> ${data.metadata.doi}</p>` : ''}
+    //         </div>
+    //     `;
+        
+    //     // Abstract Section
+    //     if (data.metadata?.abstract) {
+    //         content += `
+    //             <div class="popup-section">
+    //                 <h6><i class="fas fa-file-text"></i>Abstract</h6>
+    //                 <p>${data.metadata.abstract}</p>
+    //             </div>
+    //         `;
+    //     }
+        
+    //     // Curation Status Section
+    //     content += `
+    //         <div class="popup-section">
+    //             <h6><i class="fas fa-clipboard-check"></i>Curation Status</h6>
+    //             <p><strong>Status:</strong> 
+    //                 <span class="popup-badge ${getCurationBadgeClass(data.curation_status_message)}">
+    //                     ${data.curation_status_message || 'Unknown'}
+    //                 </span>
+    //             </p>
+    //             <p><strong>Host:</strong> ${data.metadata?.host || 'Not specified'}</p>
+    //             <p><strong>Body Site:</strong> ${data.metadata?.body_site || 'Not specified'}</p>
+    //             <p><strong>Sequencing Type:</strong> ${data.metadata?.sequencing_type || 'Not specified'}</p>
+    //         </div>
+    //     `;
+        
+    //     // Enhanced Curation Analysis Section
+    //     if (data.analysis && data.analysis.curation_analysis) {
+    //         const curation = data.analysis.curation_analysis;
+    //         content += `
+    //             <div class="popup-section">
+    //                 <h6><i class="fas fa-microscope"></i>Enhanced Curation Analysis</h6>
+    //                 <p><strong>Readiness:</strong> 
+    //                     <span class="popup-badge ${curation.readiness === 'READY' ? 'success' : curation.readiness === 'NOT_READY' ? 'warning' : 'info'}">
+    //                         ${curation.readiness || 'Unknown'}
+    //                     </span>
+    //                 </p>
+    //                 <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
+    //                 <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
+    //                 <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
+                    
+    //                 ${curation.explanation ? `<p><strong>Detailed Explanation:</strong> ${curation.explanation}</p>` : ''}
+                    
+    //                 ${curation.specific_reasons && curation.specific_reasons.length > 0 ? `
+    //                     <p><strong>Specific Reasons:</strong></p>
+    //                     <ul class="popup-list">
+    //                         ${curation.specific_reasons.map(reason => `<li><i class="fas fa-arrow-right"></i>${reason}</li>`).join('')}
+    //                     </ul>
+    //                 ` : ''}
+                    
+    //                 ${curation.missing_fields && curation.missing_fields.length > 0 ? `
+    //                     <p><strong>Missing Fields:</strong> ${curation.missing_fields.join(', ')}</p>
+    //                 ` : ''}
+    //             </div>
+    //         `;
+    //     }
+        
+    //     // Key Findings Section
+    //     if (data.analysis?.key_findings && data.analysis.key_findings.length > 0) {
+    //         content += `
+    //             <div class="popup-section">
+    //                 <h6><i class="fas fa-lightbulb"></i>Key Findings</h6>
+    //                 <ul class="popup-list">
+    //                     ${data.analysis.key_findings.map(finding => `<li><i class="fas fa-check-circle"></i>${finding}</li>`).join('')}
+    //                 </ul>
+    //             </div>
+    //         `;
+    //     }
+        
+    //     // Suggested Topics Section
+    //     if (data.analysis?.suggested_topics && data.analysis.suggested_topics.length > 0) {
+    //         content += `
+    //             <div class="popup-section">
+    //                 <h6><i class="fas fa-tags"></i>Suggested Topics for Future Research</h6>
+    //                 <ul class="popup-list">
+    //                     ${data.analysis.suggested_topics.map(topic => `<li><i class="fas fa-tag"></i>${topic}</li>`).join('')}
+    //                 </ul>
+    //             </div>
+    //         `;
+    //     }
+        
+    //     return content;
+    // }
 
     window.showModal = function(title, bodyHtml) {
         let modal = document.getElementById('browse-details-modal');

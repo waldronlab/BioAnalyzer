@@ -33,7 +33,9 @@ class BugSigDBAnalyzer:
         'general': [
             'microbiome', 'microbial', 'bacteria', 'abundance',
             'differential abundance', 'taxonomic composition',
-            'community structure', 'dysbiosis', 'microbiota'
+            'community structure', 'dysbiosis', 'microbiota',
+            # Environmental additions
+            'environmental', 'indoor', 'outdoor', 'building'
         ],
         'methods': [
             '16s rrna', 'metagenomic', 'sequencing', 'amplicon',
@@ -42,6 +44,11 @@ class BugSigDBAnalyzer:
         'analysis': [
             'enriched', 'depleted', 'increased', 'decreased',
             'higher abundance', 'lower abundance', 'differential'
+        ],
+        'environmental': [
+            'indoor', 'outdoor', 'building', 'hospital', 'school',
+            'office', 'transportation', 'agricultural', 'industrial',
+            'soil', 'water', 'air', 'dust', 'surface', 'restroom', 'public'
         ]
     }
 
@@ -68,13 +75,13 @@ class BugSigDBAnalyzer:
     def _load_existing_data(self):
         """Load existing BugSigDB data from full_dump.csv"""
         try:
-        if self.data_path.exists():
-            self.existing_data = pd.read_csv(self.data_path)
+            if self.data_path.exists():
+                self.existing_data = pd.read_csv(self.data_path)
                 self.existing_pmids = set(self.existing_data['PMID'].astype(str).unique())
                 self.logger.info(f"Loaded {len(self.existing_pmids)} existing PMIDs")
-        else:
-            self.existing_data = pd.DataFrame()
-            self.existing_pmids = set()
+            else:
+                self.existing_data = pd.DataFrame()
+                self.existing_pmids = set()
                 self.logger.warning(f"Data file {self.data_path} not found")
         except Exception as e:
             self.logger.error(f"Error loading data: {str(e)}")
@@ -103,9 +110,9 @@ class BugSigDBAnalyzer:
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
         
         try:
-        # Fetch summary
-        summary_url = f"{base_url}/esummary.fcgi?db=pubmed&id={pmid}&retmode=json"
-        response = requests.get(summary_url)
+            # Fetch summary
+            summary_url = f"{base_url}/esummary.fcgi?db=pubmed&id={pmid}&retmode=json"
+            response = requests.get(summary_url)
             response.raise_for_status()
             
             data = response.json()
@@ -160,14 +167,15 @@ class BugSigDBAnalyzer:
         # Calculate signature confidence
         general_weight = len(found_terms['general']) * 0.4
         methods_weight = len(found_terms['methods']) * 0.3
-        analysis_weight = len(found_terms['analysis']) * 0.3
-        confidence = min(1.0, general_weight + methods_weight + analysis_weight)
+        analysis_weight = len(found_terms['analysis']) * 0.2
+        environmental_weight = len(found_terms['environmental']) * 0.1  # Add environmental weight
+        confidence = min(1.0, general_weight + methods_weight + analysis_weight + environmental_weight)
         
-        # Determine if paper has signatures
+        # Determine if paper has signatures - Updated to be more inclusive
         has_signatures = (
-            confidence > 0.4 and
+            confidence > 0.2 and  # Lowered threshold from 0.4 to 0.2
             len(found_terms['general']) >= 1 and
-            len(found_terms['methods']) >= 1
+            (len(found_terms['methods']) >= 1 or len(found_terms['analysis']) >= 1 or len(found_terms['environmental']) >= 1)  # Include environmental terms
         )
         
         # Detect sequencing types
@@ -228,20 +236,20 @@ class BugSigDBAnalyzer:
                 continue
                 
             try:
-            metadata = self.fetch_paper_metadata(pmid)
-            if not metadata:
-                continue
+                metadata = self.fetch_paper_metadata(pmid)
+                if not metadata:
+                    continue
             
-            # Analyze title and abstract
-            text_to_analyze = f"{metadata['title']} {metadata['abstract']}"
-            analysis = self.analyze_paper(text_to_analyze)
+                # Analyze title and abstract
+                text_to_analyze = f"{metadata['title']} {metadata['abstract']}"
+                analysis = self.analyze_paper(text_to_analyze)
             
                 if analysis['has_signatures'] and analysis['confidence'] > min_confidence:
                     suggestion = {
-                    'pmid': pmid,
+                        'pmid': pmid,
                         'analysis_date': datetime.now().isoformat(),
-                    **metadata,
-                    **analysis
+                        **metadata,
+                        **analysis
                     }
                     suggestions.append(suggestion)
                     self.logger.info(f"Found relevant paper: PMID {pmid} (confidence: {analysis['confidence']:.2f})")

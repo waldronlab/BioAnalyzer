@@ -105,6 +105,71 @@ function displayMicrobialSignatureAnalysis(analysis) {
         completenessElement.textContent = completeness;
         completenessElement.className = `card-text ${getCompletenessColorClass(completeness)}`;
     }
+    
+    // Display factor-based analysis
+    displayFactorBasedAnalysis(analysis);
+}
+
+function displayFactorBasedAnalysis(analysis) {
+    // Display general factors
+    const generalFactorsElement = document.getElementById('general-factors-list');
+    if (generalFactorsElement) {
+        const factors = analysis.general_factors_present || [];
+        if (factors.length > 0) {
+            generalFactorsElement.innerHTML = factors.map(factor => 
+                `<span class="badge bg-success me-1 mb-1">${factor}</span>`
+            ).join('');
+        } else {
+            generalFactorsElement.innerHTML = '<span class="text-muted">No general factors identified</span>';
+        }
+    }
+    
+    // Display human/animal factors
+    const humanAnimalFactorsElement = document.getElementById('human-animal-factors-list');
+    if (humanAnimalFactorsElement) {
+        const factors = analysis.human_animal_factors_present || [];
+        if (factors.length > 0) {
+            humanAnimalFactorsElement.innerHTML = factors.map(factor => 
+                `<span class="badge bg-info me-1 mb-1">${factor}</span>`
+            ).join('');
+        } else {
+            humanAnimalFactorsElement.innerHTML = '<span class="text-muted">No human/animal factors identified</span>';
+        }
+    }
+    
+    // Display environmental factors
+    const environmentalFactorsElement = document.getElementById('environmental-factors-list');
+    if (environmentalFactorsElement) {
+        const factors = analysis.environmental_factors_present || [];
+        if (factors.length > 0) {
+            environmentalFactorsElement.innerHTML = factors.map(factor => 
+                `<span class="badge bg-warning me-1 mb-1">${factor}</span>`
+            ).join('');
+        } else {
+            environmentalFactorsElement.innerHTML = '<span class="text-muted">No environmental factors identified</span>';
+        }
+    }
+    
+    // Display missing factors
+    const missingFactorsElement = document.getElementById('missing-factors-list');
+    if (missingFactorsElement) {
+        const factors = analysis.missing_critical_factors || [];
+        if (factors.length > 0) {
+            missingFactorsElement.innerHTML = factors.map(factor => 
+                `<span class="badge bg-danger me-1 mb-1">${factor}</span>`
+            ).join('');
+        } else {
+            missingFactorsElement.innerHTML = '<span class="text-success">No critical factors missing</span>';
+        }
+    }
+    
+    // Display factor-based score
+    const scoreElement = document.getElementById('factor-based-score');
+    if (scoreElement) {
+        const score = analysis.factor_based_score || 0.0;
+        const percentage = Math.round(score * 100);
+        scoreElement.innerHTML = `<span class="badge bg-primary">${percentage}% (${score.toFixed(2)})</span>`;
+    }
 }
 
 function displaySpecificReasons(reasons) {
@@ -198,7 +263,13 @@ function clearCurationAnalysis() {
         'data-completeness',
         'specific-reasons-list',
         'examples-list',
-        'missing-fields-list'
+        'missing-fields-list',
+        // New factor-based analysis fields
+        'general-factors-list',
+        'human-animal-factors-list',
+        'environmental-factors-list',
+        'missing-factors-list',
+        'factor-based-score'
     ];
     
     elements.forEach(id => {

@@ -1,4 +1,386 @@
 console.log("app.js loaded!");
+
+// File upload function for PMIDs - defined globally for immediate access
+window.uploadPmidsFile = async function() {
+    const fileInput = document.getElementById('pmid-file-upload');
+    const statusDiv = document.getElementById('upload-status');
+    
+    if (!fileInput || !fileInput.files.length) {
+        if (statusDiv) {
+            statusDiv.innerHTML = '<div class="alert alert-warning">Please select a file first.</div>';
+        }
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.xls') && !file.name.toLowerCase().endsWith('.xlsx')) {
+        if (statusDiv) {
+            statusDiv.innerHTML = '<div class="alert alert-danger">Please select an Excel file (.xls or .xlsx).</div>';
+        }
+        return;
+    }
+    
+    // Show loading status
+    if (statusDiv) {
+        statusDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Uploading and analyzing file...</div>';
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/upload_pmids_file', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.error) {
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${result.error}</div>`;
+            }
+            return;
+        }
+        
+        // Display results
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <h6><i class="fas fa-check-circle me-2"></i>${result.message}</h6>
+                    <p>Found ${result.pmids.length} PMIDs in the file.</p>
+                </div>
+            `;
+        }
+        
+        // Update browse state with the results
+        if (window.browsePapersState) {
+            window.browsePapersState.allPmids = result.pmids;
+            window.browsePapersState.filteredPmids = result.pmids;
+            window.browsePapersState.page = 1;
+            window.browsePapersState.loadedPages = {};
+            window.browsePapersState.uploadedResults = result.results;
+        }
+        
+        // Display the results in the table
+        if (typeof displayUploadedResults === 'function') {
+            displayUploadedResults(result.results);
+        }
+        
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        if (statusDiv) {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error uploading file: ${error.message}</div>`;
+        }
+    }
+};
+
+// Initialize browse papers state globally
+window.browsePapersState = {
+    allPmids: [], // store all PMIDs
+    loadedPages: {}, // cache loaded pages: {pageNum: [papers]}
+    filteredPmids: [], // PMIDs after filtering
+    filters: {
+        curationStatus: '',
+        host: '',
+        keyword: '',
+        year: '',
+        sequencingType: ''
+    },
+    page: 1,
+    pageSize: 20
+};
+
+// Function to display uploaded results - defined globally
+window.displayUploadedResults = function(results) {
+    if (!results || !results.length) {
+        const container = document.getElementById('browse-table-container');
+        if (container) {
+            container.innerHTML = '<div class="alert alert-info">No results to display.</div>';
+        }
+        return;
+    }
+    
+    let html = '<table class="table table-bordered table-hover"><thead><tr>' +
+        '<th>PMID</th><th>Title</th><th>Authors</th><th>Journal</th><th>Year</th>' +
+        '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Curation Status</th><th>Actions</th></tr></thead><tbody>';
+    
+    for (const paper of results) {
+        // Enhanced curation status display
+        let statusBadge = '';
+        let statusText = paper.curation_status || 'Unknown';
+        
+        switch (statusText) {
+            case 'already_curated':
+                statusBadge = '<span class="badge bg-success">Already Curated</span>';
+                break;
+            case 'ready':
+                statusBadge = '<span class="badge bg-primary">Ready for Curation</span>';
+                break;
+            case 'not_ready':
+                statusBadge = '<span class="badge bg-warning">Not Ready</span>';
+                break;
+            case 'not_found':
+                statusBadge = '<span class="badge bg-secondary">Not Found</span>';
+                break;
+            case 'error':
+                statusBadge = '<span class="badge bg-danger">Error</span>';
+                break;
+            default:
+                statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+        }
+        
+        // Add confidence score if available
+        let confidenceInfo = '';
+        if (paper.confidence) {
+            const confidence = (paper.confidence * 100).toFixed(1);
+            confidenceInfo = `<br><small class="text-muted">Confidence: ${confidence}%</small>`;
+        }
+        
+        html += `<tr>
+            <td>${paper.pmid}</td>
+            <td>${paper.title || 'N/A'}</td>
+            <td>${paper.authors || 'N/A'}</td>
+            <td>${paper.journal || 'N/A'}</td>
+            <td>${paper.year || 'N/A'}</td>
+            <td>${paper.host || 'N/A'}</td>
+            <td>${paper.body_site || 'N/A'}</td>
+            <td>${paper.sequencing_type || 'N/A'}</td>
+            <td>${statusBadge}${confidenceInfo}</td>
+            <td><button class="btn btn-sm btn-info" onclick="viewPaperDetails('${paper.pmid}', event)">Details</button></td>
+        </tr>`;
+    }
+    
+    html += '</tbody></table>';
+    
+    // Add summary statistics
+    const stats = {
+        total: results.length,
+        already_curated: results.filter(p => p.curation_status === 'already_curated').length,
+        ready: results.filter(p => p.curation_status === 'ready').length,
+        not_ready: results.filter(p => p.curation_status === 'not_ready').length,
+        not_found: results.filter(p => p.curation_status === 'not_found').length,
+        error: results.filter(p => p.curation_status === 'error').length
+    };
+    
+    const summaryHtml = `
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Summary Statistics</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-primary">${stats.total}</h4>
+                            <small class="text-muted">Total Papers</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-success">${stats.already_curated}</h4>
+                            <small class="text-muted">Already Curated</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-primary">${stats.ready}</h4>
+                            <small class="text-muted">Ready for Curation</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-warning">${stats.not_ready}</h4>
+                            <small class="text-muted">Not Ready</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-secondary">${stats.not_found}</h4>
+                            <small class="text-muted">Not Found</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-danger">${stats.error}</h4>
+                            <small class="text-muted">Errors</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const container = document.getElementById('browse-table-container');
+    if (container) {
+        container.innerHTML = summaryHtml + html;
+    }
+};
+
+// Export functions - defined globally for immediate access
+window.exportBrowseResults = function() {
+    // Check if we have uploaded results first
+    if (window.browsePapersState.uploadedResults && window.browsePapersState.uploadedResults.length > 0) {
+        const results = window.browsePapersState.uploadedResults;
+        const headers = ['PMID','Title','Authors','Journal','Year','Host','Body Site','Sequencing Type','Curation Status'];
+        const rows = results.map(p => [
+            p.pmid, p.title || '', p.authors || '', p.journal || '', p.year || '', 
+            p.host || '', p.body_site || '', p.sequencing_type || '', p.curation_status || ''
+        ]);
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'uploaded_pmids_results.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        return;
+    }
+    
+    // Check if we have loaded papers in the current page
+    const currentPage = window.browsePapersState.page || 1;
+    const loadedPages = window.browsePapersState.loadedPages || {};
+    const papers = loadedPages[currentPage];
+    
+    if (!papers || !papers.length) {
+        alert('No papers to export. Please load papers first by clicking "Load All Papers" or upload an Excel file with PMIDs.');
+        return;
+    }
+    
+    const headers = ['PMID','Title','Authors','Journal','Year','Host','Body Site','Sequencing Type','Curation Status'];
+    const rows = papers.map(p => [
+        p.pmid, p.title || '', p.authors || '', p.journal || '', p.year || '', 
+        p.host || '', p.body_site || '', p.sequencing_type || '', p.curation_status || ''
+    ]);
+    let csv = headers.join(',') + '\n';
+    rows.forEach(row => {
+        csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'filtered_papers.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
+};
+
+// Enhanced export function for curation reports
+window.exportCurationReport = function() {
+    // Check if we have uploaded results first
+    if (window.browsePapersState.uploadedResults && window.browsePapersState.uploadedResults.length > 0) {
+        const results = window.browsePapersState.uploadedResults;
+        const headers = [
+            'PMID', 'Title', 'Authors', 'Journal', 'Year', 'Host', 'Body Site', 
+            'Sequencing Type', 'Curation Status', 'Curation Status Message', 
+            'In BugSigDB', 'Curated', 'Confidence Score', 'Key Findings'
+        ];
+        
+        const rows = results.map(p => [
+            p.pmid,
+            p.title || '',
+            p.authors || '',
+            p.journal || '',
+            p.year || '',
+            p.host || '',
+            p.body_site || '',
+            p.sequencing_type || '',
+            p.curation_status || '',
+            p.curation_status_message || '',
+            p.in_bugsigdb ? 'Yes' : 'No',
+            p.curated ? 'Yes' : 'No',
+            p.confidence ? (p.confidence * 100).toFixed(1) + '%' : '',
+            p.key_findings ? p.key_findings.join('; ') : ''
+        ]);
+        
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `curation_report_uploaded_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        return;
+    }
+    
+    // Check if we have loaded papers in the current page
+    const currentPage = window.browsePapersState.page || 1;
+    const loadedPages = window.browsePapersState.loadedPages || {};
+    const papers = loadedPages[currentPage];
+    
+    if (!papers || !papers.length) {
+        alert('No papers to export. Please load papers first by clicking "Load All Papers" or upload an Excel file with PMIDs.');
+        return;
+    }
+    
+    const headers = [
+        'PMID', 'Title', 'Authors', 'Journal', 'Year', 'Host', 'Body Site', 
+        'Sequencing Type', 'Curation Status', 'Curation Status Message', 
+        'In BugSigDB', 'Curated', 'Confidence Score', 'Key Findings'
+    ];
+    
+    const rows = papers.map(p => [
+        p.pmid,
+        p.title || '',
+        p.authors || '',
+        p.journal || '',
+        p.year || '',
+        p.host || '',
+        p.body_site || '',
+        p.sequencing_type || '',
+        p.curation_status || '',
+        p.curation_status_message || '',
+        p.in_bugsigdb ? 'Yes' : 'No',
+        p.curated ? 'Yes' : 'No',
+        p.confidence ? (p.confidence * 100).toFixed(1) + '%' : '',
+        p.key_findings ? p.key_findings.join('; ') : ''
+    ]);
+    
+    let csv = headers.join(',') + '\n';
+    rows.forEach(row => {
+        csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `curation_report_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOMContentLoaded: Initializing app.js and page settings');
     // Initialize state
@@ -1200,21 +1582,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.analyzePaper = analyzePaper;
 
     // === Browse Papers Tab Logic ===
-    window.browsePapersState = {
-        allPmids: [], // store all PMIDs
-        loadedPages: {}, // cache loaded pages: {pageNum: [papers]}
-        filteredPmids: [], // PMIDs after filtering
-        filters: {
-            curationStatus: '',
-            host: '',
-            keyword: '',
-            year: '',
-            sequencingType: ''
-        },
-        page: 1,
-        pageSize: 20
-    };
-
     window.loadBrowsePapers = async function() {
         // Show loading spinner
         let browseTable = document.getElementById('browse-table-container');
@@ -1354,29 +1721,11 @@ document.addEventListener('DOMContentLoaded', () => {
         loadBrowsePage(page);
     }
 
-    window.exportBrowseResults = function() {
-        const papers = window.browsePapersState.filteredPapers;
-        if (!papers.length) return;
-        const headers = ['PMID','Title','Authors','Journal','Year','Host','Body Site','Sequencing Type','Curation Status'];
-        const rows = papers.map(p => [
-            p.pmid, p.title, p.authors, p.journal, p.year, p.host, p.body_site, p.sequencing_type, p.curation_status
-        ]);
-        let csv = headers.join(',') + '\n';
-        rows.forEach(row => {
-            csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
-        });
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'filtered_papers.csv';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 100);
-    }
+    // File upload function for PMIDs
+    // This function is now defined globally and called directly from DOMContentLoaded
+
+    // Function to display uploaded results
+    // This function is now defined globally and called directly from DOMContentLoaded
 
     window.viewPaperDetails = async function(pmid, event) {
         console.log('=== viewPaperDetails called ===');
@@ -1400,147 +1749,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Force a hard navigation to ensure no caching issues
         window.location.replace(`paper-details.html?pmid=${pmid}&v=${Date.now()}`);
     };
-
-    // Remove popup-related functions that are no longer needed
-    // window.closeEnhancedDetailsPopup = function() {
-    //     const popup = document.getElementById('enhanced-details-popup');
-    //     const backdrop = document.getElementById('popup-backdrop');
-    //     const scrollBtn = document.getElementById('scroll-to-top-btn');
-        
-    //     if (popup) {
-    //         popup.classList.add('fade-out');
-    //     }
-    //     if (backdrop) {
-    //         backdrop.classList.add('fade-out');
-    //     }
-    //     if (scrollBtn) {
-    //         scrollBtn.classList.add('fade-out');
-    //     }
-        
-    //     // Remove after animation
-    //     setTimeout(() => {
-    //         if (popup) popup.remove();
-    //         if (backdrop) backdrop.remove();
-    //         if (scrollBtn) scrollBtn.remove();
-    //     }, 200);
-        
-    //     // Remove keyboard listener
-    //     document.removeEventListener('keydown', handlePopupKeyboard);
-    // };
-
-    // function handlePopupKeyboard(e) {
-    //     if (e.key === 'Escape') {
-    //         closeEnhancedDetailsPopup();
-    //     }
-    // }
-
-    // function getCurationBadgeClass(statusMessage) {
-    //     if (!statusMessage) return 'info';
-    //     const status = statusMessage.toLowerCase();
-    //     if (status.includes('ready')) return 'success';
-    //     if (status.includes('not ready')) return 'warning';
-    //     if (status.includes('already curated')) return 'info';
-    //     if (status.includes('error')) return 'danger';
-    //     return 'info';
-    // }
-
-    // function buildEnhancedPopupContent(data, pmid) {
-    //     let content = '';
-        
-    //     // Paper Metadata Section
-    //     content += `
-    //         <div class="popup-section">
-    //             <h6><i class="fas fa-info-circle"></i>Paper Information</h6>
-    //             <p><strong>Title:</strong> ${data.metadata?.title || 'Not available'}</p>
-    //             <p><strong>Authors:</strong> ${data.metadata?.authors || 'Not available'}</p>
-    //             <p><strong>Journal:</strong> ${data.metadata?.journal || 'Not available'} (${data.metadata?.year || 'N/A'})</p>
-    //             <p><strong>PMID:</strong> ${pmid}</p>
-    //             ${data.metadata?.doi ? `<p><strong>DOI:</strong> ${data.metadata.doi}</p>` : ''}
-    //         </div>
-    //     `;
-        
-    //     // Abstract Section
-    //     if (data.metadata?.abstract) {
-    //         content += `
-    //             <div class="popup-section">
-    //                 <h6><i class="fas fa-file-text"></i>Abstract</h6>
-    //                 <p>${data.metadata.abstract}</p>
-    //             </div>
-    //         `;
-    //     }
-        
-    //     // Curation Status Section
-    //     content += `
-    //         <div class="popup-section">
-    //             <h6><i class="fas fa-clipboard-check"></i>Curation Status</h6>
-    //             <p><strong>Status:</strong> 
-    //                 <span class="popup-badge ${getCurationBadgeClass(data.curation_status_message)}">
-    //                     ${data.curation_status_message || 'Unknown'}
-    //                 </span>
-    //             </p>
-    //             <p><strong>Host:</strong> ${data.metadata?.host || 'Not specified'}</p>
-    //             <p><strong>Body Site:</strong> ${data.metadata?.body_site || 'Not specified'}</p>
-    //             <p><strong>Sequencing Type:</strong> ${data.metadata?.sequencing_type || 'Not specified'}</p>
-    //         </div>
-    //     `;
-        
-    //     // Enhanced Curation Analysis Section
-    //     if (data.analysis && data.analysis.curation_analysis) {
-    //         const curation = data.analysis.curation_analysis;
-    //         content += `
-    //             <div class="popup-section">
-    //                 <h6><i class="fas fa-microscope"></i>Enhanced Curation Analysis</h6>
-    //                 <p><strong>Readiness:</strong> 
-    //                     <span class="popup-badge ${curation.readiness === 'READY' ? 'success' : curation.readiness === 'NOT_READY' ? 'warning' : 'info'}">
-    //                         ${curation.readiness || 'Unknown'}
-    //                     </span>
-    //                 </p>
-    //                 <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
-    //                 <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
-    //                 <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
-                    
-    //                 ${curation.explanation ? `<p><strong>Detailed Explanation:</strong> ${curation.explanation}</p>` : ''}
-                    
-    //                 ${curation.specific_reasons && curation.specific_reasons.length > 0 ? `
-    //                     <p><strong>Specific Reasons:</strong></p>
-    //                     <ul class="popup-list">
-    //                         ${curation.specific_reasons.map(reason => `<li><i class="fas fa-arrow-right"></i>${reason}</li>`).join('')}
-    //                     </ul>
-    //                 ` : ''}
-                    
-    //                 ${curation.missing_fields && curation.missing_fields.length > 0 ? `
-    //                     <p><strong>Missing Fields:</strong> ${curation.missing_fields.join(', ')}</p>
-    //                 ` : ''}
-    //             </div>
-    //         `;
-    //     }
-        
-    //     // Key Findings Section
-    //     if (data.analysis?.key_findings && data.analysis.key_findings.length > 0) {
-    //         content += `
-    //             <div class="popup-section">
-    //                 <h6><i class="fas fa-lightbulb"></i>Key Findings</h6>
-    //                 <ul class="popup-list">
-    //                     ${data.analysis.key_findings.map(finding => `<li><i class="fas fa-check-circle"></i>${finding}</li>`).join('')}
-    //                 </ul>
-    //             </div>
-    //         `;
-    //     }
-        
-    //     // Suggested Topics Section
-    //     if (data.analysis?.suggested_topics && data.analysis.suggested_topics.length > 0) {
-    //         content += `
-    //             <div class="popup-section">
-    //                 <h6><i class="fas fa-tags"></i>Suggested Topics for Future Research</h6>
-    //                 <ul class="popup-list">
-    //                     ${data.analysis.suggested_topics.map(topic => `<li><i class="fas fa-tag"></i>${topic}</li>`).join('')}
-    //                 </ul>
-    //             </div>
-    //         `;
-    //     }
-        
-    //     return content;
-    // }
 
     window.showModal = function(title, bodyHtml) {
         let modal = document.getElementById('browse-details-modal');
@@ -1572,19 +1780,50 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!textarea) return;
         let raw = textarea.value.trim();
         if (!raw) return;
+        
         // Parse PMIDs (comma, space, or newline separated)
         let pmids = raw.split(/[^0-9A-Za-z]+/).filter(x => x.length > 0);
         if (!pmids.length) return;
+        
         // Show loading spinner
         let browseTable = document.getElementById('browse-table-container');
-        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Loading papers...</p></div>';
-        // Reset browse state
-        window.browsePapersState.allPmids = pmids;
-        window.browsePapersState.filteredPmids = pmids;
-        window.browsePapersState.page = 1;
-        window.browsePapersState.loadedPages = {};
-        // Fetch first page
-        loadBrowsePage(1);
+        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Analyzing papers...</p></div>';
+        
+        try {
+            // Use the batch analysis endpoint
+            const response = await fetch('/analyze_batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(pmids)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const results = await response.json();
+            
+            if (results.error) {
+                browseTable.innerHTML = `<div class="alert alert-danger">Error: ${results.error}</div>`;
+                return;
+            }
+            
+            // Update browse state with the results
+            window.browsePapersState.allPmids = pmids;
+            window.browsePapersState.filteredPmids = pmids;
+            window.browsePapersState.page = 1;
+            window.browsePapersState.loadedPages = {};
+            window.browsePapersState.uploadedResults = results;
+            
+            // Display the results
+            displayUploadedResults(results);
+            
+        } catch (error) {
+            console.error('Error analyzing PMIDs:', error);
+            browseTable.innerHTML = `<div class="alert alert-danger">Error analyzing PMIDs: ${error.message}</div>`;
+        }
     }
 });
 

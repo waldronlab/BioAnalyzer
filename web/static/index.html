@@ -959,11 +959,14 @@
                 font-size: 0.7rem;
             }
         }
+        
+        .footer-divider {
             width: 100%;
             height: 1px;
             background-color: #dee2e6;
             margin: 20px 0;
         }
+        
         .footer-links {
             display: flex;
             justify-content: center;
@@ -1580,6 +1583,91 @@
                                                         </div>
                                                     </div>
 
+                                                    <!-- Enhanced Curation Analysis -->
+                                                    <div class="card mb-4">
+                                                        <div class="card-header">
+                                                            <h5 class="mb-0">
+                                                                <i class="fas fa-clipboard-check me-2"></i>Detailed Curation Readiness Analysis
+                                                            </h5>
+                                                        </div>
+                                                        <div class="card-body">
+                                                            <!-- Curation Readiness Status -->
+                                                            <div id="curation-readiness-status" class="alert alert-info mb-3">
+                                                                <div id="curation-readiness-text">Analysis in progress...</div>
+                                                            </div>
+                                                            
+                                                            <!-- Factor-Based Analysis -->
+                                                            <div class="row mb-3">
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Factor-Based Analysis</h6>
+                                                                    <div class="mb-2">
+                                                                        <strong>General Factors Present:</strong>
+                                                                        <div id="general-factors-list" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Human/Animal Factors Present:</strong>
+                                                                        <div id="human-animal-factors-list" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Environmental Factors Present:</strong>
+                                                                        <div id="environmental-factors-list" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Missing Critical Factors:</strong>
+                                                                        <div id="missing-factors-list" class="text-danger">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Factor-Based Score:</strong>
+                                                                        <div id="factor-based-score" class="text-primary">Loading...</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Detailed Explanation</h6>
+                                                                    <div id="curation-explanation-text" class="text-muted">Loading...</div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <!-- Microbial Signature Analysis -->
+                                                            <div class="row mb-3">
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Microbial Signature Analysis</h6>
+                                                                    <div class="mb-2">
+                                                                        <strong>Presence:</strong>
+                                                                        <span id="microbial-signatures" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Data Quality:</strong>
+                                                                        <span id="data-quality" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Statistical Significance:</strong>
+                                                                        <span id="statistical-significance" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Signature Types:</strong>
+                                                                        <div id="signature-types" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Data Completeness:</strong>
+                                                                        <span id="data-completeness" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Specific Reasons</h6>
+                                                                    <ul id="specific-reasons-list" class="text-muted">Loading...</ul>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <!-- Examples and Evidence -->
+                                                            <div class="row">
+                                                                <div class="col-12">
+                                                                    <h6 class="text-primary">Examples and Evidence</h6>
+                                                                    <ul id="examples-list" class="text-muted">Loading...</ul>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
                                                     <!-- Analysis Details -->
                                                     <div class="card">
                                                         <div class="card-body">
@@ -1681,16 +1769,62 @@
                         <div class="tab-pane fade" id="browse" role="tabpanel" aria-labelledby="browse-tab">
                             <div class="container mt-4">
                                 <h3>Browse Papers</h3>
-                                <div id="browse-pmid-input" class="mb-3">
-                                    <label for="user-pmid-list" class="form-label">Enter PMIDs (comma or newline separated):</label>
-                                    <textarea id="user-pmid-list" class="form-control mb-2" rows="2" placeholder="e.g. 12345678, 23456789 or one per line"></textarea>
-                                    <button class="btn btn-outline-primary mb-2" onclick="analyzeUserPmids()">Analyze Entered PMIDs</button>
+                                
+                                <!-- File Upload Section -->
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload PMID List</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="text-muted mb-3">Upload an Excel file (XLS/XLSX) containing PMIDs to check their curation statuses.</p>
+                                        <div class="mb-3">
+                                            <label for="pmid-file-upload" class="form-label">Select Excel File:</label>
+                                            <input type="file" class="form-control" id="pmid-file-upload" accept=".xls,.xlsx">
+                                            <div class="form-text">Supported formats: XLS, XLSX. The file should contain PMIDs in any column.</div>
+                                        </div>
+                                        <button class="btn btn-primary" onclick="uploadPmidsFile()">
+                                            <i class="fas fa-upload me-2"></i>Upload and Analyze PMIDs
+                                        </button>
+                                        <div id="upload-status" class="mt-3"></div>
+                                    </div>
                                 </div>
-                                <div id="browse-controls" class="mb-3">
-                                    <button class="btn btn-primary" onclick="loadBrowsePapers()">Load Papers</button>
-                                    <button class="btn btn-success ms-2" onclick="exportBrowseResults()">Export Filtered</button>
-                                    <!-- Add search/filter controls here if needed -->
+                                
+                                <!-- Manual PMID Input Section -->
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5 class="mb-0"><i class="fas fa-edit me-2"></i>Manual PMID Input</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="browse-pmid-input" class="mb-3">
+                                            <label for="user-pmid-list" class="form-label">Enter PMIDs (comma or newline separated):</label>
+                                            <textarea id="user-pmid-list" class="form-control mb-2" rows="2" placeholder="e.g. 12345678, 23456789 or one per line"></textarea>
+                                            <button class="btn btn-outline-primary mb-2" onclick="analyzeUserPmids()">
+                                                <i class="fas fa-search me-2"></i>Analyze Entered PMIDs
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
+                                
+                                <!-- Controls Section -->
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Controls</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="browse-controls" class="mb-3">
+                                            <button class="btn btn-primary" onclick="loadBrowsePapers()">
+                                                <i class="fas fa-database me-2"></i>Load All Papers
+                                            </button>
+                                            <button class="btn btn-success ms-2" onclick="exportBrowseResults()">
+                                                <i class="fas fa-download me-2"></i>Export Filtered Results
+                                            </button>
+                                            <button class="btn btn-info ms-2" onclick="exportCurationReport()">
+                                                <i class="fas fa-file-excel me-2"></i>Export Curation Report
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                 <div id="browse-table-container"></div>
                             </div>
                         </div>
@@ -1804,6 +1938,8 @@
                                                         <option value="human">Human</option>
                                                         <option value="mouse">Mouse</option>
                                                         <option value="rat">Rat</option>
+                                                        <option value="environmental">Environmental</option>
+                                                        <option value="mixed">Mixed (Human + Environmental)</option>
                                                         <option value="other">Other</option>
                                                     </select>
                                                 </div>
@@ -1815,6 +1951,13 @@
                                                         <option value="oral">Oral</option>
                                                         <option value="skin">Skin</option>
                                                         <option value="vaginal">Vaginal</option>
+                                                        <option value="indoor">Indoor Environment</option>
+                                                        <option value="outdoor">Outdoor Environment</option>
+                                                        <option value="built-environment">Built Environment</option>
+                                                        <option value="agricultural">Agricultural</option>
+                                                        <option value="industrial">Industrial</option>
+                                                        <option value="water-systems">Water Systems</option>
+                                                        <option value="soil">Soil</option>
                                                         <option value="other">Other</option>
                                                     </select>
                                                 </div>
@@ -1823,7 +1966,7 @@
                                             <div class="row mb-3">
                                                 <div class="col-md-6">
                                                     <label for="curation-condition" class="form-label">Condition</label>
-                                                    <input type="text" class="form-control" id="curation-condition">
+                                                    <input type="text" class="form-control" id="curation-condition" placeholder="e.g., Environmental Health, Public Health, Microbial Ecology">
                                                 </div>
                                                 <div class="col-md-6">
                                                     <label for="curation-seq-type" class="form-label">Sequencing Type</label>
@@ -2001,7 +2144,7 @@
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/react-whirl@1.0.0/dist/index.js"></script>
 
-    <script src="/static/js/app.js?v=2"></script>
+    <script src="/static/js/app.js?v=3"></script>
     <script src="/static/js/curation-analysis.js?v=2"></script>
     <span id="paper-date" style="display:none"></span>
     <span id="paper-doi" style="display:none"></span>

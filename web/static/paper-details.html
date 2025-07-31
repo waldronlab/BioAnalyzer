@@ -198,16 +198,129 @@
 
         .content-section h2 {
             color: #0d6efd;
-            font-weight: 600;
             margin-bottom: 20px;
+            font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 1.5rem;
+            gap: 10px;
         }
 
         .content-section h2 i {
-            font-size: 1.3rem;
+            font-size: 1.2rem;
+        }
+
+        /* Factor-based analysis styles */
+        .factor-analysis {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .factor-group {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #0d6efd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .factor-group h4 {
+            color: #495057;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .factor-group h4 i {
+            font-size: 0.9rem;
+        }
+
+        .factor-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .factor-badges .badge {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+
+        .signature-types {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .signature-types .badge {
+            font-size: 0.9rem;
+            padding: 6px 12px;
+            border-radius: 15px;
+        }
+
+        /* Status badge improvements */
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.success {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+
+        .status-badge.warning {
+            background: linear-gradient(135deg, #ffc107, #fd7e14);
+            color: white;
+        }
+
+        .status-badge.danger {
+            background: linear-gradient(135deg, #dc3545, #e74c3c);
+            color: white;
+        }
+
+        .status-badge.info {
+            background: linear-gradient(135deg, #0d6efd, #6ea8fe);
+            color: white;
+        }
+
+        /* Info list improvements */
+        .info-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .info-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            border-left: 3px solid #0d6efd;
+        }
+
+        .info-list li i {
+            color: #0d6efd;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .info-list li span {
+            flex: 1;
+            line-height: 1.5;
         }
 
         .content-section p {
@@ -690,30 +803,148 @@
             }
             
             let html = `
-                <p><strong>Readiness:</strong> 
-                    <span class="status-badge ${readinessClass}">
-                        ${readiness}
-                    </span>
-                </p>
-                <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
-                <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
-                <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h3><i class="fas fa-clipboard-check"></i>Basic Assessment</h3>
+                        <p><strong>Readiness:</strong> 
+                            <span class="status-badge ${readinessClass}">
+                                ${readiness}
+                            </span>
+                        </p>
+                        <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
+                        <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
+                        <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
+                        <p><strong>Data Completeness:</strong> ${curation.data_completeness || 'Unknown'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h3><i class="fas fa-chart-line"></i>Factor-Based Analysis</h3>
+                        <div class="factor-analysis">
+                            <p><strong>Factor-Based Score:</strong> 
+                                <span class="badge bg-primary">${Math.round((curation.factor_based_score || 0) * 100)}%</span>
+                            </p>
+                            
+                            <!-- General Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-list-check"></i>General Factors (${(curation.general_factors_present || []).length}/6)</h4>
+                                <div class="factor-badges">
+                                    ${(curation.general_factors_present || []).map(factor => 
+                                        `<span class="badge bg-success me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.general_factors_present || []).length === 0 ? 
+                                        '<span class="text-muted">No general factors identified</span>' : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Human/Animal Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-user"></i>Human/Animal Factors (${(curation.human_animal_factors_present || []).length}/5)</h4>
+                                <div class="factor-badges">
+                                    ${(curation.human_animal_factors_present || []).map(factor => 
+                                        `<span class="badge bg-info me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.human_animal_factors_present || []).length === 0 ? 
+                                        '<span class="text-muted">No human/animal factors identified</span>' : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Environmental Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-leaf"></i>Environmental Factors (${(curation.environmental_factors_present || []).length}/5)</h4>
+                                <div class="factor-badges">
+                                    ${(curation.environmental_factors_present || []).map(factor => 
+                                        `<span class="badge bg-warning me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.environmental_factors_present || []).length === 0 ? 
+                                        '<span class="text-muted">No environmental factors identified</span>' : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Missing Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-exclamation-triangle"></i>Missing Critical Factors</h4>
+                                <div class="factor-badges">
+                                    ${(curation.missing_critical_factors || []).map(factor => 
+                                        `<span class="badge bg-danger me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.missing_critical_factors || []).length === 0 ? 
+                                        '<span class="text-success">No critical factors missing</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             `;
 
+            // Add detailed explanation
             if (curation.explanation) {
-                html += `<p><strong>Detailed Explanation:</strong> ${curation.explanation}</p>`;
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-info-circle"></i>Detailed Explanation</h3>
+                            <p>${curation.explanation}</p>
+                        </div>
+                    </div>
+                `;
             }
 
+            // Add signature types
+            if (curation.signature_types && curation.signature_types.length > 0) {
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-dna"></i>Signature Types</h3>
+                            <div class="signature-types">
+                                ${curation.signature_types.map(type => 
+                                    `<span class="badge bg-primary me-1 mb-1">${type}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add specific reasons
             if (curation.specific_reasons && curation.specific_reasons.length > 0) {
-                html += `<h3><strong>Specific Reasons:</strong></h3><ul class="info-list">`;
-                html += curation.specific_reasons.map(reason => 
-                    `<li><i class="fas fa-arrow-right"></i><span>${reason}</span></li>`
-                ).join('');
-                html += `</ul>`;
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-arrow-right"></i>Specific Reasons</h3>
+                            <ul class="info-list">
+                                ${curation.specific_reasons.map(reason => 
+                                    `<li><i class="fas fa-arrow-right"></i><span>${reason}</span></li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
             }
 
+            // Add missing fields
             if (curation.missing_fields && curation.missing_fields.length > 0) {
-                html += `<p><strong>Missing Fields:</strong> ${curation.missing_fields.join(', ')}</p>`;
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-times-circle"></i>Missing Fields</h3>
+                            <p>${curation.missing_fields.join(', ')}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add examples and evidence
+            if (curation.examples && curation.examples.length > 0) {
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-quote-left"></i>Examples and Evidence</h3>
+                            <ul class="info-list">
+                                ${curation.examples.map(example => 
+                                    `<li><i class="fas fa-quote-left"></i><span>${example}</span></li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
             }
 
             analysisContent.innerHTML = html;
@@ -1032,7 +1263,41 @@
                         <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
                         <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
                         <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
+                        <p><strong>Data Completeness:</strong> ${curation.data_completeness || 'Unknown'}</p>
                     </div>`;
+                
+                // Add Factor-Based Analysis
+                if (curation.factor_based_score !== undefined) {
+                    const factorScore = Math.round((curation.factor_based_score || 0) * 100);
+                    content += `<div class="highlight-box">
+                        <h3>Factor-Based Analysis</h3>
+                        <p><strong>Factor-Based Score:</strong> ${factorScore}%</p>
+                        
+                        <h4>General Factors (${(curation.general_factors_present || []).length}/6)</h4>
+                        <p>${(curation.general_factors_present || []).length > 0 ? 
+                            curation.general_factors_present.join(', ') : 'No general factors identified'}</p>
+                        
+                        <h4>Human/Animal Factors (${(curation.human_animal_factors_present || []).length}/5)</h4>
+                        <p>${(curation.human_animal_factors_present || []).length > 0 ? 
+                            curation.human_animal_factors_present.join(', ') : 'No human/animal factors identified'}</p>
+                        
+                        <h4>Environmental Factors (${(curation.environmental_factors_present || []).length}/5)</h4>
+                        <p>${(curation.environmental_factors_present || []).length > 0 ? 
+                            curation.environmental_factors_present.join(', ') : 'No environmental factors identified'}</p>
+                        
+                        <h4>Missing Critical Factors</h4>
+                        <p>${(curation.missing_critical_factors || []).length > 0 ? 
+                            curation.missing_critical_factors.join(', ') : 'No critical factors missing'}</p>
+                    </div>`;
+                }
+                
+                // Add Signature Types
+                if (curation.signature_types && curation.signature_types.length > 0) {
+                    content += `<div class="highlight-box">
+                        <h3>Signature Types</h3>
+                        <p>${curation.signature_types.join(', ')}</p>
+                    </div>`;
+                }
                 
                 if (curation.explanation) {
                     content += `<div class="highlight-box">

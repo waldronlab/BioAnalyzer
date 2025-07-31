@@ -1583,6 +1583,91 @@
                                                         </div>
                                                     </div>
 
+                                                    <!-- Enhanced Curation Analysis -->
+                                                    <div class="card mb-4">
+                                                        <div class="card-header">
+                                                            <h5 class="mb-0">
+                                                                <i class="fas fa-clipboard-check me-2"></i>Detailed Curation Readiness Analysis
+                                                            </h5>
+                                                        </div>
+                                                        <div class="card-body">
+                                                            <!-- Curation Readiness Status -->
+                                                            <div id="curation-readiness-status" class="alert alert-info mb-3">
+                                                                <div id="curation-readiness-text">Analysis in progress...</div>
+                                                            </div>
+                                                            
+                                                            <!-- Factor-Based Analysis -->
+                                                            <div class="row mb-3">
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Factor-Based Analysis</h6>
+                                                                    <div class="mb-2">
+                                                                        <strong>General Factors Present:</strong>
+                                                                        <div id="general-factors-list" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Human/Animal Factors Present:</strong>
+                                                                        <div id="human-animal-factors-list" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Environmental Factors Present:</strong>
+                                                                        <div id="environmental-factors-list" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Missing Critical Factors:</strong>
+                                                                        <div id="missing-factors-list" class="text-danger">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Factor-Based Score:</strong>
+                                                                        <div id="factor-based-score" class="text-primary">Loading...</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Detailed Explanation</h6>
+                                                                    <div id="curation-explanation-text" class="text-muted">Loading...</div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <!-- Microbial Signature Analysis -->
+                                                            <div class="row mb-3">
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Microbial Signature Analysis</h6>
+                                                                    <div class="mb-2">
+                                                                        <strong>Presence:</strong>
+                                                                        <span id="microbial-signatures" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Data Quality:</strong>
+                                                                        <span id="data-quality" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Statistical Significance:</strong>
+                                                                        <span id="statistical-significance" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Signature Types:</strong>
+                                                                        <div id="signature-types" class="text-muted">Loading...</div>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <strong>Data Completeness:</strong>
+                                                                        <span id="data-completeness" class="text-muted">Loading...</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <h6 class="text-primary">Specific Reasons</h6>
+                                                                    <ul id="specific-reasons-list" class="text-muted">Loading...</ul>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <!-- Examples and Evidence -->
+                                                            <div class="row">
+                                                                <div class="col-12">
+                                                                    <h6 class="text-primary">Examples and Evidence</h6>
+                                                                    <ul id="examples-list" class="text-muted">Loading...</ul>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
                                                     <!-- Analysis Details -->
                                                     <div class="card">
                                                         <div class="card-body">
@@ -1853,6 +1938,8 @@
                                                         <option value="human">Human</option>
                                                         <option value="mouse">Mouse</option>
                                                         <option value="rat">Rat</option>
+                                                        <option value="environmental">Environmental</option>
+                                                        <option value="mixed">Mixed (Human + Environmental)</option>
                                                         <option value="other">Other</option>
                                                     </select>
                                                 </div>
@@ -1864,6 +1951,13 @@
                                                         <option value="oral">Oral</option>
                                                         <option value="skin">Skin</option>
                                                         <option value="vaginal">Vaginal</option>
+                                                        <option value="indoor">Indoor Environment</option>
+                                                        <option value="outdoor">Outdoor Environment</option>
+                                                        <option value="built-environment">Built Environment</option>
+                                                        <option value="agricultural">Agricultural</option>
+                                                        <option value="industrial">Industrial</option>
+                                                        <option value="water-systems">Water Systems</option>
+                                                        <option value="soil">Soil</option>
                                                         <option value="other">Other</option>
                                                     </select>
                                                 </div>
@@ -1872,7 +1966,7 @@
                                             <div class="row mb-3">
                                                 <div class="col-md-6">
                                                     <label for="curation-condition" class="form-label">Condition</label>
-                                                    <input type="text" class="form-control" id="curation-condition">
+                                                    <input type="text" class="form-control" id="curation-condition" placeholder="e.g., Environmental Health, Public Health, Microbial Ecology">
                                                 </div>
                                                 <div class="col-md-6">
                                                     <label for="curation-seq-type" class="form-label">Sequencing Type</label>

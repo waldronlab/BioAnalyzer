@@ -488,6 +488,22 @@
         #main-interface .nav-tabs {
             margin-top: 20px;
         }
+        
+        /* Ensure container-fluid is properly centered */
+        #main-interface .container-fluid {
+            max-width: 100%;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+        
+        /* Center the main content elements */
+        #main-interface .row {
+            justify-content: center;
+        }
+        
+        #main-interface .col-md-12 {
+            max-width: 1000px; /* Limit content width for better readability */
+        }
         @media (max-width: 768px) {
             .main-app-title {
                 font-size: 2rem;
@@ -560,6 +576,100 @@
             transition: all 0.3s ease;
             flex-grow: 1; /* Make main content expand to push footer down */
             width: calc(100% - 500px); /* Adjust for both sidebars */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* Responsive sidebar behavior */
+        @media (max-width: 1200px) {
+            .sidebar {
+                width: 200px;
+            }
+            .main-content {
+                margin-left: 200px;
+                margin-right: 200px;
+                width: calc(100% - 400px);
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            .right-sidebar {
+                transform: translateX(100%);
+            }
+            .main-content {
+                margin-left: 0;
+                margin-right: 0;
+                width: 100%;
+            }
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            .right-sidebar.active {
+                transform: translateX(0);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                max-width: 320px;
+            }
+            .main-content {
+                padding: 10px;
+            }
+        }
+        
+        /* Sidebar toggle buttons */
+        .sidebar-toggle {
+            position: fixed;
+            top: 20px;
+            z-index: 1001;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-toggle:hover {
+            background: #0056b3;
+        }
+        
+        .left-sidebar-toggle {
+            left: 20px;
+        }
+        
+        .right-sidebar-toggle {
+            right: 20px;
+        }
+        
+        @media (min-width: 993px) {
+            .sidebar-toggle {
+                display: none;
+            }
+        }
+        
+        /* Overlay for mobile */
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            display: none;
+        }
+        
+        .sidebar-overlay.active {
+            display: block;
         }
         
         .sidebar-header {
@@ -634,6 +744,8 @@
             flex-direction: column;
             min-height: 0; /* Allows content to scroll properly */
             padding: 20px;
+            max-width: 1200px; /* Limit maximum width for better readability */
+            margin: 0 auto; /* Center the content */
         }
         #main-interface .nav-tabs {
             margin-top: 20px;
@@ -1445,6 +1557,17 @@
     </style>
 </head>
 <body>
+    <!-- Sidebar Toggle Buttons -->
+    <button class="sidebar-toggle left-sidebar-toggle" onclick="toggleSidebar('left')">
+        <i class="fas fa-bars"></i> Resources
+    </button>
+    <button class="sidebar-toggle right-sidebar-toggle" onclick="toggleSidebar('right')">
+        <i class="fas fa-cog"></i> Settings
+    </button>
+    
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" onclick="closeAllSidebars()"></div>
+    
     <!-- Left Sidebar -->
     <div class="sidebar left-sidebar">
         <div class="sidebar-header">BugSigDB Resources</div>
@@ -1463,7 +1586,7 @@
     </div>
 
     <!-- Main Content -->
-    <div id="main-interface">
+    <div id="main-interface" class="main-content">
         <div class="container-fluid">
             <div class="row">
                 <div class="col-md-12">
@@ -2150,5 +2273,102 @@
     <span id="paper-doi" style="display:none"></span>
     <span id="analysis-status" style="display:none"></span>
     <span id="tokens-generated" style="display:none"></span>
+
+    <!-- Responsive Sidebar JavaScript -->
+    <script>
+        // Sidebar toggle functionality
+        function toggleSidebar(side) {
+            const sidebar = document.querySelector(`.${side}-sidebar`);
+            const overlay = document.querySelector('.sidebar-overlay');
+            
+            if (sidebar.classList.contains('active')) {
+                closeSidebar(side);
+            } else {
+                openSidebar(side);
+            }
+        }
+        
+        function openSidebar(side) {
+            const sidebar = document.querySelector(`.${side}-sidebar`);
+            const overlay = document.querySelector('.sidebar-overlay');
+            
+            // Close other sidebar if open
+            const otherSide = side === 'left' ? 'right' : 'left';
+            const otherSidebar = document.querySelector(`.${otherSide}-sidebar`);
+            if (otherSidebar.classList.contains('active')) {
+                closeSidebar(otherSide);
+            }
+            
+            sidebar.classList.add('active');
+            overlay.classList.add('active');
+        }
+        
+        function closeSidebar(side) {
+            const sidebar = document.querySelector(`.${side}-sidebar`);
+            const overlay = document.querySelector('.sidebar-overlay');
+            
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        }
+        
+        function closeAllSidebars() {
+            const sidebars = document.querySelectorAll('.sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            
+            sidebars.forEach(sidebar => {
+                sidebar.classList.remove('active');
+            });
+            overlay.classList.remove('active');
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (window.innerWidth >= 993) {
+                // On larger screens, ensure sidebars are visible
+                const sidebars = document.querySelectorAll('.sidebar');
+                const overlay = document.querySelector('.sidebar-overlay');
+                
+                sidebars.forEach(sidebar => {
+                    sidebar.classList.remove('active');
+                });
+                overlay.classList.remove('active');
+            }
+        });
+        
+        // Close sidebars when clicking outside on mobile
+        document.addEventListener('click', function(event) {
+            if (window.innerWidth < 993) {
+                const sidebars = document.querySelectorAll('.sidebar');
+                const toggleButtons = document.querySelectorAll('.sidebar-toggle');
+                const overlay = document.querySelector('.sidebar-overlay');
+                
+                let clickedInsideSidebar = false;
+                let clickedOnToggle = false;
+                
+                sidebars.forEach(sidebar => {
+                    if (sidebar.contains(event.target)) {
+                        clickedInsideSidebar = true;
+                    }
+                });
+                
+                toggleButtons.forEach(button => {
+                    if (button.contains(event.target)) {
+                        clickedOnToggle = true;
+                    }
+                });
+                
+                if (!clickedInsideSidebar && !clickedOnToggle && !overlay.contains(event.target)) {
+                    closeAllSidebars();
+                }
+            }
+        });
+        
+        // Handle escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeAllSidebars();
+            }
+        });
+    </script>
 </body>
 </html>

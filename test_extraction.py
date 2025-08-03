@@ -127,6 +127,43 @@ def test_paper_extraction():
         with open(cache_file, 'w') as f:
             json.dump(metadata, f, indent=2)
         print("✅ Cache file updated!")
+        
+        # Test with another paper to verify the changes work
+        print("\n" + "=" * 50)
+        print("Testing with another paper (PMID: 24489843)...")
+        pmid2 = "24489843"
+        cache_file2 = f"cache/metadata_{pmid2}.json"
+        
+        if os.path.exists(cache_file2):
+            with open(cache_file2, 'r') as f:
+                metadata2 = json.load(f)
+            
+            print(f"Title: {metadata2.get('title', 'N/A')}")
+            print(f"Host: {metadata2.get('host', 'N/A')}")
+            print(f"Body Site: {metadata2.get('body_site', 'N/A')}")
+            print(f"Sequencing Type: {metadata2.get('sequencing_type', 'N/A')}")
+            
+            # Extract fields for this paper too
+            title2 = metadata2.get('title', '')
+            abstract2 = metadata2.get('abstract', '')
+            mesh_terms2 = metadata2.get('mesh_terms', [])
+            
+            host2 = retriever._extract_host(title2, abstract2, mesh_terms2)
+            body_site2 = retriever._extract_body_site(title2, abstract2, mesh_terms2)
+            sequencing_type2 = retriever._extract_sequencing_type(title2, abstract2, mesh_terms2)
+            
+            print(f"Extracted Host: {host2}")
+            print(f"Extracted Body Site: {body_site2}")
+            print(f"Extracted Sequencing Type: {sequencing_type2}")
+            
+            # Update cache file
+            metadata2['host'] = host2
+            metadata2['body_site'] = body_site2
+            metadata2['sequencing_type'] = sequencing_type2
+            
+            with open(cache_file2, 'w') as f:
+                json.dump(metadata2, f, indent=2)
+            print("✅ Second cache file updated!")
             
     except Exception as e:
         print(f"❌ Error: {str(e)}")

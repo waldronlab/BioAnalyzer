@@ -11,7 +11,8 @@ from pathlib import Path
 from datetime import datetime
 import pytz
 from models.config import ModelConfig
-from models.gemini_qa import GeminiQA
+from models.conversation_model import ConversationalBugSigModel
+from models.unified_qa import UnifiedQA
 from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor
 from utils.config import (
@@ -27,21 +28,6 @@ import sys
 import os
 from bs4 import BeautifulSoup
 import csv
-import io
-
-# Excel file processing imports
-try:
-    import openpyxl
-    from openpyxl import load_workbook
-except ImportError:
-    openpyxl = None
-    print("Warning: openpyxl not available. XLSX files will not be supported.")
-
-try:
-    import xlrd
-except ImportError:
-    xlrd = None
-    print("Warning: xlrd not available. XLS files will not be supported.")
 
 # Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,7 +55,10 @@ else:
     print("Model Status: No Gemini API key found. No LLM available.")
 retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 
-qa_system = GeminiQA() if GEMINI_API_KEY else None
+qa_system = UnifiedQA(
+    use_gemini=bool(GEMINI_API_KEY),
+    gemini_api_key=GEMINI_API_KEY
+)
 
 # Mount static files after API routes
 static_dir = Path(__file__).parent / "static"
@@ -99,15 +88,12 @@ async def process_message(message):
         prompt = content
 
     # Call Gemini chat with the prompt
-    if qa_system:
-        response = await qa_system.chat(prompt)
-        return {
-            "response": response["text"],
-            "confidence": response.get("confidence"),
-            # ... other fields as needed
-        }
-    else:
-        return {"error": "No AI models available"}
+    response = await qa_system.chat(prompt)
+    return {
+        "response": response["text"],
+        "confidence": response.get("confidence"),
+        # ... other fields as needed
+    }
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -140,7 +126,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             print(f"Warning: Could not retrieve full text for PMID {pmid}: {str(e)}")
                         
                         # Analyze paper using Gemini
-                        if qa_system:
+                        if GEMINI_API_KEY:
                             response = await qa_system.analyze_paper(
                                 {"title": metadata["title"], "abstract": metadata["abstract"], "full_text": full_text}
                             )
@@ -188,53 +174,67 @@ async def websocket_endpoint(websocket: WebSocket):
                         context = history_str + f"User: {user_message}"
                     else:
                         context = user_message
-                    
-                    if qa_system:
-                        response = await qa_system.chat(context)
-                        print("Sending chat response to frontend:", response)
-                        await websocket.send_json(response)
-                    else:
-                        await websocket.send_json({"error": "No AI models available"})
+                    response = await qa_system.chat(context)
+                    print("Sending chat response to frontend:", response)
+                    await websocket.send_json({
+                        "response": response["text"],
+                        "confidence": response.get("confidence")
+                    })
             except json.JSONDecodeError:
                 await websocket.send_json({"error": "Invalid JSON format"})
             except Exception as e:
                 print(f"Error processing message: {str(e)}")
-                await websocket.send_json({"error": f"Error processing message: {str(e)}"})
+                await websocket.send_json({"error": str(e)})
     except WebSocketDisconnect:
-        print("WebSocket connection closed")
+        print("WebSocket disconnected")
     except Exception as e:
         print(f"WebSocket error: {str(e)}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
 
 @app.post("/ask_question/{pmid}")
 async def ask_question(pmid: str, question: Question):
-    """Ask a specific question about a paper"""
+    """Answer questions about a specific paper using available AI models"""
     try:
         # Get paper metadata
         metadata = retriever.get_paper_metadata(pmid)
         if not metadata:
-            raise HTTPException(status_code=404, detail=f"Paper with PMID {pmid} not found")
+            raise HTTPException(status_code=404, detail="Paper not found")
         
-        # Build context from paper metadata
-        context = f"Title: {metadata.get('title', 'N/A')}\n"
-        context += f"Authors: {metadata.get('authors', 'N/A')}\n"
-        context += f"Journal: {metadata.get('journal', 'N/A')}\n"
-        context += f"Abstract: {metadata.get('abstract', 'N/A')}\n"
+        # Create context from paper metadata
+        context = f"Title: {metadata['title']}\nAbstract: {metadata['abstract']}"
+        
+        # Try to get full text if available
+        try:
+            full_text = retriever.get_pmc_fulltext(pmid)
+            if full_text:
+                # Limit full text to avoid token limits
+                context += f"\n\nFull Text (excerpt): {full_text[:2000]}..."
+        except Exception as e:
+            print(f"Error getting full text for PMID {pmid}: {str(e)}")
+            # Continue with just the abstract
         
         # Try models in order of preference
         models_to_try = ["gemini"] if "gemini" in AVAILABLE_MODELS else AVAILABLE_MODELS
         answer = None
         confidence = 0.0
         
-        if qa_system:
+        for model_name in models_to_try:
             try:
-                print(f"Attempting to use Gemini for question answering")
-                response = await qa_system.analyze_paper(
-                    {"title": context, "abstract": question.question, "full_text": ""}
-                )
-                answer = response.get("key_findings", [])
-                confidence = 0.8  # Gemini responses are generally reliable
+                if model_name == "gemini" and GEMINI_API_KEY:
+                    print(f"Attempting to use Gemini for question answering")
+                    response = await qa_system.analyze_paper(
+                        {"title": context, "abstract": question.question, "full_text": ""}
+                    )
+                    answer = response.get("key_findings", [])
+                    confidence = 0.8  # Gemini responses are generally reliable
+                    break
+                    
             except Exception as e:
-                print(f"Error with Gemini: {str(e)}")
+                print(f"Error with {model_name}: {str(e)}")
+                continue
         
         if answer is None:
             return {
@@ -277,15 +277,9 @@ async def upload_paper(file: UploadFile = File(...), username: str = Form(None))
                 "full_text": text_content
             }
         # Use QA system to analyze the paper
-        if qa_system:
-            results = await qa_system.analyze_paper(paper_content)
-            analysis_results = results.get("key_findings", [])
-        else:
-            analysis_results = ["No AI model available for analysis"]
-        
-        analysis_results = analysis_results if isinstance(analysis_results, list) else [analysis_results]
-        analysis_results.append(f"Taxa extracted: {extract_taxa(paper_content['full_text'])}")
-        
+        results = await qa_system.analyze_paper(paper_content)
+        analysis_results = results.get("gemini", {})
+        analysis_results["taxa"] = extract_taxa(paper_content["full_text"])
         response = {
             "metadata": {
                 "title": paper_content["title"],
@@ -294,10 +288,7 @@ async def upload_paper(file: UploadFile = File(...), username: str = Form(None))
                 "doi": "",
                 "publication_date": ""
             },
-            "analysis": {
-                "key_findings": analysis_results,
-                "confidence": 0.8 if qa_system else 0.0
-            }
+            "analysis": analysis_results
         }
         return response
     except HTTPException as he:
@@ -456,30 +447,12 @@ async def analyze_paper(pmid: str):
     try:
         logger.info(f"=== Starting analysis for PMID: {pmid} ===")
         metadata = retriever.get_paper_metadata(pmid)
-        
-        # Debug: Log the initial metadata from PubMed
-        logger.info(f"PubMed metadata DOI: {metadata.get('doi', 'Not found')}")
-        
         # Try to supplement metadata with CSV fields if available
         csv_metadata = get_paper_metadata_from_csv(pmid)
         found_in_csv = False
         if csv_metadata:
-            logger.info(f"CSV metadata DOI: {csv_metadata.get('doi', 'Not found')}")
-            # Only update fields that are not empty in CSV, or use extracted values
-            for key, value in csv_metadata.items():
-                if key in ['host', 'body_site', 'sequencing_type']:
-                    # For these fields, only use CSV value if it's not empty
-                    if value and value.strip():
-                        metadata[key] = value
-                    # Otherwise, keep the extracted value (will be set later)
-                else:
-                    # For other fields, use CSV value
-                    metadata[key] = value
+            metadata.update(csv_metadata)
             found_in_csv = True
-            logger.info(f"After CSV merge, DOI: {metadata.get('doi', 'Not found')}")
-        else:
-            logger.info("No CSV metadata found")
-            
         if not metadata:
             # Fallback: fetch from NCBI if not found in CSV
             try:
@@ -487,32 +460,7 @@ async def analyze_paper(pmid: str):
             except Exception as e:
                 logger.error(f"NCBI fallback failed for PMID {pmid}: {str(e)}")
                 return JSONResponse(content={"error": f"Paper not found in CSV or NCBI: {str(e)}"}, status_code=200)
-        
-        # Always extract BugSigDB-specific fields from the metadata
-        title = metadata.get('title', '')
-        abstract = metadata.get('abstract', '')
-        mesh_terms = metadata.get('mesh_terms', [])
-        
-        # Extract host, body_site, and sequencing_type using the retriever methods
-        host = retriever._extract_host(title, abstract, mesh_terms)
-        body_site = retriever._extract_body_site(title, abstract, mesh_terms)
-        sequencing_type = retriever._extract_sequencing_type(title, abstract, mesh_terms)
-        
-        # Update metadata with extracted fields
-        # Only use extracted values if CSV fields are empty
-        if not metadata.get('host') or not metadata.get('host').strip():
-            metadata['host'] = host
-        if not metadata.get('body_site') or not metadata.get('body_site').strip():
-            metadata['body_site'] = body_site
-        if not metadata.get('sequencing_type') or not metadata.get('sequencing_type').strip():
-            metadata['sequencing_type'] = sequencing_type
-        
         logger.info(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
-        logger.info(f"Final DOI: {metadata.get('doi', 'Not found')}")
-        logger.info(f"Extracted Host: {host}")
-        logger.info(f"Extracted Body Site: {body_site}")
-        logger.info(f"Extracted Sequencing Type: {sequencing_type}")
-        
         # Try to get full text (optional)
         try:
             logger.info(f"Attempting to fetch full text for PMID: {pmid}")
@@ -542,40 +490,14 @@ async def analyze_paper(pmid: str):
         }
         # Run analysis using the QA system
         try:
-            if qa_system:
-                analysis = await qa_system.analyze_paper(paper_content)
-                if analysis.get("error"):
-                    warning = (
-                        "The Gemini API key has IP address restrictions. "
-                        "Your current IP address is not authorized to use this API key. "
-                        "Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
-                    )
-                    analysis["warning"] = warning
-            else:
-                analysis = {
-                    "has_signatures": False,
-                    "confidence": 0.0,
-                    "key_findings": ["No AI model available for analysis"],
-                    "suggested_topics": [],
-                    "category_scores": {
-                        "microbiome": 0,
-                        "methods": 0,
-                        "analysis": 0,
-                        "body_sites": 0,
-                        "diseases": 0
-                    },
-                    "found_terms": {
-                        "microbiome": [],
-                        "methods": [],
-                        "analysis": [],
-                        "body_sites": [],
-                        "diseases": []
-                    },
-                    "is_complete": False,
-                    "num_tokens": 0,
-                    "status": "no_model",
-                    "warning": "No AI model available"
-                }
+            analysis = await qa_system.analyze_paper(paper_content)
+            if analysis.get("error"):
+                warning = (
+                    "The Gemini API key has IP address restrictions. "
+                    "Your current IP address is not authorized to use this API key. "
+                    "Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
+                )
+                analysis["warning"] = warning
         except Exception as e:
             logger.error(f"Error during analysis: {str(e)}")
             warning = (
@@ -616,11 +538,6 @@ async def analyze_paper(pmid: str):
         curation_status_message = ""
         required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
         missing_fields = [f for f in required_fields if not metadata.get(f)]
-        
-        # Get LLM analysis results for curation readiness
-        curation_analysis = analysis.get('curation_analysis', {})
-        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
-        
         if found_in_csv:
             in_bugsigdb = True
             curated = True
@@ -628,13 +545,7 @@ async def analyze_paper(pmid: str):
         else:
             in_bugsigdb = False
             curated = False
-            
-            # Use LLM analysis to determine readiness
-            if llm_readiness == "READY":
-                curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
-            elif llm_readiness == "NOT_READY":
-                curation_status_message = "This paper is not ready for curation. Missing required elements."
-            elif not missing_fields:
+            if not missing_fields:
                 curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
             else:
                 curation_status_message = "This paper is not in BugSigDB and is not ready for curation. Missing required fields."
@@ -682,24 +593,6 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             found_in_csv = False
         if not metadata:
             continue
-            
-        # Always extract BugSigDB-specific fields from the metadata
-        title = metadata.get('title', '')
-        abstract = metadata.get('abstract', '')
-        mesh_terms = metadata.get('mesh_terms', [])
-        
-        # Extract host, body_site, and sequencing_type using the retriever methods
-        host = retriever._extract_host(title, abstract, mesh_terms)
-        body_site = retriever._extract_body_site(title, abstract, mesh_terms)
-        sequencing_type = retriever._extract_sequencing_type(title, abstract, mesh_terms)
-        
-        # Update metadata with extracted fields only if they're not already set in CSV
-        if not metadata.get('host') or not metadata.get('host').strip():
-            metadata['host'] = host
-        if not metadata.get('body_site') or not metadata.get('body_site').strip():
-            metadata['body_site'] = body_site
-        if not metadata.get('sequencing_type') or not metadata.get('sequencing_type').strip():
-            metadata['sequencing_type'] = sequencing_type
         # 2. Analyze
         paper_content = {
             "title": metadata.get("title", ""),
@@ -707,51 +600,19 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             "full_text": ""
         }
         try:
-            if qa_system:
-                analysis = await qa_system.analyze_paper(paper_content)
-            else:
-                analysis = {
-                    "has_signatures": False, 
-                    "key_findings": ["No AI model available for analysis"], 
-                    "confidence": 0.0,
-                    "curation_analysis": {"readiness": "UNKNOWN"}
-                }
+            analysis = await qa_system.analyze_paper(paper_content)
         except Exception as e:
-            analysis = {"has_signatures": False, "key_findings": [], "confidence": 0.0, "curation_analysis": {"readiness": "UNKNOWN"}}
-        # 3. Enhanced curation criteria - Updated to be more accurate
+            analysis = {"has_signatures": False, "key_findings": [], "confidence": 0.0}
+        # 3. Enhanced curation criteria
         has_signature = analysis.get('has_signatures', False)
         has_citation = all(metadata.get(f) for f in ['title', 'authors', 'journal', 'year', 'doi'])
         abstract = metadata.get('abstract', '').lower()
-        
-        # More comprehensive microbiome keyword detection
-        microbiome_keywords = [
-            'microbiome', 'microbiota', 'microbial', 'bacteria', 'bacterial',
-            'dysbiosis', 'abundance', 'taxonomic', 'community', 'sequencing',
-            '16s', 'metagenomic', 'shotgun', 'amplicon',
-            # Environmental-specific keywords
-            'indoor', 'outdoor', 'environmental', 'building', 'hospital',
-            'school', 'office', 'transportation', 'agricultural', 'industrial',
-            'soil', 'water', 'air', 'dust', 'surface', 'restroom', 'public'
-        ]
-        has_microbiome_keyword = any(kw in abstract for kw in microbiome_keywords)
-        
-        # Check if LLM analysis indicates readiness
-        curation_analysis = analysis.get('curation_analysis', {})
-        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
-        
+        has_microbiome_keyword = any(kw in abstract for kw in ['microbiome', 'microbiota'])
         if found_in_csv:
             curation_status = "already_curated"
-        elif llm_readiness == "READY":
-            # If LLM says ready, trust it
-            curation_status = "ready"
         elif has_signature and has_citation and has_microbiome_keyword:
-            # Fallback to basic criteria
             curation_status = "ready"
-        elif llm_readiness == "NOT_READY":
-            # If LLM says not ready, trust it
-            curation_status = "not_ready"
         else:
-            # Default to not ready if unclear
             curation_status = "not_ready"
         # 4. Compose summary
         results.append({
@@ -767,11 +628,7 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             "curation_status": curation_status,
             "key_findings": analysis.get("key_findings", []),
             "has_signature": has_signature,
-            "has_microbiome_keyword": has_microbiome_keyword,
-            "curation_analysis": analysis.get("curation_analysis", {}),  # Enhanced curation analysis
-            "confidence": analysis.get("confidence", 0.0),
-            "category_scores": analysis.get("category_scores", {}),
-            "suggested_topics": analysis.get("suggested_topics", [])
+            "has_microbiome_keyword": has_microbiome_keyword
         })
     return results
 
@@ -836,208 +693,6 @@ def list_pmids():
     except Exception as e:
         return {"error": str(e)}
     return pmids
-
-def extract_pmids_from_excel(file_content: bytes, filename: str) -> List[str]:
-    """Extract PMIDs from Excel file (XLS or XLSX)"""
-    pmids = []
-    
-    try:
-        if filename.lower().endswith('.xlsx') and openpyxl:
-            # Handle XLSX files
-            workbook = load_workbook(io.BytesIO(file_content), data_only=True)
-            for sheet_name in workbook.sheetnames:
-                sheet = workbook[sheet_name]
-                for row in sheet.iter_rows(values_only=True):
-                    for cell_value in row:
-                        if cell_value:
-                            # Look for PMID patterns in the cell
-                            pmid_matches = re.findall(r'\b\d{7,8}\b', str(cell_value))
-                            pmids.extend(pmid_matches)
-        
-        elif filename.lower().endswith('.xls') and xlrd:
-            # Handle XLS files
-            workbook = xlrd.open_workbook(file_contents=file_content)
-            for sheet_name in workbook.sheet_names():
-                sheet = workbook.sheet_by_name(sheet_name)
-                for row_idx in range(sheet.nrows):
-                    for col_idx in range(sheet.ncols):
-                        cell_value = sheet.cell_value(row_idx, col_idx)
-                        if cell_value:
-                            # Look for PMID patterns in the cell
-                            pmid_matches = re.findall(r'\b\d{7,8}\b', str(cell_value))
-                            pmids.extend(pmid_matches)
-        
-        else:
-            raise ValueError(f"Unsupported file format or missing library. File: {filename}")
-        
-        # Remove duplicates and filter valid PMIDs
-        unique_pmids = list(set(pmids))
-        valid_pmids = [pmid for pmid in unique_pmids if len(pmid) >= 7 and pmid.isdigit()]
-        
-        return valid_pmids
-        
-    except Exception as e:
-        logger.error(f"Error extracting PMIDs from Excel file: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Error processing Excel file: {str(e)}")
-
-@app.post("/upload_pmids_file")
-async def upload_pmids_file(file: UploadFile = File(...)):
-    """Upload Excel file with PMIDs and get their curation statuses"""
-    
-    # Validate file type
-    if not file.filename.lower().endswith(('.xls', '.xlsx')):
-        raise HTTPException(status_code=400, detail="Only XLS and XLSX files are supported")
-    
-    # Check if required libraries are available
-    if file.filename.lower().endswith('.xlsx') and not openpyxl:
-        raise HTTPException(status_code=400, detail="XLSX support not available. Please install openpyxl.")
-    if file.filename.lower().endswith('.xls') and not xlrd:
-        raise HTTPException(status_code=400, detail="XLS support not available. Please install xlrd.")
-    
-    try:
-        # Read file content
-        file_content = await file.read()
-        
-        # Extract PMIDs from the file
-        pmids = extract_pmids_from_excel(file_content, file.filename)
-        
-        if not pmids:
-            return {
-                "message": "No valid PMIDs found in the uploaded file",
-                "pmids": [],
-                "results": []
-            }
-        
-        # Analyze each PMID for curation status
-        results = []
-        for pmid in pmids:
-            try:
-                # Get metadata from CSV first, then PubMed
-                csv_metadata = get_paper_metadata_from_csv(pmid)
-                if csv_metadata:
-                    metadata = csv_metadata
-                    found_in_csv = True
-                else:
-                    metadata = retriever.get_paper_metadata(pmid)
-                    found_in_csv = False
-                
-                if not metadata:
-                    results.append({
-                        "pmid": pmid,
-                        "title": "Not found",
-                        "authors": "",
-                        "journal": "",
-                        "year": "",
-                        "host": "",
-                        "body_site": "",
-                        "sequencing_type": "",
-                        "curation_status": "not_found",
-                        "curation_status_message": "Paper not found in PubMed or BugSigDB",
-                        "in_bugsigdb": False,
-                        "curated": False
-                    })
-                    continue
-                
-                # Analyze paper content for curation readiness
-                paper_content = {
-                    "title": metadata.get("title", ""),
-                    "abstract": metadata.get("abstract", ""),
-                    "full_text": ""
-                }
-                
-                try:
-                    if qa_system:
-                        analysis = await qa_system.analyze_paper(paper_content)
-                    else:
-                        analysis = {
-                            "has_signatures": False, 
-                            "key_findings": ["No AI model available for analysis"], 
-                            "confidence": 0.0,
-                            "curation_analysis": {"readiness": "UNKNOWN"}
-                        }
-                except Exception as e:
-                    analysis = {"has_signatures": False, "key_findings": [], "confidence": 0.0, "curation_analysis": {"readiness": "UNKNOWN"}}
-                
-                # Determine curation status - Updated to be more accurate
-                has_signature = analysis.get('has_signatures', False)
-                has_citation = all(metadata.get(f) for f in ['title', 'authors', 'journal', 'year'])
-                abstract = metadata.get('abstract', '').lower()
-                
-                # More comprehensive microbiome keyword detection
-                microbiome_keywords = [
-                    'microbiome', 'microbiota', 'microbial', 'bacteria', 'bacterial',
-                    'dysbiosis', 'abundance', 'taxonomic', 'community', 'sequencing',
-                    '16s', 'metagenomic', 'shotgun', 'amplicon',
-                    # Environmental-specific keywords
-                    'indoor', 'outdoor', 'environmental', 'building', 'hospital',
-                    'school', 'office', 'transportation', 'agricultural', 'industrial',
-                    'soil', 'water', 'air', 'dust', 'surface', 'restroom', 'public'
-                ]
-                has_microbiome_keyword = any(kw in abstract for kw in microbiome_keywords)
-                
-                # Check if LLM analysis indicates readiness
-                curation_analysis = analysis.get('curation_analysis', {})
-                llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
-                
-                if found_in_csv:
-                    curation_status = "already_curated"
-                    curation_status_message = "This paper is in BugSigDB and already curated."
-                elif llm_readiness == "READY":
-                    curation_status = "ready"
-                    curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
-                elif has_signature and has_citation and has_microbiome_keyword:
-                    curation_status = "ready"
-                    curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
-                elif llm_readiness == "NOT_READY":
-                    curation_status = "not_ready"
-                    curation_status_message = "This paper is not ready for curation. Missing required elements."
-                else:
-                    curation_status = "not_ready"
-                    curation_status_message = "This paper is not ready for curation. Missing required elements."
-                
-                results.append({
-                    "pmid": pmid,
-                    "title": metadata.get("title", ""),
-                    "authors": metadata.get("authors", ""),
-                    "journal": metadata.get("journal", ""),
-                    "year": metadata.get("year", ""),
-                    "host": metadata.get("host", ""),
-                    "body_site": metadata.get("body_site", ""),
-                    "sequencing_type": metadata.get("sequencing_type", ""),
-                    "curation_status": curation_status,
-                    "curation_status_message": curation_status_message,
-                    "in_bugsigdb": found_in_csv,
-                    "curated": found_in_csv,
-                    "confidence": analysis.get("confidence", 0.0),
-                    "curation_analysis": analysis.get("curation_analysis", {})
-                })
-                
-            except Exception as e:
-                logger.error(f"Error processing PMID {pmid}: {str(e)}")
-                results.append({
-                    "pmid": pmid,
-                    "title": "Error processing",
-                    "authors": "",
-                    "journal": "",
-                    "year": "",
-                    "host": "",
-                    "body_site": "",
-                    "sequencing_type": "",
-                    "curation_status": "error",
-                    "curation_status_message": f"Error processing: {str(e)}",
-                    "in_bugsigdb": False,
-                    "curated": False
-                })
-        
-        return {
-            "message": f"Successfully processed {len(pmids)} PMIDs from {file.filename}",
-            "pmids": pmids,
-            "results": results
-        }
-        
-    except Exception as e:
-        logger.error(f"Error processing uploaded file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

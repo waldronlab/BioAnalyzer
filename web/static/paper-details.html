@@ -1239,13 +1239,29 @@
             }
             
             // Add Curation Status
-            const statusClass = data.curation_status_message?.toLowerCase().includes('ready') ? 'status-ready' : 
-                               data.curation_status_message?.toLowerCase().includes('not ready') ? 'status-not-ready' : 
-                               data.curation_status_message?.toLowerCase().includes('curated') ? 'status-curated' : 'status-unknown';
+            // Use LLM readiness as primary source of truth for consistency
+            let statusMessage = data.curation_status_message || 'Unknown';
+            let statusClass = 'status-unknown';
+            
+            // If we have LLM analysis, use it to determine status
+            if (curation && curation.readiness) {
+                if (curation.readiness === 'READY') {
+                    statusMessage = "This paper is ready for curation but not yet in BugSigDB.";
+                    statusClass = 'status-ready';
+                } else if (curation.readiness === 'NOT_READY') {
+                    statusMessage = "This paper is not ready for curation. Missing required elements.";
+                    statusClass = 'status-not-ready';
+                }
+            } else {
+                // Fallback to the original logic
+                statusClass = data.curation_status_message?.toLowerCase().includes('ready') ? 'status-ready' : 
+                             data.curation_status_message?.toLowerCase().includes('not ready') ? 'status-not-ready' : 
+                             data.curation_status_message?.toLowerCase().includes('curated') ? 'status-curated' : 'status-unknown';
+            }
             
             content += `<div class="highlight-box">
                 <h2>📋 Curation Status</h2>
-                <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${data.curation_status_message || 'Unknown'}</span></p>
+                <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${statusMessage}</span></p>
                 <p><strong>Host:</strong> ${metadata.host || 'Not specified'}</p>
                 <p><strong>Body Site:</strong> ${metadata.body_site || 'Not specified'}</p>
                 <p><strong>Sequencing Type:</strong> ${metadata.sequencing_type || 'Not specified'}</p>

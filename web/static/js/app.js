@@ -1,5 +1,43 @@
 console.log("app.js loaded!");
 
+// Global variables
+window.chatHistory = [];
+window.ws = null;
+window.isConnected = false;
+
+// Display chat message - global function
+function displayChatMessage(message, type) {
+    console.log("=== displayChatMessage called ===");
+    console.log("[DEBUG] displayChatMessage called with:", message, type);
+    const chatContainer = document.getElementById('chat-container');
+    console.log("[DEBUG] chatContainer found:", chatContainer);
+    console.log("[DEBUG] chatContainer element:", chatContainer);
+    console.log("[DEBUG] chatContainer.innerHTML before:", chatContainer ? chatContainer.innerHTML.substring(0, 200) + "..." : "null");
+    if (!chatContainer) {
+        console.error("[DEBUG] No chat container found!");
+        return;
+    }
+
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${type}-message`;
+    messageElement.textContent = message;
+    console.log("[DEBUG] Created message element:", messageElement);
+    chatContainer.appendChild(messageElement);
+    console.log("[DEBUG] Appended message to container");
+    console.log("[DEBUG] chatContainer.innerHTML after:", chatContainer.innerHTML.substring(0, 200) + "...");
+    console.log("[DEBUG] Number of child elements:", chatContainer.children.length);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    if (type === 'assistant') {
+        if (window.chatHistory) {
+            window.chatHistory.push({ role: 'assistant', content: message });
+            console.log("[DEBUG] Added to chat history");
+        }
+    }
+    console.log("[DEBUG] displayChatMessage completed successfully");
+    console.log("=== End displayChatMessage ===");
+}
+window.displayChatMessage = displayChatMessage;
+
 // File upload function for PMIDs - defined globally for immediate access
 window.uploadPmidsFile = async function() {
     const fileInput = document.getElementById('pmid-file-upload');
@@ -449,9 +487,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
-            ws = new WebSocket(wsUrl);
-            ws.onopen = function() {
-                isConnected = true;
+            window.ws = new WebSocket(wsUrl);
+            window.ws.onopen = function() {
+                window.isConnected = true;
                 updateConnectionStatus('Connected', 'success');
                 // Show welcome message if chat is empty
                 const chatContainer = document.getElementById('chat-container');
@@ -459,22 +497,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     displayChatMessage('Hey there! How can I help you today?', 'assistant');
                 }
             };
-            ws.onclose = function() {
-                isConnected = false;
+            window.ws.onclose = function() {
+                window.isConnected = false;
                 updateConnectionStatus('Disconnected', 'danger');
             };
-            ws.onerror = function(error) {
-                isConnected = false;
+            window.ws.onerror = function(error) {
+                window.isConnected = false;
                 updateConnectionStatus('Connection failed', 'danger');
             };
             // Add onmessage handler to display assistant replies
-            ws.onmessage = function(event) {
+            window.ws.onmessage = function(event) {
+                console.log("=== WebSocket Message Received ===");
+                console.log("Raw event data:", event.data);
+                console.log("Event type:", typeof event.data);
                 console.log("Received from backend:", event.data);
                 console.log("[DEBUG] lastUserMessage before handling:", lastUserMessage);
+                console.log("[DEBUG] WebSocket connection status:", window.ws.readyState);
+                console.log("[DEBUG] isConnected variable:", window.isConnected);
+                console.log("[DEBUG] About to parse JSON...");
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.response) {
-                        displayChatMessage(data.response, 'assistant');
+                    console.log("[DEBUG] JSON parsed successfully!");
+                    console.log("[DEBUG] Parsed data:", data);
+                    console.log("[DEBUG] Data type:", typeof data);
+                    console.log("[DEBUG] Data keys:", Object.keys(data));
+                    // Check for both 'response' and 'text' fields (backend sends 'text')
+                    const responseText = data.response || data.text;
+                    console.log("[DEBUG] responseText:", responseText);
+                    console.log("[DEBUG] responseText type:", typeof responseText);
+                    console.log("[DEBUG] responseText truthy:", !!responseText);
+                    if (responseText) {
+                        console.log("[DEBUG] About to display message:", responseText);
+                        console.log("[DEBUG] Calling displayChatMessage with:", responseText, 'assistant');
+                        displayChatMessage(responseText, 'assistant');
+                        console.log("[DEBUG] Message displayed successfully");
                         // Only display confidence if user asked for it
                         let showConfidence = false;
                         if (
@@ -490,14 +546,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         lastUserMessage = '';
                     } else if (data.error) {
+                        console.log("[DEBUG] Displaying error:", data.error);
                         displayChatMessage("Error: " + data.error, 'error');
+                    } else {
+                        console.log("[DEBUG] No response text or error found in data");
+                        console.log("[DEBUG] Full data object:", JSON.stringify(data, null, 2));
                     }
                 } catch (e) {
-                    console.error("Error parsing WebSocket message:", e, event.data);
+                    console.error("[DEBUG] Error in WebSocket message handler:", e);
+                    console.error("[DEBUG] Error stack:", e.stack);
+                    console.error("[DEBUG] Event data that caused error:", event.data);
                 }
+                console.log("=== End WebSocket Message Handler ===");
             };
         } catch (error) {
-            isConnected = false;
+            window.isConnected = false;
             updateConnectionStatus('Connection failed', 'danger');
         }
     }
@@ -515,9 +578,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const sendButton = document.getElementById('send-button');
         const usernameInput = document.getElementById('username');
 
-        if (messageInput) messageInput.disabled = !isConnected;
-        if (sendButton) sendButton.disabled = !isConnected;
-        if (usernameInput) usernameInput.disabled = isConnected;
+        if (messageInput) messageInput.disabled = !window.isConnected;
+        if (sendButton) sendButton.disabled = !window.isConnected;
+        if (usernameInput) usernameInput.disabled = window.isConnected;
     }
 
     // Display analysis results
@@ -797,17 +860,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Display chat message
     function displayChatMessage(message, type) {
+        console.log("[DEBUG] displayChatMessage called with:", message, type);
         const chatContainer = document.getElementById('chat-container');
-        if (!chatContainer) return;
+        console.log("[DEBUG] chatContainer found:", chatContainer);
+        if (!chatContainer) {
+            console.error("[DEBUG] No chat container found!");
+            return;
+        }
 
         const messageElement = document.createElement('div');
         messageElement.className = `message ${type}-message`;
         messageElement.textContent = message;
+        console.log("[DEBUG] Created message element:", messageElement);
         chatContainer.appendChild(messageElement);
+        console.log("[DEBUG] Appended message to container");
+        console.log("[DEBUG] chatContainer.innerHTML after:", chatContainer.innerHTML.substring(0, 200) + "...");
+        console.log("[DEBUG] Number of child elements:", chatContainer.children.length);
         chatContainer.scrollTop = chatContainer.scrollHeight;
         if (type === 'assistant') {
-            chatHistory.push({ role: 'assistant', content: message });
+            if (window.chatHistory) {
+                window.chatHistory.push({ role: 'assistant', content: message });
+                console.log("[DEBUG] Added to chat history");
+            }
         }
+        console.log("[DEBUG] displayChatMessage completed successfully");
+        console.log("=== End displayChatMessage ===");
     }
     window.displayChatMessage = displayChatMessage;
 
@@ -938,8 +1015,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Send message
     function sendMessage() {
+        console.log("[DEBUG] sendMessage called");
         const messageInput = document.getElementById('message-input');
-        if (!messageInput || !ws || !isConnected) return;
+        console.log("[DEBUG] messageInput found:", messageInput);
+        console.log("[DEBUG] ws found:", window.ws);
+        console.log("[DEBUG] isConnected:", window.isConnected);
+        if (!messageInput || !window.ws || !window.isConnected) {
+            console.log("[DEBUG] sendMessage early return - missing requirements");
+            return;
+        }
 
         const message = messageInput.value.trim();
         if (!message) return;
@@ -947,20 +1031,23 @@ document.addEventListener('DOMContentLoaded', () => {
         lastUserMessage = message; // Track last user message
         displayChatMessage(message, 'user');
         // Add to chat history
-        chatHistory.push({ role: 'user', content: message });
+        if (window.chatHistory) {
+            window.chatHistory.push({ role: 'user', content: message });
+        }
         // Prepare context for backend
         let contextMessages = [];
         if (!chatPaperContext) {
             // Only send history if not in paper context
-            contextMessages = chatHistory.slice(-10); // last 10 messages
+            contextMessages = window.chatHistory ? window.chatHistory.slice(-10) : []; // last 10 messages
         }
-        ws.send(JSON.stringify({
+        window.ws.send(JSON.stringify({
             content: message,
             role: 'user',
             currentPaper: chatPaperContext ? chatPaperContext.pmid : null,
             paperContext: chatPaperContext || null,
             chatHistory: contextMessages
         }));
+        console.log("[DEBUG] Message sent to WebSocket");
 
         messageInput.value = '';
     }

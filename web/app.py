@@ -465,7 +465,16 @@ async def analyze_paper(pmid: str):
         found_in_csv = False
         if csv_metadata:
             logger.info(f"CSV metadata DOI: {csv_metadata.get('doi', 'Not found')}")
-            metadata.update(csv_metadata)
+            # Only update fields that are not empty in CSV, or use extracted values
+            for key, value in csv_metadata.items():
+                if key in ['host', 'body_site', 'sequencing_type']:
+                    # For these fields, only use CSV value if it's not empty
+                    if value and value.strip():
+                        metadata[key] = value
+                    # Otherwise, keep the extracted value (will be set later)
+                else:
+                    # For other fields, use CSV value
+                    metadata[key] = value
             found_in_csv = True
             logger.info(f"After CSV merge, DOI: {metadata.get('doi', 'Not found')}")
         else:
@@ -478,8 +487,31 @@ async def analyze_paper(pmid: str):
             except Exception as e:
                 logger.error(f"NCBI fallback failed for PMID {pmid}: {str(e)}")
                 return JSONResponse(content={"error": f"Paper not found in CSV or NCBI: {str(e)}"}, status_code=200)
+        
+        # Always extract BugSigDB-specific fields from the metadata
+        title = metadata.get('title', '')
+        abstract = metadata.get('abstract', '')
+        mesh_terms = metadata.get('mesh_terms', [])
+        
+        # Extract host, body_site, and sequencing_type using the retriever methods
+        host = retriever._extract_host(title, abstract, mesh_terms)
+        body_site = retriever._extract_body_site(title, abstract, mesh_terms)
+        sequencing_type = retriever._extract_sequencing_type(title, abstract, mesh_terms)
+        
+        # Update metadata with extracted fields
+        # Only use extracted values if CSV fields are empty
+        if not metadata.get('host') or not metadata.get('host').strip():
+            metadata['host'] = host
+        if not metadata.get('body_site') or not metadata.get('body_site').strip():
+            metadata['body_site'] = body_site
+        if not metadata.get('sequencing_type') or not metadata.get('sequencing_type').strip():
+            metadata['sequencing_type'] = sequencing_type
+        
         logger.info(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
         logger.info(f"Final DOI: {metadata.get('doi', 'Not found')}")
+        logger.info(f"Extracted Host: {host}")
+        logger.info(f"Extracted Body Site: {body_site}")
+        logger.info(f"Extracted Sequencing Type: {sequencing_type}")
         
         # Try to get full text (optional)
         try:
@@ -584,6 +616,11 @@ async def analyze_paper(pmid: str):
         curation_status_message = ""
         required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
         missing_fields = [f for f in required_fields if not metadata.get(f)]
+        
+        # Get LLM analysis results for curation readiness
+        curation_analysis = analysis.get('curation_analysis', {})
+        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
+        
         if found_in_csv:
             in_bugsigdb = True
             curated = True
@@ -591,7 +628,13 @@ async def analyze_paper(pmid: str):
         else:
             in_bugsigdb = False
             curated = False
-            if not missing_fields:
+            
+            # Use LLM analysis to determine readiness
+            if llm_readiness == "READY":
+                curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
+            elif llm_readiness == "NOT_READY":
+                curation_status_message = "This paper is not ready for curation. Missing required elements."
+            elif not missing_fields:
                 curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
             else:
                 curation_status_message = "This paper is not in BugSigDB and is not ready for curation. Missing required fields."
@@ -639,6 +682,24 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             found_in_csv = False
         if not metadata:
             continue
+            
+        # Always extract BugSigDB-specific fields from the metadata
+        title = metadata.get('title', '')
+        abstract = metadata.get('abstract', '')
+        mesh_terms = metadata.get('mesh_terms', [])
+        
+        # Extract host, body_site, and sequencing_type using the retriever methods
+        host = retriever._extract_host(title, abstract, mesh_terms)
+        body_site = retriever._extract_body_site(title, abstract, mesh_terms)
+        sequencing_type = retriever._extract_sequencing_type(title, abstract, mesh_terms)
+        
+        # Update metadata with extracted fields only if they're not already set in CSV
+        if not metadata.get('host') or not metadata.get('host').strip():
+            metadata['host'] = host
+        if not metadata.get('body_site') or not metadata.get('body_site').strip():
+            metadata['body_site'] = body_site
+        if not metadata.get('sequencing_type') or not metadata.get('sequencing_type').strip():
+            metadata['sequencing_type'] = sequencing_type
         # 2. Analyze
         paper_content = {
             "title": metadata.get("title", ""),

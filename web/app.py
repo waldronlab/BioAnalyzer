@@ -584,6 +584,11 @@ async def analyze_paper(pmid: str):
         curation_status_message = ""
         required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
         missing_fields = [f for f in required_fields if not metadata.get(f)]
+        
+        # Get LLM analysis results for curation readiness
+        curation_analysis = analysis.get('curation_analysis', {})
+        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
+        
         if found_in_csv:
             in_bugsigdb = True
             curated = True
@@ -591,7 +596,13 @@ async def analyze_paper(pmid: str):
         else:
             in_bugsigdb = False
             curated = False
-            if not missing_fields:
+            
+            # Use LLM analysis to determine readiness
+            if llm_readiness == "READY":
+                curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
+            elif llm_readiness == "NOT_READY":
+                curation_status_message = "This paper is not ready for curation. Missing required elements."
+            elif not missing_fields:
                 curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
             else:
                 curation_status_message = "This paper is not in BugSigDB and is not ready for curation. Missing required fields."

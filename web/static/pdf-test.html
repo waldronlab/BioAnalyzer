@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Generation Test</h1>
+        
+        <div id="status" class="status info">
+            Testing PDF generation capabilities...
+        </div>
+        
+        <button class="test-button" onclick="testHtml2Pdf()">Test HTML2PDF Library</button>
+        <button class="test-button" onclick="testSimplePdf()">Test Simple PDF Generation</button>
+        <button class="test-button" onclick="testComplexPdf()">Test Complex PDF Generation</button>
+        
+        <div id="test-content" style="display: none;">
+            <h2>Test Content for PDF</h2>
+            <p>This is a test paragraph to verify PDF generation is working correctly.</p>
+            <ul>
+                <li>Test item 1</li>
+                <li>Test item 2</li>
+                <li>Test item 3</li>
+            </ul>
+            <table border="1" style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <th>Column 1</th>
+                    <th>Column 2</th>
+                </tr>
+                <tr>
+                    <td>Data 1</td>
+                    <td>Data 2</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        function testHtml2Pdf() {
+            console.log('Testing html2pdf library...');
+            
+            if (typeof html2pdf === 'undefined') {
+                updateStatus('❌ html2pdf library is NOT loaded!', 'error');
+                console.error('html2pdf is undefined');
+                return;
+            }
+            
+            updateStatus('✅ html2pdf library is loaded successfully!', 'success');
+            console.log('html2pdf is available:', html2pdf);
+        }
+
+        async function testSimplePdf() {
+            console.log('Testing simple PDF generation...');
+            
+            if (typeof html2pdf === 'undefined') {
+                updateStatus('❌ html2pdf library not available for PDF generation', 'error');
+                return;
+            }
+            
+            try {
+                updateStatus('Generating simple PDF...', 'info');
+                
+                const content = `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h1>Simple Test PDF</h1>
+                        <p>This is a simple test to verify PDF generation is working.</p>
+                        <p>Generated on: ${new Date().toLocaleString()}</p>
+                    </div>
+                `;
+                
+                const element = document.createElement('div');
+                element.innerHTML = content;
+                element.style.position = 'absolute';
+                element.style.left = '-9999px';
+                document.body.appendChild(element);
+                
+                const opt = {
+                    margin: 1,
+                    filename: 'simple_test.pdf',
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+                };
+                
+                await html2pdf().set(opt).from(element).save();
+                
+                document.body.removeChild(element);
+                updateStatus('✅ Simple PDF generated successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error generating simple PDF:', error);
+                updateStatus(`❌ Error generating PDF: ${error.message}`, 'error');
+            }
+        }
+
+        async function testComplexPdf() {
+            console.log('Testing complex PDF generation...');
+            
+            if (typeof html2pdf === 'undefined') {
+                updateStatus('❌ html2pdf library not available for PDF generation', 'error');
+                return;
+            }
+            
+            try {
+                updateStatus('Generating complex PDF...', 'info');
+                
+                const content = `
+                    <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+                        <div style="text-align: center; margin-bottom: 30px;">
+                            <h1 style="color: #0d6efd; margin-bottom: 10px;">BugSigDB Analyzer Report</h1>
+                            <p style="color: #6c757d; font-size: 14px;">Generated on ${new Date().toLocaleDateString()}</p>
+                        </div>
+
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+                            <h2 style="color: #0d6efd; margin-bottom: 15px;">📄 Paper Information</h2>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr><td style="padding: 8px 0; font-weight: bold;">PMID:</td><td style="padding: 8px 0;">34647492</td></tr>
+                                <tr><td style="padding: 8px 0; font-weight: bold;">Title:</td><td style="padding: 8px 0;">Gastrointestinal microbiome and gluten in celiac disease</td></tr>
+                                <tr><td style="padding: 8px 0; font-weight: bold;">Authors:</td><td style="padding: 8px 0;">Xingxing Wu, Lin Qian, Kexin Liu, Jing Wu, Zhaowei Shan</td></tr>
+                                <tr><td style="padding: 8px 0; font-weight: bold;">Journal:</td><td style="padding: 8px 0;">Annals of medicine</td></tr>
+                                <tr><td style="padding: 8px 0; font-weight: bold;">Year:</td><td style="padding: 8px 0;">2021</td></tr>
+                                <tr><td style="padding: 8px 0; font-weight: bold;">DOI:</td><td style="padding: 8px 0;">10.1080/07853890.2021.1990392</td></tr>
+                            </table>
+                        </div>
+
+                        <div style="margin-bottom: 25px;">
+                            <h2 style="color: #0d6efd; margin-bottom: 15px;">📝 Abstract</h2>
+                            <p style="line-height: 1.6; color: #495057;">Coeliac disease (CD), also known as gluten sensitive enteropathy, is an autoimmune intestinal disease induced by gluten in genetically susceptible individuals. Gluten is a common ingredient in daily diet and is one of the main environmental factors to induce coeliac disease.</p>
+                        </div>
+
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+                            <h2 style="color: #0d6efd; margin-bottom: 15px;">📋 Curation Status</h2>
+                            <p><strong>Status:</strong> Ready for Curation</p>
+                            <p><strong>Host:</strong> Human</p>
+                            <p><strong>Body Site:</strong> Gastrointestinal</p>
+                            <p><strong>Sequencing Type:</strong> 16S rRNA</p>
+                        </div>
+
+                        <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                            <p style="color: #6c757d; font-size: 12px;">Generated by BugSigDB Analyzer - Advanced AI-powered paper analysis</p>
+                        </div>
+                    </div>
+                `;
+                
+                const element = document.createElement('div');
+                element.innerHTML = content;
+                element.style.position = 'absolute';
+                element.style.left = '-9999px';
+                document.body.appendChild(element);
+                
+                const opt = {
+                    margin: 1,
+                    filename: 'complex_test.pdf',
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+                };
+                
+                await html2pdf().set(opt).from(element).save();
+                
+                document.body.removeChild(element);
+                updateStatus('✅ Complex PDF generated successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error generating complex PDF:', error);
+                updateStatus(`❌ Error generating PDF: ${error.message}`, 'error');
+            }
+        }
+
+        // Test html2pdf availability on page load
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                if (typeof html2pdf !== 'undefined') {
+                    updateStatus('✅ html2pdf library loaded successfully!', 'success');
+                } else {
+                    updateStatus('❌ html2pdf library failed to load!', 'error');
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html> 

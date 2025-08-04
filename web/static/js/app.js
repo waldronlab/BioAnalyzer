@@ -1,4 +1,424 @@
 console.log("app.js loaded!");
+
+// Global variables
+window.chatHistory = [];
+window.ws = null;
+window.isConnected = false;
+
+// Display chat message - global function
+function displayChatMessage(message, type) {
+    console.log("=== displayChatMessage called ===");
+    console.log("[DEBUG] displayChatMessage called with:", message, type);
+    const chatContainer = document.getElementById('chat-container');
+    console.log("[DEBUG] chatContainer found:", chatContainer);
+    console.log("[DEBUG] chatContainer element:", chatContainer);
+    console.log("[DEBUG] chatContainer.innerHTML before:", chatContainer ? chatContainer.innerHTML.substring(0, 200) + "..." : "null");
+    if (!chatContainer) {
+        console.error("[DEBUG] No chat container found!");
+        return;
+    }
+
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${type}-message`;
+    messageElement.textContent = message;
+    console.log("[DEBUG] Created message element:", messageElement);
+    chatContainer.appendChild(messageElement);
+    console.log("[DEBUG] Appended message to container");
+    console.log("[DEBUG] chatContainer.innerHTML after:", chatContainer.innerHTML.substring(0, 200) + "...");
+    console.log("[DEBUG] Number of child elements:", chatContainer.children.length);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    if (type === 'assistant') {
+        if (window.chatHistory) {
+            window.chatHistory.push({ role: 'assistant', content: message });
+            console.log("[DEBUG] Added to chat history");
+        }
+    }
+    console.log("[DEBUG] displayChatMessage completed successfully");
+    console.log("=== End displayChatMessage ===");
+}
+window.displayChatMessage = displayChatMessage;
+
+// File upload function for PMIDs - defined globally for immediate access
+window.uploadPmidsFile = async function() {
+    const fileInput = document.getElementById('pmid-file-upload');
+    const statusDiv = document.getElementById('upload-status');
+    
+    if (!fileInput || !fileInput.files.length) {
+        if (statusDiv) {
+            statusDiv.innerHTML = '<div class="alert alert-warning">Please select a file first.</div>';
+        }
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.xls') && !file.name.toLowerCase().endsWith('.xlsx')) {
+        if (statusDiv) {
+            statusDiv.innerHTML = '<div class="alert alert-danger">Please select an Excel file (.xls or .xlsx).</div>';
+        }
+        return;
+    }
+    
+    // Show loading status
+    if (statusDiv) {
+        statusDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Uploading and analyzing file...</div>';
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/upload_pmids_file', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.error) {
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${result.error}</div>`;
+            }
+            return;
+        }
+        
+        // Display results
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <h6><i class="fas fa-check-circle me-2"></i>${result.message}</h6>
+                    <p>Found ${result.pmids.length} PMIDs in the file.</p>
+                </div>
+            `;
+        }
+        
+        // Update browse state with the results
+        if (window.browsePapersState) {
+            window.browsePapersState.allPmids = result.pmids;
+            window.browsePapersState.filteredPmids = result.pmids;
+            window.browsePapersState.page = 1;
+            window.browsePapersState.loadedPages = {};
+            window.browsePapersState.uploadedResults = result.results;
+        }
+        
+        // Display the results in the table
+        if (typeof displayUploadedResults === 'function') {
+            displayUploadedResults(result.results);
+        }
+        
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        if (statusDiv) {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error uploading file: ${error.message}</div>`;
+        }
+    }
+};
+
+// Initialize browse papers state globally
+window.browsePapersState = {
+    allPmids: [], // store all PMIDs
+    loadedPages: {}, // cache loaded pages: {pageNum: [papers]}
+    filteredPmids: [], // PMIDs after filtering
+    filters: {
+        curationStatus: '',
+        host: '',
+        keyword: '',
+        year: '',
+        sequencingType: ''
+    },
+    page: 1,
+    pageSize: 20
+};
+
+// Function to display uploaded results - defined globally
+window.displayUploadedResults = function(results) {
+    if (!results || !results.length) {
+        const container = document.getElementById('browse-table-container');
+        if (container) {
+            container.innerHTML = '<div class="alert alert-info">No results to display.</div>';
+        }
+        return;
+    }
+    
+    let html = '<table class="table table-bordered table-hover"><thead><tr>' +
+        '<th>PMID</th><th>Title</th><th>Authors</th><th>Journal</th><th>Year</th>' +
+        '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Curation Status</th><th>Actions</th></tr></thead><tbody>';
+    
+    for (const paper of results) {
+        // Enhanced curation status display
+        let statusBadge = '';
+        let statusText = paper.curation_status || 'Unknown';
+        
+        switch (statusText) {
+            case 'already_curated':
+                statusBadge = '<span class="badge bg-success">Already Curated</span>';
+                break;
+            case 'ready':
+                statusBadge = '<span class="badge bg-primary">Ready for Curation</span>';
+                break;
+            case 'not_ready':
+                statusBadge = '<span class="badge bg-warning">Not Ready</span>';
+                break;
+            case 'not_found':
+                statusBadge = '<span class="badge bg-secondary">Not Found</span>';
+                break;
+            case 'error':
+                statusBadge = '<span class="badge bg-danger">Error</span>';
+                break;
+            default:
+                statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+        }
+        
+        // Add confidence score if available
+        let confidenceInfo = '';
+        if (paper.confidence) {
+            const confidence = (paper.confidence * 100).toFixed(1);
+            confidenceInfo = `<br><small class="text-muted">Confidence: ${confidence}%</small>`;
+        }
+        
+        html += `<tr>
+            <td>${paper.pmid}</td>
+            <td>${paper.title || 'N/A'}</td>
+            <td>${paper.authors || 'N/A'}</td>
+            <td>${paper.journal || 'N/A'}</td>
+            <td>${paper.year || 'N/A'}</td>
+            <td>${paper.host || 'N/A'}</td>
+            <td>${paper.body_site || 'N/A'}</td>
+            <td>${paper.sequencing_type || 'N/A'}</td>
+            <td>${statusBadge}${confidenceInfo}</td>
+            <td><button class="btn btn-sm btn-info" onclick="viewPaperDetails('${paper.pmid}', event)">Details</button></td>
+        </tr>`;
+    }
+    
+    html += '</tbody></table>';
+    
+    // Add summary statistics
+    const stats = {
+        total: results.length,
+        already_curated: results.filter(p => p.curation_status === 'already_curated').length,
+        ready: results.filter(p => p.curation_status === 'ready').length,
+        not_ready: results.filter(p => p.curation_status === 'not_ready').length,
+        not_found: results.filter(p => p.curation_status === 'not_found').length,
+        error: results.filter(p => p.curation_status === 'error').length
+    };
+    
+    const summaryHtml = `
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Summary Statistics</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-primary">${stats.total}</h4>
+                            <small class="text-muted">Total Papers</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-success">${stats.already_curated}</h4>
+                            <small class="text-muted">Already Curated</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-primary">${stats.ready}</h4>
+                            <small class="text-muted">Ready for Curation</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-warning">${stats.not_ready}</h4>
+                            <small class="text-muted">Not Ready</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-secondary">${stats.not_found}</h4>
+                            <small class="text-muted">Not Found</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <h4 class="text-danger">${stats.error}</h4>
+                            <small class="text-muted">Errors</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const container = document.getElementById('browse-table-container');
+    if (container) {
+        container.innerHTML = summaryHtml + html;
+    }
+};
+
+// Export functions - defined globally for immediate access
+window.exportBrowseResults = function() {
+    // Check if we have uploaded results first
+    if (window.browsePapersState.uploadedResults && window.browsePapersState.uploadedResults.length > 0) {
+        const results = window.browsePapersState.uploadedResults;
+        const headers = ['PMID','Title','Authors','Journal','Year','Host','Body Site','Sequencing Type','Curation Status'];
+        const rows = results.map(p => [
+            p.pmid, p.title || '', p.authors || '', p.journal || '', p.year || '', 
+            p.host || '', p.body_site || '', p.sequencing_type || '', p.curation_status || ''
+        ]);
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'uploaded_pmids_results.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        return;
+    }
+    
+    // Check if we have loaded papers in the current page
+    const currentPage = window.browsePapersState.page || 1;
+    const loadedPages = window.browsePapersState.loadedPages || {};
+    const papers = loadedPages[currentPage];
+    
+    if (!papers || !papers.length) {
+        alert('No papers to export. Please load papers first by clicking "Load All Papers" or upload an Excel file with PMIDs.');
+        return;
+    }
+    
+    const headers = ['PMID','Title','Authors','Journal','Year','Host','Body Site','Sequencing Type','Curation Status'];
+    const rows = papers.map(p => [
+        p.pmid, p.title || '', p.authors || '', p.journal || '', p.year || '', 
+        p.host || '', p.body_site || '', p.sequencing_type || '', p.curation_status || ''
+    ]);
+    let csv = headers.join(',') + '\n';
+    rows.forEach(row => {
+        csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'filtered_papers.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
+};
+
+// Enhanced export function for curation reports
+window.exportCurationReport = function() {
+    // Check if we have uploaded results first
+    if (window.browsePapersState.uploadedResults && window.browsePapersState.uploadedResults.length > 0) {
+        const results = window.browsePapersState.uploadedResults;
+        const headers = [
+            'PMID', 'Title', 'Authors', 'Journal', 'Year', 'Host', 'Body Site', 
+            'Sequencing Type', 'Curation Status', 'Curation Status Message', 
+            'In BugSigDB', 'Curated', 'Confidence Score', 'Key Findings'
+        ];
+        
+        const rows = results.map(p => [
+            p.pmid,
+            p.title || '',
+            p.authors || '',
+            p.journal || '',
+            p.year || '',
+            p.host || '',
+            p.body_site || '',
+            p.sequencing_type || '',
+            p.curation_status || '',
+            p.curation_status_message || '',
+            p.in_bugsigdb ? 'Yes' : 'No',
+            p.curated ? 'Yes' : 'No',
+            p.confidence ? (p.confidence * 100).toFixed(1) + '%' : '',
+            p.key_findings ? p.key_findings.join('; ') : ''
+        ]);
+        
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `curation_report_uploaded_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        return;
+    }
+    
+    // Check if we have loaded papers in the current page
+    const currentPage = window.browsePapersState.page || 1;
+    const loadedPages = window.browsePapersState.loadedPages || {};
+    const papers = loadedPages[currentPage];
+    
+    if (!papers || !papers.length) {
+        alert('No papers to export. Please load papers first by clicking "Load All Papers" or upload an Excel file with PMIDs.');
+        return;
+    }
+    
+    const headers = [
+        'PMID', 'Title', 'Authors', 'Journal', 'Year', 'Host', 'Body Site', 
+        'Sequencing Type', 'Curation Status', 'Curation Status Message', 
+        'In BugSigDB', 'Curated', 'Confidence Score', 'Key Findings'
+    ];
+    
+    const rows = papers.map(p => [
+        p.pmid,
+        p.title || '',
+        p.authors || '',
+        p.journal || '',
+        p.year || '',
+        p.host || '',
+        p.body_site || '',
+        p.sequencing_type || '',
+        p.curation_status || '',
+        p.curation_status_message || '',
+        p.in_bugsigdb ? 'Yes' : 'No',
+        p.curated ? 'Yes' : 'No',
+        p.confidence ? (p.confidence * 100).toFixed(1) + '%' : '',
+        p.key_findings ? p.key_findings.join('; ') : ''
+    ]);
+    
+    let csv = headers.join(',') + '\n';
+    rows.forEach(row => {
+        csv += row.map(val => '"' + (val ? ('' + val).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `curation_report_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOMContentLoaded: Initializing app.js and page settings');
     // Initialize state
@@ -8,6 +428,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let isConnected = false;
     let userName = null;
     let currentPaperMeta = null;
+    let lastUserMessage = '';
+    let chatPaperContext = null;
+    let chatHistory = [];
 
     // Ensure all required elements are available
     function checkElements() {
@@ -64,9 +487,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
-            ws = new WebSocket(wsUrl);
-            ws.onopen = function() {
-                isConnected = true;
+            window.ws = new WebSocket(wsUrl);
+            window.ws.onopen = function() {
+                window.isConnected = true;
                 updateConnectionStatus('Connected', 'success');
                 // Show welcome message if chat is empty
                 const chatContainer = document.getElementById('chat-container');
@@ -74,16 +497,70 @@ document.addEventListener('DOMContentLoaded', () => {
                     displayChatMessage('Hey there! How can I help you today?', 'assistant');
                 }
             };
-            ws.onclose = function() {
-                isConnected = false;
+            window.ws.onclose = function() {
+                window.isConnected = false;
                 updateConnectionStatus('Disconnected', 'danger');
             };
-            ws.onerror = function(error) {
-                isConnected = false;
+            window.ws.onerror = function(error) {
+                window.isConnected = false;
                 updateConnectionStatus('Connection failed', 'danger');
             };
+            // Add onmessage handler to display assistant replies
+            window.ws.onmessage = function(event) {
+                console.log("=== WebSocket Message Received ===");
+                console.log("Raw event data:", event.data);
+                console.log("Event type:", typeof event.data);
+                console.log("Received from backend:", event.data);
+                console.log("[DEBUG] lastUserMessage before handling:", lastUserMessage);
+                console.log("[DEBUG] WebSocket connection status:", window.ws.readyState);
+                console.log("[DEBUG] isConnected variable:", window.isConnected);
+                console.log("[DEBUG] About to parse JSON...");
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log("[DEBUG] JSON parsed successfully!");
+                    console.log("[DEBUG] Parsed data:", data);
+                    console.log("[DEBUG] Data type:", typeof data);
+                    console.log("[DEBUG] Data keys:", Object.keys(data));
+                    // Check for both 'response' and 'text' fields (backend sends 'text')
+                    const responseText = data.response || data.text;
+                    console.log("[DEBUG] responseText:", responseText);
+                    console.log("[DEBUG] responseText type:", typeof responseText);
+                    console.log("[DEBUG] responseText truthy:", !!responseText);
+                    if (responseText) {
+                        console.log("[DEBUG] About to display message:", responseText);
+                        console.log("[DEBUG] Calling displayChatMessage with:", responseText, 'assistant');
+                        displayChatMessage(responseText, 'assistant');
+                        console.log("[DEBUG] Message displayed successfully");
+                        // Only display confidence if user asked for it
+                        let showConfidence = false;
+                        if (
+                            data.confidence !== undefined && data.confidence !== null &&
+                            typeof lastUserMessage === 'string' &&
+                            /confidence|how sure|certainty|how certain/i.test(lastUserMessage)
+                        ) {
+                            showConfidence = true;
+                        }
+                        console.log('[DEBUG] showConfidence:', showConfidence, '| lastUserMessage:', lastUserMessage);
+                        if (showConfidence) {
+                            displayChatMessage(`Confidence: ${(data.confidence * 100).toFixed(1)}%`, 'system');
+                        }
+                        lastUserMessage = '';
+                    } else if (data.error) {
+                        console.log("[DEBUG] Displaying error:", data.error);
+                        displayChatMessage("Error: " + data.error, 'error');
+                    } else {
+                        console.log("[DEBUG] No response text or error found in data");
+                        console.log("[DEBUG] Full data object:", JSON.stringify(data, null, 2));
+                    }
+                } catch (e) {
+                    console.error("[DEBUG] Error in WebSocket message handler:", e);
+                    console.error("[DEBUG] Error stack:", e.stack);
+                    console.error("[DEBUG] Event data that caused error:", event.data);
+                }
+                console.log("=== End WebSocket Message Handler ===");
+            };
         } catch (error) {
-            isConnected = false;
+            window.isConnected = false;
             updateConnectionStatus('Connection failed', 'danger');
         }
     }
@@ -101,30 +578,62 @@ document.addEventListener('DOMContentLoaded', () => {
         const sendButton = document.getElementById('send-button');
         const usernameInput = document.getElementById('username');
 
-        if (messageInput) messageInput.disabled = !isConnected;
-        if (sendButton) sendButton.disabled = !isConnected;
-        if (usernameInput) usernameInput.disabled = isConnected;
+        if (messageInput) messageInput.disabled = !window.isConnected;
+        if (sendButton) sendButton.disabled = !window.isConnected;
+        if (usernameInput) usernameInput.disabled = window.isConnected;
     }
 
     // Display analysis results
     function displayAnalysisResults(data) {
         console.log('[displayAnalysisResults] Data:', data);
         
-        // Show top-level warning or error if present
-        const resultsDiv = getElement('results');
+        // Show curation status at the top
+        let resultsDiv = getElement('results');
+        if (resultsDiv) {
+            let curationStatusDiv = document.getElementById('curation-status');
+            if (!curationStatusDiv) {
+                curationStatusDiv = document.createElement('div');
+                curationStatusDiv.id = 'curation-status';
+                curationStatusDiv.className = 'mb-3';
+                resultsDiv.insertBefore(curationStatusDiv, resultsDiv.firstChild);
+            }
+            // Set badge color and text
+            let statusMsg = data.curation_status_message || '';
+            let badgeClass = 'alert-secondary';
+            if (data.curated) badgeClass = 'alert-success';
+            else if (data.in_bugsigdb) badgeClass = 'alert-warning';
+            else if (statusMsg.toLowerCase().includes('ready')) badgeClass = 'alert-primary';
+            else if (statusMsg.toLowerCase().includes('not ready')) badgeClass = 'alert-danger';
+            curationStatusDiv.className = `alert ${badgeClass} mb-3`;
+            curationStatusDiv.textContent = statusMsg;
+            if (data.missing_curation_fields && data.missing_curation_fields.length > 0 && !data.curated) {
+                curationStatusDiv.textContent += ' (Missing: ' + data.missing_curation_fields.join(', ') + ')';
+            }
+        }
+
+        // Display enhanced curation analysis if available
+        if (data.analysis && data.analysis.curation_analysis) {
+            if (typeof displayEnhancedCurationAnalysis === 'function') {
+                displayEnhancedCurationAnalysis(data.analysis.curation_analysis);
+            } else {
+                console.warn('Enhanced curation analysis display function not available');
+            }
+        } else {
+            // Clear curation analysis display if no data
+            if (typeof clearCurationAnalysis === 'function') {
+                clearCurationAnalysis();
+            }
+        }
+
+        // Show top-level warning or error if present (suppress duplicates)
+        resultsDiv = getElement('results');
         if (resultsDiv) {
             // Remove previous alerts
             const oldAlerts = resultsDiv.querySelectorAll('.backend-alert');
             oldAlerts.forEach(el => el.remove());
-            // Show warning
-            if (data.warning) {
-                const warnDiv = document.createElement('div');
-                warnDiv.className = 'alert alert-warning backend-alert';
-                warnDiv.innerHTML = `<strong>Warning:</strong> <span style="font-size:1.05em;">${data.warning}</span>`;
-                resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
-            }
-            // Show error
-            if (data.error) {
+            // Only show the first available error/warning
+            let shown = false;
+            if (!shown && data.error) {
                 const errDiv = document.createElement('div');
                 errDiv.className = 'alert alert-danger backend-alert';
                 errDiv.innerHTML = `<strong>Error:</strong> <span style="font-size:1.05em;">${data.error}</span>`;
@@ -132,165 +641,252 @@ document.addEventListener('DOMContentLoaded', () => {
                     errDiv.innerHTML += `<br><small>Full text type: <code>${data.full_text_type}</code></small>`;
                 }
                 resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
-            }
-            // Show analysis warning/error if present
-            if (data.analysis?.warning) {
+                shown = true;
+            } else if (!shown && data.warning) {
                 const warnDiv = document.createElement('div');
                 warnDiv.className = 'alert alert-warning backend-alert';
-                warnDiv.innerHTML = `<strong>Analysis Warning:</strong> <span style="font-size:1.05em;">${data.analysis.warning}</span>`;
+                warnDiv.innerHTML = `<strong>Warning:</strong> <span style="font-size:1.05em;">${data.warning}</span>`;
                 resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
-            }
-            if (data.analysis?.error) {
+                shown = true;
+            } else if (!shown && data.analysis?.error) {
                 const errDiv = document.createElement('div');
                 errDiv.className = 'alert alert-danger backend-alert';
                 errDiv.innerHTML = `<strong>Analysis Error:</strong> <span style="font-size:1.05em;">${data.analysis.error}</span>`;
                 resultsDiv.insertBefore(errDiv, resultsDiv.firstChild);
+                shown = true;
+            } else if (!shown && data.analysis?.warning) {
+                const warnDiv = document.createElement('div');
+                warnDiv.className = 'alert alert-warning backend-alert';
+                warnDiv.innerHTML = `<strong>Analysis Warning:</strong> <span style="font-size:1.05em;">${data.analysis.warning}</span>`;
+                resultsDiv.insertBefore(warnDiv, resultsDiv.firstChild);
+                shown = true;
             }
         }
 
-        // Update paper metadata
+        // Update paper metadata (always show, with fallback)
         const titleEl = getElement('paper-title');
         const authorsEl = getElement('paper-authors');
         const journalEl = getElement('paper-journal');
         const abstractEl = getElement('paper-abstract');
         const dateEl = getElement('paper-date');
         const doiEl = getElement('paper-doi');
-        
-        if (titleEl && data.metadata?.title) {
-            titleEl.textContent = data.metadata.title;
+        const dateDetailEl = getElement('paper-date-detail');
+        const doiDetailEl = getElement('paper-doi-detail');
+        if (titleEl) {
+            titleEl.textContent = data.metadata?.title || 'No data available';
         }
-        
-        if (authorsEl && data.metadata?.authors) {
-            authorsEl.textContent = data.metadata.authors;
+        if (authorsEl) {
+            authorsEl.textContent = data.metadata?.authors || 'No data available';
         }
-        
-        if (journalEl && data.metadata?.journal) {
-            journalEl.textContent = data.metadata.journal;
+        if (journalEl) {
+            journalEl.textContent = data.metadata?.journal || 'No data available';
         }
-        
-        if (abstractEl && data.metadata?.abstract) {
-            abstractEl.textContent = data.metadata.abstract;
+        if (abstractEl) {
+            abstractEl.textContent = data.metadata?.abstract || 'No data available';
+        }
+        if (dateEl) {
+            dateEl.textContent = data.metadata?.publication_date || 'No data available';
+        }
+        if (doiEl) {
+            doiEl.textContent = data.metadata?.doi || 'No data available';
+        }
+        if (dateDetailEl) {
+            dateDetailEl.textContent = data.metadata?.publication_date || 'No data available';
+        }
+        if (doiDetailEl) {
+            doiDetailEl.textContent = data.metadata?.doi || 'No data available';
         }
 
-        if (dateEl && data.metadata?.publication_date) {
-            dateEl.textContent = data.metadata.publication_date;
+        // Show MeSH Terms and Publication Types in a prominent section
+        const meshTermsSection = document.getElementById('mesh-terms-section');
+        if (meshTermsSection) {
+            let html = '';
+            if (data.metadata?.mesh_terms && data.metadata.mesh_terms.length > 0) {
+                html += `<h6 class="mb-2">MeSH Terms</h6><div class="d-flex flex-wrap gap-2">${data.metadata.mesh_terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}</div>`;
+            }
+            if (data.metadata?.publication_types && data.metadata.publication_types.length > 0) {
+                html += `<h6 class="mb-2 mt-3">Publication Types</h6><div class="d-flex flex-wrap gap-2">${data.metadata.publication_types.map(type => `<span class="badge bg-info">${type}</span>`).join('')}</div>`;
+            }
+            meshTermsSection.innerHTML = html;
         }
 
-        if (doiEl && data.metadata?.doi) {
-            doiEl.textContent = data.metadata.doi;
-        }
-
-        // Update paper analysis details table
+        // Update paper analysis details table (always show, with fallback)
         const pmidEl = getElement('paper-pmid');
         const journalShortEl = getElement('paper-journal-short');
         const titleShortEl = getElement('paper-title-short');
         const yearEl = getElement('paper-year');
-
-        if (pmidEl && data.metadata?.pmid) {
-            pmidEl.textContent = data.metadata.pmid;
+        const hostEl = getElement('paper-host');
+        const bodySiteEl = getElement('paper-body-site');
+        const conditionEl = getElement('paper-condition');
+        const sequencingTypeEl = getElement('paper-sequencing-type');
+        const inBugSigDBEl = getElement('paper-in-bugsigdb');
+        const signatureProbEl = getElement('paper-signature-prob');
+        const sampleSizeEl = getElement('paper-sample-size');
+        const taxaLevelEl = getElement('paper-taxa-level');
+        const statMethodEl = getElement('paper-statistical-method');
+        if (pmidEl) pmidEl.textContent = data.metadata?.pmid || 'No data available';
+        if (journalShortEl) journalShortEl.textContent = data.metadata?.journal || 'No data available';
+        if (titleShortEl) titleShortEl.textContent = data.metadata?.title || 'No data available';
+        if (yearEl) yearEl.textContent = data.metadata?.year || 'No data available';
+        if (hostEl) hostEl.textContent = data.metadata?.host || 'No data available';
+        if (bodySiteEl) bodySiteEl.textContent = data.metadata?.body_site || 'No data available';
+        if (conditionEl) conditionEl.textContent = data.metadata?.condition || 'No data available';
+        if (sequencingTypeEl) sequencingTypeEl.textContent = data.metadata?.sequencing_type || 'No data available';
+        // Only use the top-level in_bugsigdb boolean or string for display
+        if (inBugSigDBEl) {
+            console.log('in_bugsigdb value:', data.in_bugsigdb);
+            if (typeof data.in_bugsigdb === 'boolean') {
+                inBugSigDBEl.textContent = data.in_bugsigdb ? 'Yes' : 'No';
+            } else if (typeof data.in_bugsigdb === 'string') {
+                const val = data.in_bugsigdb.trim().toLowerCase();
+                inBugSigDBEl.textContent = ['true', 'yes', '1', 'y'].includes(val) ? 'Yes' : 'No';
+            } else {
+                inBugSigDBEl.textContent = 'No data available';
+            }
         }
+        if (signatureProbEl) signatureProbEl.textContent = data.metadata?.signature_probability || 'No data available';
+        if (sampleSizeEl) sampleSizeEl.textContent = data.metadata?.sample_size || 'No data available';
+        if (taxaLevelEl) taxaLevelEl.textContent = data.metadata?.taxa_level || 'No data available';
+        if (statMethodEl) statMethodEl.textContent = data.metadata?.statistical_method || 'No data available';
 
-        if (journalShortEl && data.metadata?.journal) {
-            journalShortEl.textContent = data.metadata.journal;
-        }
-
-        if (titleShortEl && data.metadata?.title) {
-            titleShortEl.textContent = data.metadata.title;
-        }
-
-        if (yearEl && data.metadata?.year) {
-            yearEl.textContent = data.metadata.year;
-        }
-
-        // Update MeSH terms if available
-        const meshTermsEl = getElement('found-terms');
-        if (meshTermsEl && data.metadata?.mesh_terms) {
-            meshTermsEl.innerHTML = `
-                <h6 class="mb-2">MeSH Terms</h6>
-                <div class="d-flex flex-wrap gap-2">
-                    ${data.metadata.mesh_terms.map(term => `<span class="badge bg-secondary">${term}</span>`).join('')}
-                </div>
-            `;
-        }
-
-        // Update publication types if available
-        if (meshTermsEl && data.metadata?.publication_types) {
-            const pubTypesDiv = document.createElement('div');
-            pubTypesDiv.className = 'mt-3';
-            pubTypesDiv.innerHTML = `
-                <h6 class="mb-2">Publication Types</h6>
-                <div class="d-flex flex-wrap gap-2">
-                    ${data.metadata.publication_types.map(type => `<span class="badge bg-info">${type}</span>`).join('')}
-                </div>
-            `;
-            meshTermsEl.appendChild(pubTypesDiv);
-        }
-        
-        // Update confidence score
+        // Update confidence score (show fallback if missing)
         const confidenceFill = getElement('confidence-fill');
         const confidenceValue = getElement('confidence-value');
-        if (confidenceFill && confidenceValue && data.analysis?.confidence) {
-            const confidence = data.analysis.confidence * 100;
-            confidenceFill.style.width = `${confidence}%`;
-            confidenceFill.className = `progress-bar ${getScoreColor(data.analysis.confidence)}`;
-            confidenceValue.textContent = `${confidence.toFixed(1)}%`;
+        if (confidenceFill && confidenceValue) {
+            if (data.analysis?.confidence !== undefined && data.analysis?.confidence !== null) {
+                const confidence = data.analysis.confidence * 100;
+                confidenceFill.style.width = `${confidence}%`;
+                confidenceFill.className = `progress-bar ${getScoreColor(data.analysis.confidence)}`;
+                confidenceValue.textContent = `${confidence.toFixed(1)}%`;
+            } else {
+                confidenceFill.style.width = '0%';
+                confidenceFill.className = 'progress-bar bg-secondary';
+                confidenceValue.textContent = 'No data available';
+            }
         }
-        
-        // Update category scores
-        if (data.analysis?.category_scores) {
+
+        // Update category scores (show fallback if missing)
+        if (data.analysis?.category_scores && Object.keys(data.analysis.category_scores).length > 0) {
             updateCategoryScores(data.analysis.category_scores);
+        } else {
+            const categoryScoresDiv = getElement('category-scores');
+            if (categoryScoresDiv) {
+                categoryScoresDiv.innerHTML = '<span class="text-muted">No category scores available</span>';
+            }
         }
-        
-        // Update key findings
+
+        // Update key findings (show fallback if missing)
         const keyFindingsEl = getElement('key-findings');
-        if (keyFindingsEl && data.analysis?.key_findings) {
-            keyFindingsEl.innerHTML = data.analysis.key_findings
-                .map(finding => `<li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i>${finding}</li>`)
-                .join('');
+        if (keyFindingsEl) {
+            if (data.analysis?.key_findings && data.analysis.key_findings.length > 0) {
+                let html = '';
+                
+                data.analysis.key_findings.forEach(finding => {
+                    // Check if this is a heading (contains ** at start and end)
+                    if (finding.startsWith('**') && finding.endsWith('**')) {
+                        // This is a heading - remove ** and make it bold without checkmark
+                        const headingText = finding.replace(/\*\*/g, '');
+                        html += `<li class="finding-heading mb-3"><strong>${headingText}</strong></li>`;
+                    } else {
+                        // This is a regular finding - add checkmark
+                        html += `<li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i>${finding}</li>`;
+                    }
+                });
+                
+                keyFindingsEl.innerHTML = html;
+            } else {
+                keyFindingsEl.innerHTML = '<li class="text-muted">No key findings available</li>';
+            }
         }
-        
-        // Update suggested topics
+
+        // Update suggested topics (show fallback if missing)
         const suggestedTopicsEl = getElement('suggested-topics');
-        if (suggestedTopicsEl && data.analysis?.suggested_topics) {
-            suggestedTopicsEl.innerHTML = data.analysis.suggested_topics
-                .map(topic => `<li class="mb-2"><i class="fas fa-tag text-primary me-2"></i>${topic}</li>`)
-                .join('');
+        if (suggestedTopicsEl) {
+            if (data.analysis?.suggested_topics && data.analysis.suggested_topics.length > 0) {
+                let html = '';
+                
+                data.analysis.suggested_topics.forEach(topic => {
+                    // Check if this is a heading (contains ** at start and end)
+                    if (topic.startsWith('**') && topic.endsWith('**')) {
+                        // This is a heading - remove ** and make it bold without tag icon
+                        const headingText = topic.replace(/\*\*/g, '');
+                        html += `<li class="topic-heading mb-3"><strong>${headingText}</strong></li>`;
+                    } else {
+                        // This is a regular topic - add tag icon
+                        html += `<li class="mb-2"><i class="fas fa-tag text-primary me-2"></i>${topic}</li>`;
+                    }
+                });
+                
+                suggestedTopicsEl.innerHTML = html;
+            } else {
+                suggestedTopicsEl.innerHTML = '<li class="text-muted">No suggested topics available</li>';
+            }
         }
-        
-        // Update analysis status
+
+        // Update analysis status (show fallback if missing)
         const statusEl = getElement('analysis-status');
-        if (statusEl && data.analysis?.status) {
-            statusEl.textContent = data.analysis.status;
-            statusEl.className = `badge ${data.analysis.status === 'success' ? 'bg-success' : 'bg-danger'}`;
+        if (statusEl) {
+            if (data.analysis?.status) {
+                statusEl.textContent = data.analysis.status;
+                statusEl.className = `badge ${data.analysis.status === 'success' ? 'bg-success' : 'bg-danger'}`;
+            } else {
+                statusEl.textContent = 'No data available';
+                statusEl.className = 'badge bg-secondary';
+            }
         }
-        
-        // Update tokens generated
+
+        // Update tokens generated (show fallback if missing)
         const tokensEl = getElement('tokens-generated');
-        if (tokensEl && data.analysis?.num_tokens) {
-            tokensEl.textContent = data.analysis.num_tokens;
+        if (tokensEl) {
+            if (data.analysis?.num_tokens !== undefined && data.analysis?.num_tokens !== null) {
+                tokensEl.textContent = data.analysis.num_tokens;
+            } else {
+                tokensEl.textContent = 'No data available';
+            }
         }
-        
-        // Show results container
+
+        // Show results container with smooth animation
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.opacity = '0';
+            resultsDiv.style.transform = 'translateY(20px)';
             setTimeout(() => {
                 resultsDiv.style.opacity = '1';
+                resultsDiv.style.transform = 'translateY(0)';
+                resultsDiv.style.transition = 'all 0.4s ease-out';
             }, 100);
         }
     }
 
     // Display chat message
     function displayChatMessage(message, type) {
+        console.log("[DEBUG] displayChatMessage called with:", message, type);
         const chatContainer = document.getElementById('chat-container');
-        if (!chatContainer) return;
+        console.log("[DEBUG] chatContainer found:", chatContainer);
+        if (!chatContainer) {
+            console.error("[DEBUG] No chat container found!");
+            return;
+        }
 
         const messageElement = document.createElement('div');
         messageElement.className = `message ${type}-message`;
         messageElement.textContent = message;
+        console.log("[DEBUG] Created message element:", messageElement);
         chatContainer.appendChild(messageElement);
+        console.log("[DEBUG] Appended message to container");
+        console.log("[DEBUG] chatContainer.innerHTML after:", chatContainer.innerHTML.substring(0, 200) + "...");
+        console.log("[DEBUG] Number of child elements:", chatContainer.children.length);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        if (type === 'assistant') {
+            if (window.chatHistory) {
+                window.chatHistory.push({ role: 'assistant', content: message });
+                console.log("[DEBUG] Added to chat history");
+            }
+        }
+        console.log("[DEBUG] displayChatMessage completed successfully");
+        console.log("=== End displayChatMessage ===");
     }
+    window.displayChatMessage = displayChatMessage;
 
     // Show error message
     function showError(message, errorObj = null) {
@@ -348,20 +944,31 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Show loader immediately
+        // Show enhanced loader immediately
         const loader = document.getElementById('loading');
         const analyzeBtn = document.getElementById('analyze-btn') || document.getElementById('analyze-button');
         const resultsDiv = document.getElementById('results');
+        
         if (loader) {
             loader.style.display = 'block';
+            loader.classList.add('loading-enhanced');
+            loader.innerHTML = `
+                <div class="text-center my-4">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3 text-primary fw-bold">Analyzing Paper...</p>
+                    <p class="text-muted">This may take a few moments as we process the paper content</p>
+                </div>
+            `;
         }
         if (analyzeBtn) {
             analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
         }
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.opacity = '0.5';
-            resultsDiv.innerHTML = '';
         }
 
         try {
@@ -382,9 +989,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return;
             }
-            if (data.error) {
-                throw new Error(data.error);
-            }
             displayAnalysisResults(data);
             if (resultsDiv) {
                 resultsDiv.style.display = 'block';
@@ -404,23 +1008,46 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (analyzeBtn) {
                 analyzeBtn.disabled = false;
+                analyzeBtn.innerHTML = '<i class="fas fa-search me-2"></i>Analyze Paper';
             }
         }
     }
 
     // Send message
     function sendMessage() {
+        console.log("[DEBUG] sendMessage called");
         const messageInput = document.getElementById('message-input');
-        if (!messageInput || !ws || !isConnected) return;
+        console.log("[DEBUG] messageInput found:", messageInput);
+        console.log("[DEBUG] ws found:", window.ws);
+        console.log("[DEBUG] isConnected:", window.isConnected);
+        if (!messageInput || !window.ws || !window.isConnected) {
+            console.log("[DEBUG] sendMessage early return - missing requirements");
+            return;
+        }
 
         const message = messageInput.value.trim();
         if (!message) return;
 
+        lastUserMessage = message; // Track last user message
         displayChatMessage(message, 'user');
-        ws.send(JSON.stringify({
+        // Add to chat history
+        if (window.chatHistory) {
+            window.chatHistory.push({ role: 'user', content: message });
+        }
+        // Prepare context for backend
+        let contextMessages = [];
+        if (!chatPaperContext) {
+            // Only send history if not in paper context
+            contextMessages = window.chatHistory ? window.chatHistory.slice(-10) : []; // last 10 messages
+        }
+        window.ws.send(JSON.stringify({
             content: message,
-            role: 'user'
+            role: 'user',
+            currentPaper: chatPaperContext ? chatPaperContext.pmid : null,
+            paperContext: chatPaperContext || null,
+            chatHistory: contextMessages
         }));
+        console.log("[DEBUG] Message sent to WebSocket");
 
         messageInput.value = '';
     }
@@ -457,16 +1084,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Create results container if it doesn't exist
-        const analyzeTab = document.getElementById('analyze');
-        if (analyzeTab && !document.getElementById('results')) {
-            const resultsDiv = document.createElement('div');
-            resultsDiv.id = 'results';
-            resultsDiv.className = 'mt-4';
-            resultsDiv.style.display = 'none';
-            analyzeTab.appendChild(resultsDiv);
-        }
-
         // Create loading indicator if it doesn't exist
         if (analyzeTab && !document.getElementById('loading')) {
             const loadingDiv = document.createElement('div');
@@ -485,6 +1102,248 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize the UI when the DOM is loaded
     document.addEventListener('DOMContentLoaded', initializeUI);
+
+    // Enhanced Tab Management
+    function initializeEnhancedTabManagement() {
+        const tabLinks = document.querySelectorAll('.nav-tabs .nav-link');
+        const tabPanes = document.querySelectorAll('.tab-pane');
+        
+        // Add enhanced tab switching behavior
+        tabLinks.forEach(tab => {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Remove active class from all tabs and panes
+                tabLinks.forEach(t => t.classList.remove('active'));
+                tabPanes.forEach(p => p.classList.remove('active'));
+                
+                // Add active class to clicked tab
+                this.classList.add('active');
+                
+                // Find and activate corresponding pane
+                const targetId = this.getAttribute('href') || this.getAttribute('data-bs-target');
+                const targetPane = document.querySelector(targetId);
+                if (targetPane) {
+                    targetPane.classList.add('active');
+                    
+                    // Scroll to top of the newly active tab
+                    setTimeout(() => {
+                        targetPane.scrollTop = 0;
+                        targetPane.focus();
+                    }, 100);
+                    
+                    // Trigger custom event for tab activation
+                    const event = new CustomEvent('tabActivated', {
+                        detail: { tabId: targetId, tabElement: this, paneElement: targetPane }
+                    });
+                    document.dispatchEvent(event);
+                }
+            });
+        });
+        
+        // Add visual feedback for tab interactions
+        tabLinks.forEach(tab => {
+            tab.addEventListener('mouseenter', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.transform = 'translateY(-1px)';
+                }
+            });
+            
+            tab.addEventListener('mouseleave', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.transform = 'translateY(0)';
+                }
+            });
+        });
+        
+        // Handle keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                const activeTab = document.querySelector('.nav-tabs .nav-link.active');
+                if (activeTab) {
+                    const tabIndex = Array.from(tabLinks).indexOf(activeTab);
+                    
+                    switch(e.key) {
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                            const targetIndex = parseInt(e.key) - 1;
+                            if (targetIndex < tabLinks.length) {
+                                e.preventDefault();
+                                tabLinks[targetIndex].click();
+                            }
+                            break;
+                        case 'ArrowLeft':
+                            e.preventDefault();
+                            const prevIndex = (tabIndex - 1 + tabLinks.length) % tabLinks.length;
+                            tabLinks[prevIndex].click();
+                            break;
+                        case 'ArrowRight':
+                            e.preventDefault();
+                            const nextIndex = (tabIndex + 1) % tabLinks.length;
+                            tabLinks[nextIndex].click();
+                            break;
+                    }
+                }
+            }
+        });
+        
+        // Auto-focus management for active tab content
+        document.addEventListener('tabActivated', function(e) {
+            const pane = e.detail.paneElement;
+            
+            // Focus the first interactive element in the active tab
+            setTimeout(() => {
+                const firstFocusable = pane.querySelector('input, button, select, textarea, [tabindex]:not([tabindex="-1"])');
+                if (firstFocusable) {
+                    firstFocusable.focus();
+                }
+            }, 150);
+        });
+        
+        // Performance optimization: lazy load tab content
+        tabPanes.forEach(pane => {
+            if (!pane.classList.contains('active')) {
+                pane.style.display = 'none';
+            }
+        });
+        
+        document.addEventListener('tabActivated', function(e) {
+            const activePane = e.detail.paneElement;
+            const inactivePanes = Array.from(tabPanes).filter(p => p !== activePane);
+            
+            // Show active pane
+            activePane.style.display = 'block';
+            
+            // Hide inactive panes after animation
+            setTimeout(() => {
+                inactivePanes.forEach(pane => {
+                    pane.style.display = 'none';
+                });
+            }, 300);
+        });
+        
+        // Add tab indicators functionality
+        function updateTabIndicators() {
+            const activeTab = document.querySelector('.nav-tabs .nav-link.active');
+            const allTabs = document.querySelectorAll('.nav-tabs .nav-link');
+            
+            allTabs.forEach(tab => {
+                const indicator = tab.querySelector('.tab-indicator');
+                if (indicator) {
+                    if (tab === activeTab) {
+                        indicator.style.width = '80%';
+                        indicator.style.backgroundColor = '#0d6efd';
+                    } else {
+                        indicator.style.width = '0%';
+                        indicator.style.backgroundColor = '#6ea8fe';
+                    }
+                }
+            });
+        }
+        
+        // Update indicators on tab switch
+        document.addEventListener('tabActivated', updateTabIndicators);
+        
+        // Initialize indicators
+        updateTabIndicators();
+        
+        // Add hover effects for tab indicators
+        tabLinks.forEach(tab => {
+            const indicator = tab.querySelector('.tab-indicator');
+            if (indicator) {
+                tab.addEventListener('mouseenter', function() {
+                    if (!this.classList.contains('active')) {
+                        indicator.style.width = '60%';
+                        indicator.style.backgroundColor = '#6ea8fe';
+                    }
+                });
+                
+                tab.addEventListener('mouseleave', function() {
+                    if (!this.classList.contains('active')) {
+                        indicator.style.width = '0%';
+                    }
+                });
+            }
+        });
+        
+        // Add loading states for tab content
+        function showTabLoading(tabId) {
+            const pane = document.querySelector(tabId);
+            if (pane) {
+                pane.classList.add('loading');
+            }
+        }
+        
+        function hideTabLoading(tabId) {
+            const pane = document.querySelector(tabId);
+            if (pane) {
+                pane.classList.remove('loading');
+            }
+        }
+        
+        // Expose loading functions globally
+        window.showTabLoading = showTabLoading;
+        window.hideTabLoading = hideTabLoading;
+        
+        // Add tab counter functionality
+        function updateTabCounter(tabId, count) {
+            const tab = document.querySelector(`[href="${tabId}"], [data-bs-target="${tabId}"]`);
+            if (tab) {
+                let counter = tab.querySelector('.tab-counter');
+                if (!counter && count > 0) {
+                    counter = document.createElement('span');
+                    counter.className = 'tab-counter';
+                    tab.appendChild(counter);
+                }
+                if (counter) {
+                    counter.textContent = count;
+                    counter.style.display = count > 0 ? 'flex' : 'none';
+                }
+            }
+        }
+        
+        // Expose counter function globally
+        window.updateTabCounter = updateTabCounter;
+        
+        // Add tab status indicators
+        function setTabStatus(tabId, status) {
+            const tab = document.querySelector(`[href="${tabId}"], [data-bs-target="${tabId}"]`);
+            if (tab) {
+                let statusIndicator = tab.querySelector('.tab-status');
+                if (!statusIndicator) {
+                    statusIndicator = document.createElement('span');
+                    statusIndicator.className = 'tab-status';
+                    tab.appendChild(statusIndicator);
+                }
+                
+                // Set status color
+                switch (status) {
+                    case 'success':
+                        statusIndicator.style.backgroundColor = '#28a745';
+                        break;
+                    case 'warning':
+                        statusIndicator.style.backgroundColor = '#ffc107';
+                        break;
+                    case 'error':
+                        statusIndicator.style.backgroundColor = '#dc3545';
+                        break;
+                    case 'info':
+                        statusIndicator.style.backgroundColor = '#17a2b8';
+                        break;
+                    default:
+                        statusIndicator.style.backgroundColor = '#6c757d';
+                }
+            }
+        }
+        
+        // Expose status function globally
+        window.setTabStatus = setTabStatus;
+    }
+    
+    // Initialize enhanced tab management
+    document.addEventListener('DOMContentLoaded', initializeEnhancedTabManagement);
 
     // Page Settings Event Handlers
     const fontSizeSlider = document.getElementById('fontSize');
@@ -733,6 +1592,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!msg) return;
                 if (!userName) {
                     userName = msg;
+                    lastUserMessage = msg;
                     displayUserMessage(msg);
                     displayAssistantMessage(`Nice to meet you, ${userName}! How can I help you today?`);
                     messageInput.value = '';
@@ -751,7 +1611,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Get paper title and PMID from DOM
         const title = document.getElementById('paper-title-short')?.textContent || '';
         const pmid = document.getElementById('paper-pmid')?.textContent || '';
-        currentPaperMeta = { title, pmid };
+        chatPaperContext = { title, pmid };
         // Switch to chat tab
         document.getElementById('chat-tab').click();
         setTimeout(() => {
@@ -759,6 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageInput = document.getElementById('message-input');
             if (messageInput) {
                 messageInput.value = `I want to discuss the paper: \"${title}\" (PMID: ${pmid})`;
+                lastUserMessage = messageInput.value;
                 messageInput.focus();
             }
             displayAssistantMessage(`What would you like to know about this paper: "${title}" (PMID: ${pmid})?`);
@@ -804,4 +1665,284 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Make switchToChatWithPaper globally available
     window.switchToChatWithPaper = switchToChatWithPaper;
+
+    window.analyzePaper = analyzePaper;
+
+    // === Browse Papers Tab Logic ===
+    window.loadBrowsePapers = async function() {
+        // Show loading spinner
+        let browseTable = document.getElementById('browse-table-container');
+        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Loading papers...</p></div>';
+        // Fetch PMIDs from backend
+        const pmidResp = await fetch('/list_pmids');
+        const pmids = await pmidResp.json();
+        window.browsePapersState.allPmids = pmids;
+        window.browsePapersState.page = 1;
+        window.browsePapersState.loadedPages = {};
+        applyBrowseFilters(); // will trigger first page load
+    }
+
+    window.applyBrowseFilters = function() {
+        // For now, filtering only by host, year, sequencingType, keyword (not curation status, since that's not in PMIDs)
+        const host = document.getElementById('filter-host')?.value.toLowerCase() || '';
+        const year = document.getElementById('filter-year')?.value.trim() || '';
+        const sequencingType = document.getElementById('filter-sequencing-type')?.value.toLowerCase() || '';
+        const keyword = document.getElementById('filter-keyword')?.value.toLowerCase() || '';
+        let pmids = window.browsePapersState.allPmids;
+        // Filtering is only on metadata, so we filter after loading each page
+        // For now, just use all PMIDs
+        window.browsePapersState.filteredPmids = pmids;
+        window.browsePapersState.page = 1;
+        loadBrowsePage(1);
+    }
+
+    window.loadBrowsePage = async function(page) {
+        const pageSize = window.browsePapersState.pageSize;
+        const pmids = window.browsePapersState.filteredPmids;
+        const totalPages = Math.ceil(pmids.length / pageSize);
+        if (page < 1 || page > totalPages) return;
+        window.browsePapersState.page = page;
+        // Check cache
+        if (window.browsePapersState.loadedPages[page]) {
+            renderBrowseTable(window.browsePapersState.loadedPages[page]);
+            prefetchBrowsePages(page, totalPages, 3); // Prefetch next 3 pages
+            return;
+        }
+        // Show loading spinner
+        let browseTable = document.getElementById('browse-table-container');
+        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Loading papers...</p></div>';
+        // Fetch batch from backend (send full pmids array)
+        const response = await fetch(`/analyze_batch?page=${page}&page_size=${pageSize}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pmids)
+        });
+        const papers = await response.json();
+        window.browsePapersState.loadedPages[page] = papers;
+        renderBrowseTable(papers);
+        prefetchBrowsePages(page, totalPages, 3); // Prefetch next 3 pages
+    }
+
+    window.prefetchBrowsePages = function(currentPage, totalPages, numPagesAhead) {
+        const pageSize = window.browsePapersState.pageSize;
+        const pmids = window.browsePapersState.filteredPmids;
+        for (let i = 1; i <= numPagesAhead; i++) {
+            const nextPage = currentPage + i;
+            if (nextPage > totalPages) break;
+            if (window.browsePapersState.loadedPages[nextPage]) continue;
+            // Prefetch in background (send full pmids array)
+            fetch(`/analyze_batch?page=${nextPage}&page_size=${pageSize}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pmids)
+            })
+            .then(resp => resp.json())
+            .then(papers => {
+                window.browsePapersState.loadedPages[nextPage] = papers;
+            })
+            .catch(() => {});
+        }
+    }
+
+    window.renderBrowseTable = function(papers) {
+        const page = window.browsePapersState.page;
+        const pageSize = window.browsePapersState.pageSize;
+        const pmids = window.browsePapersState.filteredPmids;
+        const totalPages = Math.ceil(pmids.length / pageSize);
+        let html = '<table class="table table-bordered"><thead><tr>' +
+            '<th>PMID</th><th>Title</th><th>Authors</th><th>Journal</th><th>Year</th>' +
+            '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Curation Status</th><th>Actions</th></tr></thead><tbody>';
+        for (const paper of papers) {
+            // Enhanced curation status display
+            let statusBadge = '';
+            let statusText = paper.curation_status || 'Unknown';
+            
+            switch (statusText) {
+                case 'already_curated':
+                    statusBadge = '<span class="badge bg-success">Already Curated</span>';
+                    break;
+                case 'ready':
+                    statusBadge = '<span class="badge bg-primary">Ready for Curation</span>';
+                    break;
+                case 'not_ready':
+                    statusBadge = '<span class="badge bg-warning">Not Ready</span>';
+                    break;
+                default:
+                    statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+            }
+            
+            // Add confidence score if available
+            let confidenceInfo = '';
+            if (paper.curation_analysis && paper.curation_analysis.confidence) {
+                const confidence = (paper.curation_analysis.confidence * 100).toFixed(1);
+                confidenceInfo = `<br><small class="text-muted">Confidence: ${confidence}%</small>`;
+            }
+            
+            html += `<tr>
+                <td>${paper.pmid}</td>
+                <td>${paper.title}</td>
+                <td>${paper.authors}</td>
+                <td>${paper.journal}</td>
+                <td>${paper.year}</td>
+                <td>${paper.host}</td>
+                <td>${paper.body_site}</td>
+                <td>${paper.sequencing_type}</td>
+                <td>${statusBadge}${confidenceInfo}</td>
+                <td><button class="btn btn-sm btn-info" onclick="viewPaperDetails('${paper.pmid}', event)">Details</button></td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        // Pagination controls
+        html += '<nav><ul class="pagination">';
+        for (let i = 1; i <= totalPages; i++) {
+            html += `<li class="page-item${i === page ? ' active' : ''}"><a class="page-link" href="#" onclick="loadBrowsePage(${i});return false;">${i}</a></li>`;
+        }
+        html += '</ul></nav>';
+        const container = document.getElementById('browse-table-container');
+        container.innerHTML = html;
+        // Scroll to top of table
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    window.gotoBrowsePage = function(page) {
+        loadBrowsePage(page);
+    }
+
+    // File upload function for PMIDs
+    // This function is now defined globally and called directly from DOMContentLoaded
+
+    // Function to display uploaded results
+    // This function is now defined globally and called directly from DOMContentLoaded
+
+    window.viewPaperDetails = async function(pmid, event) {
+        console.log('=== viewPaperDetails called ===');
+        console.log('PMID:', pmid);
+        console.log('Event:', event);
+        
+        // Prevent any default behavior
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        
+        // Clear any existing popups first (just in case)
+        const existingPopup = document.getElementById('enhanced-details-popup');
+        const existingBackdrop = document.getElementById('popup-backdrop');
+        if (existingPopup) existingPopup.remove();
+        if (existingBackdrop) existingBackdrop.remove();
+        
+        console.log('Navigating to paper details page...');
+        
+        // Force a hard navigation to ensure no caching issues
+        window.location.replace(`paper-details.html?pmid=${pmid}&v=${Date.now()}`);
+    };
+
+    window.showModal = function(title, bodyHtml) {
+        let modal = document.getElementById('browse-details-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'browse-details-modal';
+            modal.className = 'modal fade';
+            modal.tabIndex = -1;
+            modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body"></div>
+                </div>
+            </div>`;
+            document.body.appendChild(modal);
+        }
+        modal.querySelector('.modal-title').innerHTML = title;
+        modal.querySelector('.modal-body').innerHTML = bodyHtml;
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+
+    window.analyzeUserPmids = async function() {
+        let textarea = document.getElementById('user-pmid-list');
+        if (!textarea) return;
+        let raw = textarea.value.trim();
+        if (!raw) return;
+        
+        // Parse PMIDs (comma, space, or newline separated)
+        let pmids = raw.split(/[^0-9A-Za-z]+/).filter(x => x.length > 0);
+        if (!pmids.length) return;
+        
+        // Show loading spinner
+        let browseTable = document.getElementById('browse-table-container');
+        if (browseTable) browseTable.innerHTML = '<div class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Analyzing papers...</p></div>';
+        
+        try {
+            // Use the batch analysis endpoint
+            const response = await fetch('/analyze_batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(pmids)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const results = await response.json();
+            
+            if (results.error) {
+                browseTable.innerHTML = `<div class="alert alert-danger">Error: ${results.error}</div>`;
+                return;
+            }
+            
+            // Update browse state with the results
+            window.browsePapersState.allPmids = pmids;
+            window.browsePapersState.filteredPmids = pmids;
+            window.browsePapersState.page = 1;
+            window.browsePapersState.loadedPages = {};
+            window.browsePapersState.uploadedResults = results;
+            
+            // Display the results
+            displayUploadedResults(results);
+            
+        } catch (error) {
+            console.error('Error analyzing PMIDs:', error);
+            browseTable.innerHTML = `<div class="alert alert-danger">Error analyzing PMIDs: ${error.message}</div>`;
+        }
+    }
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+    // Enable sending chat messages with Enter
+    const messageInput = document.getElementById('message-input');
+    if (messageInput) {
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                window.sendMessage();
+            }
+        });
+    }
+    // Enable analyze paper with Enter in PMID input
+    const pmidInput = document.getElementById('pmid');
+    if (pmidInput) {
+        pmidInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.analyzePaper();
+            }
+        });
+    }
+    // Enable Analyze Entered PMIDs with Enter in textarea
+    const userPmidList = document.getElementById('user-pmid-list');
+    if (userPmidList) {
+        userPmidList.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                window.analyzeUserPmids();
+            }
+        });
+    }
 });

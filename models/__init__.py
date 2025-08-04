@@ -1,4 +1,4 @@
-from .paper_qa import PaperQA
-from .model import MicrobeSigClassifier, ModelTrainer, PaperDataset
+from .gemini_qa import GeminiQA
+from .config import ModelConfig
 
-__all__ = ['PaperQA', 'MicrobeSigClassifier', 'ModelTrainer', 'PaperDataset'] 
+__all__ = ['GeminiQA', 'ModelConfig'] 

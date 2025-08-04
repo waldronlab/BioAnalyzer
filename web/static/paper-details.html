@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Details - BugSigDB Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .main-container {
+            background: white;
+            min-height: 100vh;
+            box-shadow: 0 0 30px rgba(0,0,0,0.1);
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+            color: white;
+            padding: 30px 0;
+            margin-bottom: 30px;
+        }
+
+        .page-header h1 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 2.5rem;
+        }
+
+        .page-header .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+
+        .back-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        /* Download button styles */
+        .download-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin-left: 15px;
+            cursor: pointer;
+        }
+
+        .download-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .download-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .download-button .spinner {
+            display: none;
+            animation: spin 1s linear infinite;
+        }
+
+        .download-button:disabled .spinner {
+            display: inline-block;
+        }
+
+        .download-button:disabled .download-icon {
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Header button container */
+        .header-buttons {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        /* Notification system */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: linear-gradient(135deg, #28a745, #20c997);
+        }
+
+        .notification.info {
+            background: linear-gradient(135deg, #0d6efd, #6ea8fe);
+        }
+
+        .notification.warning {
+            background: linear-gradient(135deg, #ffc107, #fd7e14);
+        }
+
+        .notification.error {
+            background: linear-gradient(135deg, #dc3545, #e74c3c);
+        }
+
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .notification-icon {
+            font-size: 1.2rem;
+        }
+
+        .notification-message {
+            flex: 1;
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1.1rem;
+            opacity: 0.8;
+            transition: opacity 0.2s ease;
+        }
+
+        .notification-close:hover {
+            opacity: 1;
+        }
+
+        .content-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-left: 5px solid #0d6efd;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+
+        .content-section:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+
+        .content-section h2 {
+            color: #0d6efd;
+            margin-bottom: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .content-section h2 i {
+            font-size: 1.2rem;
+        }
+
+        /* Factor-based analysis styles */
+        .factor-analysis {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .factor-group {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #0d6efd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .factor-group h4 {
+            color: #495057;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .factor-group h4 i {
+            font-size: 0.9rem;
+        }
+
+        .factor-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .factor-badges .badge {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+
+        .signature-types {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .signature-types .badge {
+            font-size: 0.9rem;
+            padding: 6px 12px;
+            border-radius: 15px;
+        }
+
+        /* Status badge improvements */
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.success {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+
+        .status-badge.warning {
+            background: linear-gradient(135deg, #ffc107, #fd7e14);
+            color: white;
+        }
+
+        .status-badge.danger {
+            background: linear-gradient(135deg, #dc3545, #e74c3c);
+            color: white;
+        }
+
+        .status-badge.info {
+            background: linear-gradient(135deg, #0d6efd, #6ea8fe);
+            color: white;
+        }
+
+        /* Info list improvements */
+        .info-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .info-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            border-left: 3px solid #0d6efd;
+        }
+
+        .info-list li i {
+            color: #0d6efd;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .info-list li span {
+            flex: 1;
+            line-height: 1.5;
+        }
+
+        .content-section p {
+            color: #6c757d;
+            line-height: 1.7;
+            margin-bottom: 12px;
+        }
+
+        .content-section strong {
+            color: #212529;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 10px;
+        }
+
+        .status-badge.success {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+
+        .status-badge.warning {
+            background: #fff3cd;
+            color: #664d03;
+        }
+
+        .status-badge.danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-badge.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .info-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .info-list li {
+            padding: 12px 0;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            align-items: flex-start;
+            line-height: 1.6;
+        }
+
+        .info-list li:last-child {
+            border-bottom: none;
+        }
+
+        .info-list li i {
+            color: #0d6efd;
+            margin-right: 15px;
+            margin-top: 3px;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        .info-list li span {
+            flex: 1;
+        }
+
+        .loading-container {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #0d6efd;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 30px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #6c757d;
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+
+        .error-container {
+            text-align: center;
+            padding: 60px 20px;
+            color: #721c24;
+        }
+
+        .error-container i {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.7;
+        }
+
+        .error-container h3 {
+            margin-bottom: 15px;
+        }
+
+        .retry-button {
+            background: #0d6efd;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+
+        .retry-button:hover {
+            background: #0b5ed7;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+        }
+
+        .paper-meta {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+            border: 1px solid #bbdefb;
+        }
+
+        .paper-meta h4 {
+            color: #1976d2;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .meta-item i {
+            color: #1976d2;
+            font-size: 1.1rem;
+        }
+
+        .meta-item strong {
+            color: #1976d2;
+            font-weight: 600;
+        }
+
+        .meta-item span {
+            color: #424242;
+        }
+
+        /* Enhanced formatting for headings vs bullet points */
+        .finding-heading, .topic-heading {
+            padding: 15px 0 8px 0 !important;
+            border-bottom: 2px solid #0d6efd !important;
+            margin-bottom: 10px !important;
+            font-size: 1.1rem !important;
+            font-weight: 600 !important;
+            color: #0d6efd !important;
+            background: #f8f9fa !important;
+            padding-left: 15px !important;
+            border-radius: 5px !important;
+        }
+
+        .finding-heading strong, .topic-heading strong {
+            color: #0d6efd !important;
+            font-size: 1.2rem !important;
+        }
+
+        .info-list li:not(.finding-heading):not(.topic-heading) {
+            padding: 12px 0;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            align-items: flex-start;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .page-header h1 {
+                font-size: 2rem;
+            }
+
+            .content-section {
+                padding: 20px;
+                margin-bottom: 20px;
+            }
+
+            .content-section h2 {
+                font-size: 1.3rem;
+            }
+
+            .meta-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .back-button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .page-header {
+                padding: 20px 0;
+            }
+
+            .page-header h1 {
+                font-size: 1.8rem;
+            }
+
+            .content-section {
+                padding: 15px;
+                margin-bottom: 15px;
+            }
+
+            .content-section h2 {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="container">
+                <div class="header-buttons">
+                    <a href="index.html#browse" class="back-button">
+                        <i class="fas fa-arrow-left"></i>
+                        Back to Browse Papers
+                    </a>
+                    <button class="download-button" id="download-pdf-button" disabled>
+                        <i class="fas fa-download download-icon"></i>
+                        <span>Download Report</span>
+                        <div class="spinner"></div>
+                    </button>
+                </div>
+                <h1><i class="fas fa-file-medical me-3"></i>Paper Details</h1>
+                <div class="subtitle">Comprehensive analysis and curation assessment</div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="container">
+            <div id="loading-container" class="loading-container">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Loading paper details...</div>
+            </div>
+
+            <div id="error-container" class="error-container" style="display: none;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h3>Error Loading Paper</h3>
+                <p id="error-message">Failed to load paper details. Please try again.</p>
+                <button class="retry-button" onclick="loadPaperDetails()">
+                    <i class="fas fa-redo me-2"></i>Retry
+                </button>
+            </div>
+
+            <div id="content-container" style="display: none;">
+                <!-- Paper Metadata -->
+                <div class="paper-meta">
+                    <h4><i class="fas fa-info-circle me-2"></i>Paper Information</h4>
+                    <div class="meta-grid" id="paper-meta-grid">
+                        <!-- Paper metadata will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Abstract Section -->
+                <div id="abstract-section" class="content-section" style="display: none;">
+                    <h2><i class="fas fa-file-text"></i>Abstract</h2>
+                    <p id="abstract-content"></p>
+                </div>
+
+                <!-- Curation Status Section -->
+                <div class="content-section">
+                    <h2><i class="fas fa-clipboard-check"></i>Curation Status</h2>
+                    <div id="curation-status-content">
+                        <!-- Curation status will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Enhanced Curation Analysis Section -->
+                <div id="curation-analysis-section" class="content-section" style="display: none;">
+                    <h2><i class="fas fa-microscope"></i>Enhanced Curation Analysis</h2>
+                    <div id="curation-analysis-content">
+                        <!-- Enhanced curation analysis will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Key Findings Section -->
+                <div id="key-findings-section" class="content-section" style="display: none;">
+                    <h2><i class="fas fa-lightbulb"></i>Key Findings</h2>
+                    <ul class="info-list" id="key-findings-list">
+                        <!-- Key findings will be populated here -->
+                    </ul>
+                </div>
+
+                <!-- Suggested Topics Section -->
+                <div id="suggested-topics-section" class="content-section" style="display: none;">
+                    <h2><i class="fas fa-tags"></i>Suggested Topics for Future Research</h2>
+                    <ul class="info-list" id="suggested-topics-list">
+                        <!-- Suggested topics will be populated here -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+        // Get PMID from URL parameters
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        // Load paper details
+        async function loadPaperDetails() {
+            const pmid = getUrlParameter('pmid');
+            if (!pmid) {
+                showError('No PMID provided');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const response = await fetch(`/analyze/${pmid}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                // Debug: Log the received data
+                console.log('Received paper data:', data);
+                console.log('Metadata:', data.metadata);
+                console.log('DOI:', data.metadata?.doi);
+                
+                displayPaperDetails(data, pmid);
+            } catch (error) {
+                console.error('Error loading paper details:', error);
+                showError(error.message || 'Failed to load paper details');
+            }
+        }
+
+        // Display paper details
+        function displayPaperDetails(data, pmid) {
+            hideLoading();
+            showContent();
+
+            // Update page title
+            document.title = `${data.metadata?.title || 'Paper Details'} - BugSigDB Analyzer`;
+
+            // Populate paper metadata
+            populatePaperMetadata(data, pmid);
+
+            // Populate abstract
+            if (data.metadata?.abstract) {
+                document.getElementById('abstract-content').textContent = data.metadata.abstract;
+                document.getElementById('abstract-section').style.display = 'block';
+            }
+
+            // Populate curation status
+            populateCurationStatus(data);
+
+            // Populate enhanced curation analysis
+            if (data.analysis?.curation_analysis) {
+                populateCurationAnalysis(data.analysis.curation_analysis);
+                document.getElementById('curation-analysis-section').style.display = 'block';
+            }
+
+            // Populate key findings
+            if (data.analysis?.key_findings && data.analysis.key_findings.length > 0) {
+                populateKeyFindings(data.analysis.key_findings);
+                document.getElementById('key-findings-section').style.display = 'block';
+            }
+
+            // Populate suggested topics
+            if (data.analysis?.suggested_topics && data.analysis.suggested_topics.length > 0) {
+                populateSuggestedTopics(data.analysis.suggested_topics);
+                document.getElementById('suggested-topics-section').style.display = 'block';
+            }
+        }
+
+        // Populate paper metadata
+        function populatePaperMetadata(data, pmid) {
+            const metaGrid = document.getElementById('paper-meta-grid');
+            const metadata = data.metadata || {};
+
+            const metaItems = [
+                { icon: 'fas fa-hashtag', label: 'PMID', value: pmid },
+                { icon: 'fas fa-book', label: 'Title', value: metadata.title || 'Not available' },
+                { icon: 'fas fa-users', label: 'Authors', value: metadata.authors || 'Not available' },
+                { icon: 'fas fa-newspaper', label: 'Journal', value: metadata.journal || 'Not available' },
+                { icon: 'fas fa-calendar', label: 'Year', value: metadata.year || 'Not available' },
+                { icon: 'fas fa-link', label: 'DOI', value: metadata.doi || 'Not available' }
+            ];
+
+            metaGrid.innerHTML = metaItems.map(item => `
+                <div class="meta-item">
+                    <i class="${item.icon}"></i>
+                    <strong>${item.label}:</strong>
+                    <span>${item.value}</span>
+                </div>
+            `).join('');
+        }
+
+        // Populate curation status
+        function populateCurationStatus(data) {
+            const statusContent = document.getElementById('curation-status-content');
+            const metadata = data.metadata || {};
+
+            const statusBadgeClass = getStatusBadgeClass(data.curation_status_message);
+
+            statusContent.innerHTML = `
+                <p><strong>Status:</strong> 
+                    <span class="status-badge ${statusBadgeClass}">
+                        ${data.curation_status_message || 'Unknown'}
+                    </span>
+                </p>
+                <p><strong>Host:</strong> ${metadata.host || 'Not specified'}</p>
+                <p><strong>Body Site:</strong> ${metadata.body_site || 'Not specified'}</p>
+                <p><strong>Sequencing Type:</strong> ${metadata.sequencing_type || 'Not specified'}</p>
+            `;
+        }
+
+        // Populate enhanced curation analysis
+        function populateCurationAnalysis(curation) {
+            const analysisContent = document.getElementById('curation-analysis-content');
+            
+            // Determine readiness based on the detailed analysis content
+            let readiness = 'Unknown';
+            let readinessClass = 'info';
+            
+            // Check if the readiness assessment is consistent with the explanation
+            if (curation.readiness) {
+                readiness = curation.readiness;
+                
+                // Additional check: if explanation mentions "review article" or "not suitable", override readiness
+                if (curation.explanation && (
+                    curation.explanation.toLowerCase().includes('review article') ||
+                    curation.explanation.toLowerCase().includes('not suitable') ||
+                    curation.explanation.toLowerCase().includes('lacks specific') ||
+                    curation.explanation.toLowerCase().includes('no original research')
+                )) {
+                    readiness = 'NOT_READY';
+                }
+                
+                if (readiness === 'READY') {
+                    readinessClass = 'success';
+                } else if (readiness === 'NOT_READY') {
+                    readinessClass = 'warning';
+                } else if (readiness === 'ERROR') {
+                    readinessClass = 'danger';
+                }
+            }
+            
+            let html = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h3><i class="fas fa-clipboard-check"></i>Basic Assessment</h3>
+                        <p><strong>Readiness:</strong> 
+                            <span class="status-badge ${readinessClass}">
+                                ${readiness}
+                            </span>
+                        </p>
+                        <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
+                        <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
+                        <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
+                        <p><strong>Data Completeness:</strong> ${curation.data_completeness || 'Unknown'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h3><i class="fas fa-chart-line"></i>Factor-Based Analysis</h3>
+                        <div class="factor-analysis">
+                            <p><strong>Factor-Based Score:</strong> 
+                                <span class="badge bg-primary">${Math.round((curation.factor_based_score || 0) * 100)}%</span>
+                            </p>
+                            
+                            <!-- General Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-list-check"></i>General Factors (${(curation.general_factors_present || []).length}/6)</h4>
+                                <div class="factor-badges">
+                                    ${(curation.general_factors_present || []).map(factor => 
+                                        `<span class="badge bg-success me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.general_factors_present || []).length === 0 ? 
+                                        '<span class="text-muted">No general factors identified</span>' : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Human/Animal Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-user"></i>Human/Animal Factors (${(curation.human_animal_factors_present || []).length}/5)</h4>
+                                <div class="factor-badges">
+                                    ${(curation.human_animal_factors_present || []).map(factor => 
+                                        `<span class="badge bg-info me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.human_animal_factors_present || []).length === 0 ? 
+                                        '<span class="text-muted">No human/animal factors identified</span>' : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Environmental Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-leaf"></i>Environmental Factors (${(curation.environmental_factors_present || []).length}/5)</h4>
+                                <div class="factor-badges">
+                                    ${(curation.environmental_factors_present || []).map(factor => 
+                                        `<span class="badge bg-warning me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.environmental_factors_present || []).length === 0 ? 
+                                        '<span class="text-muted">No environmental factors identified</span>' : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Missing Factors -->
+                            <div class="factor-group">
+                                <h4><i class="fas fa-exclamation-triangle"></i>Missing Critical Factors</h4>
+                                <div class="factor-badges">
+                                    ${(curation.missing_critical_factors || []).map(factor => 
+                                        `<span class="badge bg-danger me-1 mb-1">${factor}</span>`
+                                    ).join('')}
+                                    ${(curation.missing_critical_factors || []).length === 0 ? 
+                                        '<span class="text-success">No critical factors missing</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Add detailed explanation
+            if (curation.explanation) {
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-info-circle"></i>Detailed Explanation</h3>
+                            <p>${curation.explanation}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add signature types
+            if (curation.signature_types && curation.signature_types.length > 0) {
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-dna"></i>Signature Types</h3>
+                            <div class="signature-types">
+                                ${curation.signature_types.map(type => 
+                                    `<span class="badge bg-primary me-1 mb-1">${type}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add specific reasons
+            if (curation.specific_reasons && curation.specific_reasons.length > 0) {
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-arrow-right"></i>Specific Reasons</h3>
+                            <ul class="info-list">
+                                ${curation.specific_reasons.map(reason => 
+                                    `<li><i class="fas fa-arrow-right"></i><span>${reason}</span></li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add missing fields
+            if (curation.missing_fields && curation.missing_fields.length > 0) {
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-times-circle"></i>Missing Fields</h3>
+                            <p>${curation.missing_fields.join(', ')}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add examples and evidence
+            if (curation.examples && curation.examples.length > 0) {
+                html += `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h3><i class="fas fa-quote-left"></i>Examples and Evidence</h3>
+                            <ul class="info-list">
+                                ${curation.examples.map(example => 
+                                    `<li><i class="fas fa-quote-left"></i><span>${example}</span></li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            analysisContent.innerHTML = html;
+        }
+
+        // Populate key findings with improved formatting
+        function populateKeyFindings(findings) {
+            const findingsList = document.getElementById('key-findings-list');
+            
+            if (findings && findings.length > 0) {
+                let html = '';
+                
+                findings.forEach(finding => {
+                    // Check if this is a heading (contains ** at start and end)
+                    if (finding.startsWith('**') && finding.endsWith('**')) {
+                        // This is a heading - remove ** and make it bold without checkmark
+                        const headingText = finding.replace(/\*\*/g, '');
+                        html += `<li class="finding-heading"><strong>${headingText}</strong></li>`;
+                    } else {
+                        // This is a regular finding - add checkmark
+                        html += `<li><i class="fas fa-check-circle"></i><span>${finding}</span></li>`;
+                    }
+                });
+                
+                findingsList.innerHTML = html;
+            } else {
+                findingsList.innerHTML = '<li class="text-muted">No key findings available</li>';
+            }
+        }
+
+        // Populate suggested topics with improved formatting
+        function populateSuggestedTopics(topics) {
+            const topicsList = document.getElementById('suggested-topics-list');
+            
+            if (topics && topics.length > 0) {
+                let html = '';
+                
+                topics.forEach(topic => {
+                    // Check if this is a heading (contains ** at start and end)
+                    if (topic.startsWith('**') && topic.endsWith('**')) {
+                        // This is a heading - remove ** and make it bold without tag icon
+                        const headingText = topic.replace(/\*\*/g, '');
+                        html += `<li class="topic-heading"><strong>${headingText}</strong></li>`;
+                    } else {
+                        // This is a regular topic - add tag icon
+                        html += `<li><i class="fas fa-tag"></i><span>${topic}</span></li>`;
+                    }
+                });
+                
+                topicsList.innerHTML = html;
+            } else {
+                topicsList.innerHTML = '<li class="text-muted">No suggested topics available</li>';
+            }
+        }
+
+        // Get status badge class
+        function getStatusBadgeClass(statusMessage) {
+            if (!statusMessage) return 'info';
+            const status = statusMessage.toLowerCase();
+            if (status.includes('ready')) return 'success';
+            if (status.includes('not ready')) return 'warning';
+            if (status.includes('already curated')) return 'info';
+            if (status.includes('error')) return 'danger';
+            return 'info';
+        }
+
+        // Show loading state
+        function showLoading() {
+            document.getElementById('loading-container').style.display = 'block';
+            document.getElementById('error-container').style.display = 'none';
+            document.getElementById('content-container').style.display = 'none';
+        }
+
+        // Hide loading state
+        function hideLoading() {
+            document.getElementById('loading-container').style.display = 'none';
+        }
+
+        // Show content
+        function showContent() {
+            document.getElementById('content-container').style.display = 'block';
+        }
+
+        // Show error state
+        function showError(message) {
+            document.getElementById('loading-container').style.display = 'none';
+            document.getElementById('content-container').style.display = 'none';
+            document.getElementById('error-container').style.display = 'block';
+            document.getElementById('error-message').textContent = message;
+        }
+
+        // Load paper details when page loads
+        document.addEventListener('DOMContentLoaded', loadPaperDetails);
+
+        // Notification system
+        function showNotification(message, type = 'info', duration = 5000) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas ${getNotificationIcon(type)} notification-icon"></i>
+                    <span class="notification-message">${message}</span>
+                    <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Show notification
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+            
+            // Auto-hide after duration
+            if (duration > 0) {
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => {
+                        if (notification.parentElement) {
+                            notification.remove();
+                        }
+                    }, 300);
+                }, duration);
+            }
+        }
+
+        function getNotificationIcon(type) {
+            switch (type) {
+                case 'success': return 'fa-check-circle';
+                case 'error': return 'fa-exclamation-circle';
+                case 'warning': return 'fa-exclamation-triangle';
+                case 'info': 
+                default: return 'fa-info-circle';
+            }
+        }
+
+        // PDF Download functionality
+        let paperData = null;
+        let currentPmid = null;
+
+        // Update the displayPaperDetails function to store data
+        function displayPaperDetails(data, pmid) {
+            console.log('=== displayPaperDetails called ===');
+            console.log('Data received:', data);
+            console.log('PMID:', pmid);
+            
+            hideLoading();
+            showContent();
+
+            // Store data for PDF generation
+            paperData = data;
+            currentPmid = pmid;
+
+            // Enable download button only after data is fully loaded and verified
+            setTimeout(() => {
+                const downloadButton = document.getElementById('download-pdf-button');
+                if (downloadButton) {
+                    // Verify we have complete data before enabling
+                    if (data && data.metadata && data.metadata.title) {
+                        downloadButton.disabled = false;
+                        console.log('Download button enabled - data verified');
+                        showNotification('Paper analysis complete. You can now download the PDF report.', 'success', 3000);
+                    } else {
+                        console.log('Download button remains disabled - incomplete data');
+                        showNotification('Paper data is incomplete. Download will be available once analysis is finished.', 'warning', 3000);
+                    }
+                }
+            }, 2000); // Wait 2 seconds to ensure all data is processed
+
+            // Update page title
+            document.title = `${data.metadata?.title || 'Paper Details'} - BugSigDB Analyzer`;
+
+            // Populate paper metadata
+            populatePaperMetadata(data, pmid);
+
+            // Populate abstract
+            if (data.metadata?.abstract) {
+                document.getElementById('abstract-content').textContent = data.metadata.abstract;
+                document.getElementById('abstract-section').style.display = 'block';
+            }
+
+            // Populate curation status
+            populateCurationStatus(data);
+
+            // Populate enhanced curation analysis
+            if (data.analysis?.curation_analysis) {
+                populateCurationAnalysis(data.analysis.curation_analysis);
+                document.getElementById('curation-analysis-section').style.display = 'block';
+            }
+
+            // Populate key findings
+            if (data.analysis?.key_findings && data.analysis.key_findings.length > 0) {
+                populateKeyFindings(data.analysis.key_findings);
+                document.getElementById('key-findings-section').style.display = 'block';
+            }
+
+            // Populate suggested topics
+            if (data.analysis?.suggested_topics && data.analysis.suggested_topics.length > 0) {
+                populateSuggestedTopics(data.analysis.suggested_topics);
+                document.getElementById('suggested-topics-section').style.display = 'block';
+            }
+        }
+
+        // Download PDF function
+        async function downloadPDF() {
+            if (!paperData || !currentPmid) {
+                showNotification('No paper data available for download.', 'warning', 3000);
+                return;
+            }
+            if (!paperData.metadata || !paperData.metadata.title) {
+                showNotification('Paper data is incomplete. Please wait for the analysis to finish.', 'warning', 3000);
+                return;
+            }
+            
+            const downloadButton = document.getElementById('download-pdf-button');
+            if (downloadButton) downloadButton.disabled = true;
+            
+            try {
+                if (downloadButton) {
+                    downloadButton.innerHTML = '<div class="spinner"></div><span>Generating Report...</span>';
+                }
+                showNotification('Generating report...', 'info', 0);
+                
+                const reportContent = generateReportContent(paperData, currentPmid);
+                await generateAndDownloadPDF(reportContent, currentPmid);
+            } catch (error) {
+                console.error('Error generating report:', error);
+                showNotification('Error generating report. Please try again.', 'error', 5000);
+            } finally {
+                if (downloadButton) {
+                    downloadButton.disabled = false;
+                    downloadButton.innerHTML = '<i class="fas fa-download download-icon"></i><span>Download Report</span><div class="spinner"></div>';
+                }
+            }
+        }
+
+        // Generate report content
+        function generateReportContent(data, pmid) {
+            const metadata = data.metadata || {};
+            const analysis = data.analysis || {};
+            const curation = analysis.curation_analysis || {};
+            
+            if (!metadata.title) throw new Error('Paper title is missing from metadata');
+            
+            let content = `<div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #0d6efd; margin-bottom: 10px;">BugSigDB Analyzer Report</h1>
+                <p style="color: #6c757d; font-size: 14px;">Generated on ${new Date().toLocaleDateString()}</p>
+            </div>
+            <div class="section">
+                <h2>📄 Paper Information</h2>
+                <div class="highlight-box">
+                    <table class="info-table">
+                        <tr><td>PMID:</td><td>${pmid}</td></tr>
+                        <tr><td>Title:</td><td>${metadata.title || 'Not available'}</td></tr>
+                        <tr><td>Authors:</td><td>${metadata.authors || 'Not available'}</td></tr>
+                        <tr><td>Journal:</td><td>${metadata.journal || 'Not available'}</td></tr>
+                        <tr><td>Year:</td><td>${metadata.year || 'Not available'}</td></tr>
+                        <tr><td>DOI:</td><td>${metadata.doi || 'Not available'}</td></tr>
+                    </table>
+                </div>
+            </div>`;
+            
+            // Add MeSH Terms and Publication Types
+            if (metadata.mesh_terms && metadata.mesh_terms.length > 0) {
+                content += `<div class="section">
+                    <h2>🏷️ MeSH Terms</h2>
+                    <div class="highlight-box">
+                        <p>${metadata.mesh_terms.join(', ')}</p>
+                    </div>
+                </div>`;
+            }
+            
+            if (metadata.publication_types && metadata.publication_types.length > 0) {
+                content += `<div class="section">
+                    <h2>📚 Publication Types</h2>
+                    <div class="highlight-box">
+                        <p>${metadata.publication_types.join(', ')}</p>
+                    </div>
+                </div>`;
+            }
+            
+            // Add Abstract
+            if (metadata.abstract) {
+                content += `<div class="section">
+                    <h2>📝 Abstract</h2>
+                    <div class="highlight-box">
+                        <p>${metadata.abstract}</p>
+                    </div>
+                </div>`;
+            }
+            
+            // Add Curation Status
+            // Use LLM readiness as primary source of truth for consistency
+            let statusMessage = data.curation_status_message || 'Unknown';
+            let statusClass = 'status-unknown';
+            
+            // If we have LLM analysis, use it to determine status
+            if (curation && curation.readiness) {
+                if (curation.readiness === 'READY') {
+                    statusMessage = "This paper is ready for curation but not yet in BugSigDB.";
+                    statusClass = 'status-ready';
+                } else if (curation.readiness === 'NOT_READY') {
+                    statusMessage = "This paper is not ready for curation. Missing required elements.";
+                    statusClass = 'status-not-ready';
+                }
+            } else {
+                // Fallback to the original logic
+                statusClass = data.curation_status_message?.toLowerCase().includes('ready') ? 'status-ready' : 
+                             data.curation_status_message?.toLowerCase().includes('not ready') ? 'status-not-ready' : 
+                             data.curation_status_message?.toLowerCase().includes('curated') ? 'status-curated' : 'status-unknown';
+            }
+            
+            content += `<div class="highlight-box">
+                <h2>📋 Curation Status</h2>
+                <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${statusMessage}</span></p>
+                <p><strong>Host:</strong> ${metadata.host || 'Not specified'}</p>
+                <p><strong>Body Site:</strong> ${metadata.body_site || 'Not specified'}</p>
+                <p><strong>Sequencing Type:</strong> ${metadata.sequencing_type || 'Not specified'}</p>
+            </div>`;
+            
+            // Add Enhanced Curation Analysis
+            if (curation && Object.keys(curation).length > 0) {
+                const readinessClass = curation.readiness === 'READY' ? 'status-ready' : 
+                                     curation.readiness === 'NOT_READY' ? 'status-not-ready' : 'status-unknown';
+                
+                content += `<div class="section">
+                    <h2>🔬 Enhanced Curation Analysis</h2>
+                    <div class="highlight-box">
+                        <p><strong>Readiness:</strong> <span class="status-badge ${readinessClass}">${curation.readiness || 'Unknown'}</span></p>
+                        <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
+                        <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
+                        <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
+                        <p><strong>Data Completeness:</strong> ${curation.data_completeness || 'Unknown'}</p>
+                    </div>`;
+                
+                // Add Factor-Based Analysis
+                if (curation.factor_based_score !== undefined) {
+                    const factorScore = Math.round((curation.factor_based_score || 0) * 100);
+                    content += `<div class="highlight-box">
+                        <h3>Factor-Based Analysis</h3>
+                        <p><strong>Factor-Based Score:</strong> ${factorScore}%</p>
+                        
+                        <h4>General Factors (${(curation.general_factors_present || []).length}/6)</h4>
+                        <p>${(curation.general_factors_present || []).length > 0 ? 
+                            curation.general_factors_present.join(', ') : 'No general factors identified'}</p>
+                        
+                        <h4>Human/Animal Factors (${(curation.human_animal_factors_present || []).length}/5)</h4>
+                        <p>${(curation.human_animal_factors_present || []).length > 0 ? 
+                            curation.human_animal_factors_present.join(', ') : 'No human/animal factors identified'}</p>
+                        
+                        <h4>Environmental Factors (${(curation.environmental_factors_present || []).length}/5)</h4>
+                        <p>${(curation.environmental_factors_present || []).length > 0 ? 
+                            curation.environmental_factors_present.join(', ') : 'No environmental factors identified'}</p>
+                        
+                        <h4>Missing Critical Factors</h4>
+                        <p>${(curation.missing_critical_factors || []).length > 0 ? 
+                            curation.missing_critical_factors.join(', ') : 'No critical factors missing'}</p>
+                    </div>`;
+                }
+                
+                // Add Signature Types
+                if (curation.signature_types && curation.signature_types.length > 0) {
+                    content += `<div class="highlight-box">
+                        <h3>Signature Types</h3>
+                        <p>${curation.signature_types.join(', ')}</p>
+                    </div>`;
+                }
+                
+                if (curation.explanation) {
+                    content += `<div class="highlight-box">
+                        <h3>Detailed Explanation</h3>
+                        <p>${curation.explanation}</p>
+                    </div>`;
+                }
+                
+                if (curation.specific_reasons && curation.specific_reasons.length > 0) {
+                    content += `<div class="highlight-box">
+                        <h3>Specific Reasons</h3>
+                        <ul>`;
+                    curation.specific_reasons.forEach(reason => {
+                        content += `<li>${reason}</li>`;
+                    });
+                    content += `</ul></div>`;
+                }
+                
+                if (curation.missing_fields && curation.missing_fields.length > 0) {
+                    content += `<div class="highlight-box">
+                        <h3>Missing Fields</h3>
+                        <p>${curation.missing_fields.join(', ')}</p>
+                    </div>`;
+                }
+                
+                if (curation.examples && curation.examples.length > 0) {
+                    content += `<div class="highlight-box">
+                        <h3>Examples and Evidence</h3>
+                        <ul>`;
+                    curation.examples.forEach(example => {
+                        content += `<li>${example}</li>`;
+                    });
+                    content += `</ul></div>`;
+                }
+                
+                content += `</div>`;
+            }
+            
+            // Add Key Findings
+            if (analysis.key_findings && analysis.key_findings.length > 0) {
+                content += `<div class="section">
+                    <h2>💡 Key Findings</h2>
+                    <div class="highlight-box">
+                        <ul>`;
+                analysis.key_findings.forEach(finding => {
+                    content += `<li>${finding}</li>`;
+                });
+                content += `</ul></div></div>`;
+            }
+            
+            // Add Suggested Topics
+            if (analysis.suggested_topics && analysis.suggested_topics.length > 0) {
+                content += `<div class="section">
+                    <h2>🏷️ Suggested Topics for Future Research</h2>
+                    <div class="highlight-box">
+                        <ul>`;
+                analysis.suggested_topics.forEach(topic => {
+                    content += `<li>${topic}</li>`;
+                });
+                content += `</ul></div></div>`;
+            }
+            
+            // Add Confidence and Category Scores if available
+            if (analysis.confidence !== undefined && analysis.confidence !== null) {
+                const confidencePercent = (analysis.confidence * 100).toFixed(1);
+                const confidenceColor = analysis.confidence >= 0.7 ? 'bg-success' : 
+                                       analysis.confidence >= 0.3 ? 'bg-warning' : 'bg-danger';
+                
+                content += `<div class="section">
+                    <h2>📊 Analysis Confidence</h2>
+                    <div class="highlight-box">
+                        <p><strong>Confidence Level:</strong> ${confidencePercent}%</p>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill ${confidenceColor}" style="width: ${confidencePercent}%"></div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            
+            if (analysis.category_scores && Object.keys(analysis.category_scores).length > 0) {
+                content += `<div class="section">
+                    <h2>📈 Category Scores</h2>
+                    <div class="highlight-box">`;
+                
+                Object.entries(analysis.category_scores).forEach(([category, score]) => {
+                    if (score !== null && !isNaN(score)) {
+                        const scorePercent = (score * 100).toFixed(1);
+                        const formattedCategory = category.split('_').map(word => 
+                            word.charAt(0).toUpperCase() + word.slice(1)
+                        ).join(' ');
+                        const scoreColor = score >= 0.7 ? 'bg-success' : 
+                                         score >= 0.3 ? 'bg-warning' : 'bg-danger';
+                        
+                        content += `<div class="category-score">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <strong>${formattedCategory}:</strong>
+                                <span>${scorePercent}%</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar ${scoreColor}" style="width: ${scorePercent}%"></div>
+                            </div>
+                        </div>`;
+                    }
+                });
+                
+                content += `</div></div>`;
+            }
+            
+            content += `<div class="footer">
+                <p>Generated by BugSigDB Analyzer - Advanced AI-powered paper analysis</p>
+                <p>Report includes comprehensive curation assessment, key findings, and research recommendations</p>
+            </div>`;
+            
+            return content;
+        }
+
+        // Generate and download report
+        async function generateAndDownloadPDF(content, pmid) {
+            console.log('=== generateAndDownloadPDF called ===');
+            console.log('Content length:', content.length);
+            
+            try {
+                const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>BugSigDB Analysis - ${pmid}</title>
+    <meta charset="UTF-8">
+    <style>
+        @media print {
+            body { margin: 0; padding: 20px; }
+            .no-print { display: none; }
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #0d6efd;
+        }
+        
+        .header h1 {
+            color: #0d6efd;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+        }
+        
+        .header .subtitle {
+            color: #6c757d;
+            font-size: 1.1em;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+        
+        .section h2 {
+            color: #0d6efd;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        .info-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: top;
+        }
+        
+        .info-table td:first-child {
+            font-weight: bold;
+            width: 30%;
+            color: #495057;
+        }
+        
+        .highlight-box {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-ready {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-not-ready {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-unknown {
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
+        
+        .status-curated {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        
+        .print-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #0d6efd;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .print-button:hover {
+            background: #0056b3;
+        }
+        
+        @media print {
+            .print-button {
+                display: none;
+            }
+        }
+        
+        .confidence-bar {
+            background-color: #e9ecef;
+            border-radius: 10px;
+            height: 20px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+            transition: width 0.3s ease;
+        }
+        
+        .category-score {
+            margin: 10px 0;
+        }
+        
+        .category-score .progress {
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .category-score .progress-bar {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        
+        .bg-success { background-color: #28a745 !important; }
+        .bg-warning { background-color: #ffc107 !important; }
+        .bg-danger { background-color: #dc3545 !important; }
+        .bg-info { background-color: #17a2b8 !important; }
+        .bg-secondary { background-color: #6c757d !important; }
+    </style>
+</head>
+<body>
+    <button class="print-button no-print" onclick="window.print()">
+        🖨️ Print/Save as PDF
+    </button>
+    
+    <div class="header">
+        <h1>BugSigDB Analyzer Report</h1>
+        <div class="subtitle">Advanced AI-powered paper analysis and curation assessment</div>
+        <div class="subtitle">Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</div>
+    </div>
+    
+    ${content}
+</body>
+</html>`;
+                
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `BugSigDB_Analysis_${pmid}_${new Date().toISOString().split('T')[0]}.html`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showNotification('Report generated successfully! Open the file and use Print/Save as PDF.', 'success', 5000);
+                
+            } catch (error) {
+                console.error('Error generating report:', error);
+                showNotification('Error generating report. Please try again.', 'error', 5000);
+            }
+        }
+
+        // Add event listener for download button
+        document.addEventListener('DOMContentLoaded', function() {
+            const downloadButton = document.getElementById('download-pdf-button');
+            
+            if (downloadButton) {
+                downloadButton.addEventListener('click', downloadPDF);
+            }
+        });
+    </script>
+</body>
+</html>

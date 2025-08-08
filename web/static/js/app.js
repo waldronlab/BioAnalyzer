@@ -125,7 +125,6 @@ window.browsePapersState = {
     loadedPages: {}, // cache loaded pages: {pageNum: [papers]}
     filteredPmids: [], // PMIDs after filtering
     filters: {
-        curationStatus: '',
         host: '',
         keyword: '',
         year: '',
@@ -147,33 +146,9 @@ window.displayUploadedResults = function(results) {
     
     let html = '<table class="table table-bordered table-hover"><thead><tr>' +
         '<th>PMID</th><th>Title</th><th>Authors</th><th>Journal</th><th>Year</th>' +
-        '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Curation Status</th><th>Actions</th></tr></thead><tbody>';
+        '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Actions</th></tr></thead><tbody>';
     
     for (const paper of results) {
-        // Enhanced curation status display
-        let statusBadge = '';
-        let statusText = paper.curation_status || 'Unknown';
-        
-        switch (statusText) {
-            case 'already_curated':
-                statusBadge = '<span class="badge bg-success">Already Curated</span>';
-                break;
-            case 'ready':
-                statusBadge = '<span class="badge bg-primary">Ready for Curation</span>';
-                break;
-            case 'not_ready':
-                statusBadge = '<span class="badge bg-warning">Not Ready</span>';
-                break;
-            case 'not_found':
-                statusBadge = '<span class="badge bg-secondary">Not Found</span>';
-                break;
-            case 'error':
-                statusBadge = '<span class="badge bg-danger">Error</span>';
-                break;
-            default:
-                statusBadge = '<span class="badge bg-secondary">Unknown</span>';
-        }
-        
         // Add confidence score if available
         let confidenceInfo = '';
         if (paper.confidence) {
@@ -190,7 +165,6 @@ window.displayUploadedResults = function(results) {
             <td>${paper.host || 'N/A'}</td>
             <td>${paper.body_site || 'N/A'}</td>
             <td>${paper.sequencing_type || 'N/A'}</td>
-            <td>${statusBadge}${confidenceInfo}</td>
             <td><button class="btn btn-sm btn-info" onclick="viewPaperDetails('${paper.pmid}', event)">Details</button></td>
         </tr>`;
     }
@@ -199,12 +173,7 @@ window.displayUploadedResults = function(results) {
     
     // Add summary statistics
     const stats = {
-        total: results.length,
-        already_curated: results.filter(p => p.curation_status === 'already_curated').length,
-        ready: results.filter(p => p.curation_status === 'ready').length,
-        not_ready: results.filter(p => p.curation_status === 'not_ready').length,
-        not_found: results.filter(p => p.curation_status === 'not_found').length,
-        error: results.filter(p => p.curation_status === 'error').length
+        total: results.length
     };
     
     const summaryHtml = `
@@ -218,36 +187,6 @@ window.displayUploadedResults = function(results) {
                         <div class="text-center">
                             <h4 class="text-primary">${stats.total}</h4>
                             <small class="text-muted">Total Papers</small>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="text-center">
-                            <h4 class="text-success">${stats.already_curated}</h4>
-                            <small class="text-muted">Already Curated</small>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="text-center">
-                            <h4 class="text-primary">${stats.ready}</h4>
-                            <small class="text-muted">Ready for Curation</small>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="text-center">
-                            <h4 class="text-warning">${stats.not_ready}</h4>
-                            <small class="text-muted">Not Ready</small>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="text-center">
-                            <h4 class="text-secondary">${stats.not_found}</h4>
-                            <small class="text-muted">Not Found</small>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="text-center">
-                            <h4 class="text-danger">${stats.error}</h4>
-                            <small class="text-muted">Errors</small>
                         </div>
                     </div>
                 </div>
@@ -321,15 +260,14 @@ window.exportBrowseResults = function() {
     }, 100);
 };
 
-// Enhanced export function for curation reports
-window.exportCurationReport = function() {
+// Enhanced export function for analysis reports
+window.exportAnalysisReport = function() {
     // Check if we have uploaded results first
     if (window.browsePapersState.uploadedResults && window.browsePapersState.uploadedResults.length > 0) {
         const results = window.browsePapersState.uploadedResults;
         const headers = [
             'PMID', 'Title', 'Authors', 'Journal', 'Year', 'Host', 'Body Site', 
-            'Sequencing Type', 'Curation Status', 'Curation Status Message', 
-            'In BugSigDB', 'Curated', 'Confidence Score', 'Key Findings'
+            'Sequencing Type', 'Confidence Score', 'Key Findings'
         ];
         
         const rows = results.map(p => [
@@ -341,10 +279,6 @@ window.exportCurationReport = function() {
             p.host || '',
             p.body_site || '',
             p.sequencing_type || '',
-            p.curation_status || '',
-            p.curation_status_message || '',
-            p.in_bugsigdb ? 'Yes' : 'No',
-            p.curated ? 'Yes' : 'No',
             p.confidence ? (p.confidence * 100).toFixed(1) + '%' : '',
             p.key_findings ? p.key_findings.join('; ') : ''
         ]);
@@ -358,7 +292,7 @@ window.exportCurationReport = function() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `curation_report_uploaded_${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = `analysis_report_uploaded_${new Date().toISOString().split('T')[0]}.csv`;
         document.body.appendChild(a);
         a.click();
         setTimeout(() => {
@@ -380,8 +314,7 @@ window.exportCurationReport = function() {
     
     const headers = [
         'PMID', 'Title', 'Authors', 'Journal', 'Year', 'Host', 'Body Site', 
-        'Sequencing Type', 'Curation Status', 'Curation Status Message', 
-        'In BugSigDB', 'Curated', 'Confidence Score', 'Key Findings'
+        'Sequencing Type', 'Confidence Score', 'Key Findings'
     ];
     
     const rows = papers.map(p => [
@@ -393,10 +326,6 @@ window.exportCurationReport = function() {
         p.host || '',
         p.body_site || '',
         p.sequencing_type || '',
-        p.curation_status || '',
-        p.curation_status_message || '',
-        p.in_bugsigdb ? 'Yes' : 'No',
-        p.curated ? 'Yes' : 'No',
         p.confidence ? (p.confidence * 100).toFixed(1) + '%' : '',
         p.key_findings ? p.key_findings.join('; ') : ''
     ]);
@@ -410,7 +339,7 @@ window.exportCurationReport = function() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `curation_report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `analysis_report_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
@@ -587,46 +516,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayAnalysisResults(data) {
         console.log('[displayAnalysisResults] Data:', data);
         
-        // Show curation status at the top
-        let resultsDiv = getElement('results');
-        if (resultsDiv) {
-            let curationStatusDiv = document.getElementById('curation-status');
-            if (!curationStatusDiv) {
-                curationStatusDiv = document.createElement('div');
-                curationStatusDiv.id = 'curation-status';
-                curationStatusDiv.className = 'mb-3';
-                resultsDiv.insertBefore(curationStatusDiv, resultsDiv.firstChild);
-            }
-            // Set badge color and text
-            let statusMsg = data.curation_status_message || '';
-            let badgeClass = 'alert-secondary';
-            if (data.curated) badgeClass = 'alert-success';
-            else if (data.in_bugsigdb) badgeClass = 'alert-warning';
-            else if (statusMsg.toLowerCase().includes('ready')) badgeClass = 'alert-primary';
-            else if (statusMsg.toLowerCase().includes('not ready')) badgeClass = 'alert-danger';
-            curationStatusDiv.className = `alert ${badgeClass} mb-3`;
-            curationStatusDiv.textContent = statusMsg;
-            if (data.missing_curation_fields && data.missing_curation_fields.length > 0 && !data.curated) {
-                curationStatusDiv.textContent += ' (Missing: ' + data.missing_curation_fields.join(', ') + ')';
-            }
-        }
-
-        // Display enhanced curation analysis if available
-        if (data.analysis && data.analysis.curation_analysis) {
-            if (typeof displayEnhancedCurationAnalysis === 'function') {
-                displayEnhancedCurationAnalysis(data.analysis.curation_analysis);
-            } else {
-                console.warn('Enhanced curation analysis display function not available');
-            }
-        } else {
-            // Clear curation analysis display if no data
-            if (typeof clearCurationAnalysis === 'function') {
-                clearCurationAnalysis();
-            }
-        }
-
         // Show top-level warning or error if present (suppress duplicates)
-        resultsDiv = getElement('results');
+        let resultsDiv = getElement('results');
         if (resultsDiv) {
             // Remove previous alerts
             const oldAlerts = resultsDiv.querySelectorAll('.backend-alert');
@@ -1751,43 +1642,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalPages = Math.ceil(pmids.length / pageSize);
         let html = '<table class="table table-bordered"><thead><tr>' +
             '<th>PMID</th><th>Title</th><th>Authors</th><th>Journal</th><th>Year</th>' +
-            '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Curation Status</th><th>Actions</th></tr></thead><tbody>';
+            '<th>Host</th><th>Body Site</th><th>Sequencing Type</th><th>Actions</th></tr></thead><tbody>';
         for (const paper of papers) {
-            // Enhanced curation status display
-            let statusBadge = '';
-            let statusText = paper.curation_status || 'Unknown';
-            
-            switch (statusText) {
-                case 'already_curated':
-                    statusBadge = '<span class="badge bg-success">Already Curated</span>';
-                    break;
-                case 'ready':
-                    statusBadge = '<span class="badge bg-primary">Ready for Curation</span>';
-                    break;
-                case 'not_ready':
-                    statusBadge = '<span class="badge bg-warning">Not Ready</span>';
-                    break;
-                default:
-                    statusBadge = '<span class="badge bg-secondary">Unknown</span>';
-            }
-            
             // Add confidence score if available
             let confidenceInfo = '';
-            if (paper.curation_analysis && paper.curation_analysis.confidence) {
-                const confidence = (paper.curation_analysis.confidence * 100).toFixed(1);
+            if (paper.confidence) {
+                const confidence = (paper.confidence * 100).toFixed(1);
                 confidenceInfo = `<br><small class="text-muted">Confidence: ${confidence}%</small>`;
             }
             
             html += `<tr>
                 <td>${paper.pmid}</td>
-                <td>${paper.title}</td>
-                <td>${paper.authors}</td>
-                <td>${paper.journal}</td>
-                <td>${paper.year}</td>
-                <td>${paper.host}</td>
-                <td>${paper.body_site}</td>
-                <td>${paper.sequencing_type}</td>
-                <td>${statusBadge}${confidenceInfo}</td>
+                <td>${paper.title || 'N/A'}</td>
+                <td>${paper.authors || 'N/A'}</td>
+                <td>${paper.journal || 'N/A'}</td>
+                <td>${paper.year || 'N/A'}</td>
+                <td>${paper.host || 'N/A'}</td>
+                <td>${paper.body_site || 'N/A'}</td>
+                <td>${paper.sequencing_type || 'N/A'}</td>
                 <td><button class="btn btn-sm btn-info" onclick="viewPaperDetails('${paper.pmid}', event)">Details</button></td>
             </tr>`;
         }

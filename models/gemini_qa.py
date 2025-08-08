@@ -265,7 +265,7 @@ class GeminiQA:
                 content += f"Full Text: {paper_content['full_text']}\n"
 
             # Enhanced prompt for detailed curation analysis
-            prompt = """You are an expert scientific curator specializing in microbial signature analysis for BugSigDB. Your task is to analyze this paper and provide a comprehensive assessment of its curation readiness.
+            prompt = """You are an expert scientific curator specializing in microbial signature analysis. Your task is to analyze this paper and provide a comprehensive assessment of its curation readiness based on the methods and experimental design.
 
 ## COMPREHENSIVE CURATION READINESS CRITERIA
 
@@ -282,57 +282,93 @@ A paper is READY FOR CURATION if it contains ALL of the following fundamental fa
 
 3. **Proper Experimental Design**
    - Clear description of study setup, experimental groups, control groups, and replication
+   - Appropriate sample sizes and statistical power
+   - Randomization and blinding where applicable
 
 4. **Microbiota Characterization Methodology**
    - Details on how the microbial community was analyzed (e.g., 16S rRNA gene sequencing, metagenomics, metatranscriptomics)
+   - Specific sequencing platforms and protocols
+   - Bioinformatics pipeline details
 
 5. **Quantitative Data/Statistical Significance**
    - P-values, fold-changes, relative abundances, diversity metrics, effect sizes, or other numerical data
+   - Appropriate statistical tests for the experimental design
+   - Multiple testing corrections where applicable
 
 6. **Data Availability/Repository Information**
    - Mention of raw data deposited in public repositories (e.g., SRA, ENA) with accession numbers
+   - Code availability and reproducibility information
+
+### METHODS-SPECIFIC ASSESSMENT CRITERIA
+
+7. **Sequencing and Molecular Methods**
+   - DNA/RNA extraction protocols
+   - Library preparation methods
+   - Sequencing platform and parameters
+   - Quality control measures
+   - Bioinformatics analysis pipeline
+
+8. **Statistical and Analytical Methods**
+   - Diversity analysis (alpha/beta diversity metrics)
+   - Differential abundance analysis tools
+   - Ordination methods (PCA, PCoA, NMDS)
+   - Machine learning approaches
+   - Functional prediction methods
+
+9. **Sample Collection and Processing**
+   - Sample collection protocols
+   - Storage and preservation methods
+   - Sample size calculations
+   - Replication and technical controls
+
+10. **Experimental Design Quality**
+    - Clear hypothesis and objectives
+    - Appropriate control groups
+    - Randomization and blinding
+    - Longitudinal vs cross-sectional design
+    - Intervention details (if applicable)
 
 ### SPECIFIC FACTORS FOR HUMAN/ANIMAL STUDIES
 Additional criteria for host-associated studies:
 
-7. **Host Health Outcome/Phenotype Associations**
-   - Clear links between microbial changes and specific health conditions, diseases, physiological states
-   - Examples: Hypertension, increased body weight, altered metabolic markers, inflammatory responses
+11. **Host Health Outcome/Phenotype Associations**
+    - Clear links between microbial changes and specific health conditions, diseases, physiological states
+    - Examples: Hypertension, increased body weight, altered metabolic markers, inflammatory responses
 
-8. **Host/Study Population Characteristics**
-   - Detailed descriptors of host organisms or human participants
-   - Examples: "Adult female offspring," "pregnant dams," "women with PCOS"
+12. **Host/Study Population Characteristics**
+    - Detailed descriptors of host organisms or human participants
+    - Examples: "Adult female offspring," "pregnant dams," "women with PCOS"
 
-9. **Intervention/Exposure Details** (if applicable)
-   - Specifics of experimental manipulation, treatment, or exposure
-   - Examples: Dose, duration, route of administration
+13. **Intervention/Exposure Details** (if applicable)
+    - Specifics of experimental manipulation, treatment, or exposure
+    - Examples: Dose, duration, route of administration
 
-10. **Sample Type from Host**
+14. **Sample Type from Host**
     - Where the microbial sample was collected from the host
     - Examples: Fecal microbiota, gut microbiota, skin, oral, vaginal
 
-11. **Proposed Molecular Mechanisms/Pathways**
+15. **Proposed Molecular Mechanisms/Pathways**
     - Specific host or microbial molecules, genes, or metabolic pathways implicated
     - Examples: Short chain fatty acids (SCFAs), adipokines, specific enzymes
 
 ### SPECIFIC FACTORS FOR ENVIRONMENTAL STUDIES
 Additional criteria for environmental studies:
 
-12. **Environmental Context/Associated Factors**
+16. **Environmental Context/Associated Factors**
     - Specific environmental factors or properties linked to microbial communities
     - Examples: Location/spatial data, physical/chemical parameters, source/material, anthropogenic influence
 
-13. **Sample Type from Environment**
+17. **Sample Type from Environment**
     - Specific matrix or material from which sample was collected
     - Examples: Dust, surface swab, soil core, water column, air filter
 
-14. **Geospatial Data** (Highly Valued)
+18. **Geospatial Data** (Highly Valued)
     - Exact locations, GPS coordinates, altitude, latitude/longitude if provided
 
-15. **Study Duration/Seasonality**
+19. **Study Duration/Seasonality**
     - If study spanned specific time period, multiple seasons, or before/after environmental event
 
-16. **Associated Chemical/Physical Measurements**
+20. **Associated Chemical/Physical Measurements**
     - Environmental parameters measured alongside microbial samples
     - Examples: Soil texture, water chemistry, air quality indices
 
@@ -359,10 +395,18 @@ Please provide a detailed analysis in the following structured format:
 [Start with a clear statement: "READY FOR CURATION" or "NOT READY FOR CURATION"]
 
 **DETAILED EXPLANATION:**
-[Provide a comprehensive explanation of why the paper is or isn't ready for curation]
+[Provide a comprehensive explanation of why the paper is or isn't ready for curation, focusing on methods and experimental design]
+
+**METHODS ASSESSMENT:**
+- Sequencing Methods: [List specific sequencing methods used]
+- Analytical Methods: [List statistical and bioinformatics methods]
+- Experimental Design: [Assess quality of experimental design]
+- Sample Processing: [Describe sample collection and processing methods]
+- Data Quality: [Assess data quality and reproducibility]
 
 **FACTOR-BASED ANALYSIS:**
 - General Factors Present: [List which of the 6 general factors are present]
+- Methods Factors Present: [List which of the 4 methods-specific factors are present]
 - Human/Animal Factors Present: [List which of the 5 human/animal factors are present, if applicable]
 - Environmental Factors Present: [List which of the 5 environmental factors are present, if applicable]
 - Missing Critical Factors: [List any missing factors that prevent curation readiness]

@@ -21,6 +21,7 @@ from utils.config import (
     DEFAULT_MODEL,
     AVAILABLE_MODELS
 )
+from utils.methods_scorer import MethodsScorer
 import re
 import asyncio
 import logging
@@ -532,12 +533,17 @@ async def analyze_paper(pmid: str):
             }
             error = str(e)
 
-        # --- Curation status logic (CSV is source of truth) ---
+        # --- Curation status logic (CSV is source of truth, LLM for methods analysis) ---
         in_bugsigdb = False
         curated = False
         curation_status_message = ""
         required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
         missing_fields = [f for f in required_fields if not metadata.get(f)]
+        
+        # Check LLM analysis for curation readiness
+        curation_analysis = analysis.get('curation_analysis', {})
+        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
+        
         if found_in_csv:
             in_bugsigdb = True
             curated = True
@@ -545,7 +551,13 @@ async def analyze_paper(pmid: str):
         else:
             in_bugsigdb = False
             curated = False
-            if not missing_fields:
+            
+            # Use LLM analysis as primary indicator, fallback to field completeness
+            if llm_readiness == "READY":
+                curation_status_message = "This paper is ready for curation based on methods analysis but not yet in BugSigDB."
+            elif llm_readiness == "NOT_READY":
+                curation_status_message = "This paper is not ready for curation based on methods analysis."
+            elif not missing_fields:
                 curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
             else:
                 curation_status_message = "This paper is not in BugSigDB and is not ready for curation. Missing required fields."
@@ -603,15 +615,69 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             analysis = await qa_system.analyze_paper(paper_content)
         except Exception as e:
             analysis = {"has_signatures": False, "key_findings": [], "confidence": 0.0}
-        # 3. Enhanced curation criteria
+        # 3. Enhanced curation criteria - focus on methods and LLM analysis
         has_signature = analysis.get('has_signatures', False)
         has_citation = all(metadata.get(f) for f in ['title', 'authors', 'journal', 'year', 'doi'])
+        
+        # Check LLM analysis for curation readiness
+        curation_analysis = analysis.get('curation_analysis', {})
+        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
+        
+        # More comprehensive microbiome keyword detection for methods
         abstract = metadata.get('abstract', '').lower()
-        has_microbiome_keyword = any(kw in abstract for kw in ['microbiome', 'microbiota'])
+        methods_keywords = [
+            # Sequencing and molecular methods
+            'microbiome', 'microbiota', 'microbial', 'bacteria', 'bacterial',
+            'dysbiosis', 'abundance', 'taxonomic', 'community', 'sequencing',
+            '16s', 'metagenomic', 'shotgun', 'amplicon', 'differential abundance',
+            'community composition', 'microbial signature',
+            
+            # Advanced sequencing methods
+            'metatranscriptomic', 'metaproteomic', 'metabolomic', 'single-cell',
+            'long-read', 'pacbio', 'oxford nanopore', 'illumina', 'ion torrent',
+            'pcr', 'rt-pcr', 'quantitative pcr', 'digital pcr',
+            
+            # Analytical methods
+            'alpha diversity', 'beta diversity', 'shannon', 'simpson', 'chao1',
+            'pcoa', 'nmds', 'pca', 'ordination', 'permanova', 'anosim',
+            'lefse', 'metastats', 'deseq2', 'edgeR', 'maaslin',
+            
+            # Statistical methods
+            'wilcoxon', 'mann-whitney', 'kruskal-wallis', 'anova', 't-test',
+            'correlation', 'regression', 'logistic regression', 'random forest',
+            'machine learning', 'clustering', 'hierarchical clustering',
+            
+            # Sample processing methods
+            'dna extraction', 'rna extraction', 'pcr amplification',
+            'library preparation', 'adapter ligation', 'size selection',
+            'quality control', 'quality filtering', 'chimera removal',
+            
+            # Bioinformatics methods
+            'qiime', 'mothur', 'usearch', 'vsearch', 'dada2', 'deblur',
+            'bwa', 'bowtie', 'bwa-mem', 'star', 'kallisto', 'salmon',
+            'kraken', 'metaphlan', 'humann', 'picrust', 'bugbase',
+            
+            # Experimental design methods
+            'randomized', 'controlled trial', 'case-control', 'cohort study',
+            'longitudinal', 'cross-sectional', 'intervention', 'treatment',
+            'placebo', 'blinded', 'double-blind', 'single-blind',
+            
+            # Sample collection methods
+            'swab', 'biopsy', 'aspiration', 'lavage', 'scraping',
+            'fecal collection', 'saliva collection', 'blood collection',
+            'tissue sampling', 'environmental sampling'
+        ]
+        has_methods_keyword = any(kw in abstract for kw in methods_keywords)
+        
+        # Determine curation status based on LLM analysis and methods
         if found_in_csv:
             curation_status = "already_curated"
-        elif has_signature and has_citation and has_microbiome_keyword:
+        elif llm_readiness == "READY":
             curation_status = "ready"
+        elif has_signature and has_citation and has_methods_keyword:
+            curation_status = "ready"
+        elif llm_readiness == "NOT_READY":
+            curation_status = "not_ready"
         else:
             curation_status = "not_ready"
         # 4. Compose summary
@@ -628,7 +694,7 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             "curation_status": curation_status,
             "key_findings": analysis.get("key_findings", []),
             "has_signature": has_signature,
-            "has_microbiome_keyword": has_microbiome_keyword
+            "has_microbiome_keyword": has_methods_keyword
         })
     return results
 

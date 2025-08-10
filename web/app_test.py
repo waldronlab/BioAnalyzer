@@ -15,7 +15,6 @@ import random
 import re
 import torch
 from torch import serialization
-from models.conversation_model import ConversationalBugSigModel
 from models.config import ModelConfig
 from utils.text_processing import AdvancedTextProcessor
 from utils.data_processor import clean_scientific_text

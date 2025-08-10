@@ -11,7 +11,6 @@ from pathlib import Path
 from datetime import datetime
 import pytz
 from models.config import ModelConfig
-from models.conversation_model import ConversationalBugSigModel
 from models.unified_qa import UnifiedQA
 from retrieve.data_retrieval import PubMedRetriever
 from utils.text_processing import AdvancedTextProcessor

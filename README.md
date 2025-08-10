@@ -6,6 +6,8 @@
 
 An automated system for identifying microbial signatures in publications. This tool uses machine learning and natural language processing to screen PubMed papers and predict whether they contain microbial differential abundance signatures for curation.  In summery, This tool is to help in identifying curatable papers from PUBMED. 
 
+** Note that after setting up the project and running, focus should be put on the **BROWSE PAPER** tab
+
 ## 🚀 Features
 
 - **Automated Paper Analysis**: Analyze scientific papers for microbial signature content

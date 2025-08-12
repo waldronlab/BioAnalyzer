@@ -9,9 +9,15 @@ An automated system for identifying microbial signatures in publications. This t
 
 ## 🚀 **Quick Start (Docker - Recommended)**
 
-Your project is already configured and ready to run! Here's how to get started:
+To get your project ready configured and ready to run! Here's how to get started:
 
 ### **1. Start the Services**
+You will need to first build the container for BugsigdbAnalyzer
+```bash
+docker compose up -d --build
+```
+then you can use
+
 ```bash
 docker compose up -d
 ```

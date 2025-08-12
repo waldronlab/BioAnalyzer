@@ -1,12 +1,12 @@
 # 🚀 BugSigDB Analyzer - Quick Start Guide
 
-Welcome to the reorganized BugSigDB Analyzer! This guide will help you get started quickly with the new project structure.
+Welcome to the  BugSigDB Analyzer! This guide will help you get started quickly with the project.
 
 ## 📁 **What Changed?**
 
-We've reorganized the project to eliminate confusion and improve maintainability:
+The project has been reorganized the project to eliminate confusion and improve maintainability:
 
-- **`app/`** - All your application code
+- **`app/`** - All the application code
 - **`deployment/`** - All Docker, Nginx, and deployment files
 - **`frontend/`** - All static frontend files
 - **`config/`** - All configuration files
@@ -120,29 +120,9 @@ curl http://localhost:8000/metrics
 - **Docker guide**: `docs/DOCKER_DEPLOYMENT.md`
 - **Project structure**: `PROJECT_STRUCTURE.md`
 
-## 🚨 **Important Notes**
 
-### **Import Paths Changed**
-If you're updating existing code, you'll need to update import statements:
-
-```python
-# OLD (before reorganization)
-from models.config import ModelConfig
-from utils.text_processing import AdvancedTextProcessor
-
-# NEW (after reorganization)
-from app.models.config import ModelConfig
-from app.utils.text_processing import AdvancedTextProcessor
-```
-
-### **File Locations Changed**
-- **`web/app.py`** → **`app/api/app.py`**
-- **`Dockerfile`** → **`deployment/docker/Dockerfile`**
-- **`nginx/`** → **`deployment/nginx/`**
-- **`requirements.txt`** → **`config/requirements.txt`**
-
-### **Docker Contexts Updated**
-All Docker builds now use the project root as context, so paths in Dockerfiles are relative to the root.
+### **Docker Contexts **
+All Docker builds  use the project root as context, so paths in Dockerfiles are relative to the root.
 
 ## 🆘 **Need Help?**
 
@@ -171,9 +151,8 @@ All Docker builds now use the project root as context, so paths in Dockerfiles a
 1. **Choose your setup method** (Local vs Docker)
 2. **Run the setup script** for your chosen method
 3. **Test the application** to ensure everything works
-4. **Explore the new structure** to get familiar with it
-5. **Update any existing scripts** to use new paths
+4. **Explore the structure** to get familiar with it
 
 ---
 
-**🎉 Congratulations!** You're now ready to work with the reorganized BugSigDB Analyzer. The new structure should make it much easier to find what you need and avoid confusion. 
+**🎉 Congratulations!** You're now ready to work with BugSigDB Analyzer.

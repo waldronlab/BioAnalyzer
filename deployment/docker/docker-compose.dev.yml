@@ -1,0 +1,106 @@
+# Development Docker Compose configuration for BugSigDB Analyzer
+# Extends the base configuration with development-specific settings
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.dev
+    container_name: bugsigdb-analyzer-app-dev
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ../../app:/app/app
+      - ../../config:/app/config
+      - ../../data:/app/data
+      - ../../cache:/app/cache
+      - ../../results:/app/results
+      - ../../.env:/app/.env:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/nginx.Dockerfile
+    container_name: bugsigdb-analyzer-nginx-dev
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - nginx_logs:/var/log/nginx
+      - nginx_cache:/var/cache/nginx
+      - ../nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/error_pages:/usr/share/nginx/html/error_pages:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: bugsigdb-analyzer-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional PostgreSQL for development
+  postgres:
+    image: postgres:15-alpine
+    container_name: bugsigdb-analyzer-postgres-dev
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=bugsigdb
+      - POSTGRES_USER=bugsigdb_user
+      - POSTGRES_PASSWORD=bugsigdb_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bugsigdb_user -d bugsigdb"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  nginx_logs:
+  nginx_cache:
+  redis_data:
+  postgres_data:
+
+networks:
+  bugsigdb-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

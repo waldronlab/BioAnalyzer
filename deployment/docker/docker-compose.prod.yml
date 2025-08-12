@@ -1,0 +1,159 @@
+# Production Docker Compose configuration for BugSigDB Analyzer
+# Extends the base configuration with production-specific settings
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: bugsigdb-analyzer-app-prod
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    volumes:
+      - app_data:/app/data
+      - app_cache:/app/cache
+      - app_results:/app/results
+    networks:
+      - bugsigdb-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/nginx.Dockerfile
+    container_name: bugsigdb-analyzer-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx_logs:/var/log/nginx
+      - nginx_cache:/var/cache/nginx
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/error_pages:/usr/share/nginx/html/error_pages:ro
+      - ../nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - bugsigdb-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: bugsigdb-analyzer-redis-prod
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
+    volumes:
+      - redis_data:/data
+    networks:
+      - bugsigdb-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: bugsigdb-analyzer-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - bugsigdb-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  app_data:
+  app_cache:
+  app_results:
+  nginx_logs:
+  nginx_cache:
+  redis_data:
+  prometheus_data:
+
+networks:
+  bugsigdb-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

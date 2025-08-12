@@ -1,0 +1,78 @@
+# Base Docker Compose configuration for BugSigDB Analyzer
+# This file defines the core services and can be extended for different environments
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: bugsigdb-analyzer-app
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - app_data:/app/data
+      - app_cache:/app/cache
+      - app_results:/app/results
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/nginx.Dockerfile
+    container_name: bugsigdb-analyzer-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - nginx_logs:/var/log/nginx
+      - nginx_cache:/var/cache/nginx
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/error_pages:/usr/share/nginx/html/error_pages:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: bugsigdb-analyzer-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  app_data:
+  app_cache:
+  app_results:
+  nginx_logs:
+  nginx_cache:
+  redis_data:
+
+networks:
+  bugsigdb-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

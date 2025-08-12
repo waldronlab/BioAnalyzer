@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from utils.utils import config, get_sequencing_types, get_body_sites
+from app.utils.utils import config, get_sequencing_types, get_body_sites
 
 logger = logging.getLogger(__name__)
 

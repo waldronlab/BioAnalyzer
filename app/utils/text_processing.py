@@ -1,10 +1,19 @@
 import torch
 import tiktoken
 from typing import List, Dict, Union
+import logging
 
 class AdvancedTextProcessor:
     def __init__(self, model_name: str = "gpt2"):
-        self.tokenizer = tiktoken.get_encoding(model_name)
+        try:
+            self.tokenizer = tiktoken.get_encoding(model_name)
+            self.tokenizer_available = True
+        except Exception as e:
+            print(f"Warning: Failed to load tiktoken model '{model_name}': {e}")
+            print("Falling back to basic text processing without tokenization")
+            self.tokenizer = None
+            self.tokenizer_available = False
+        
         # Add special tokens
         self.bos_token_id = 1
         self.eos_token_id = 2
@@ -13,12 +22,25 @@ class AdvancedTextProcessor:
         
     def encode_text(self, text: str) -> torch.Tensor:
         """Encode text using tiktoken for better compatibility with modern LLMs"""
+        if not self.tokenizer_available:
+            # Fallback: return simple character-based encoding
+            return torch.tensor([ord(c) for c in text[:100]], dtype=torch.long)
+        
         # Add BOS token at start
         tokens = [self.bos_token_id] + self.tokenizer.encode(text)
         return torch.tensor(tokens, dtype=torch.long)
     
     def decode_tokens(self, tokens: Union[torch.Tensor, List[int]]) -> str:
         """Decode tokens back to text"""
+        if not self.tokenizer_available:
+            # Fallback: return simple character-based decoding
+            try:
+                if isinstance(tokens, torch.Tensor):
+                    tokens = tokens.tolist()
+                return ''.join([chr(int(t)) for t in tokens if 32 <= int(t) <= 126])
+            except:
+                return "Error decoding response (fallback mode)"
+        
         try:
             # Convert tensor to list if needed
             if isinstance(tokens, torch.Tensor):
@@ -48,6 +70,18 @@ class AdvancedTextProcessor:
     
     def batch_encode(self, texts: List[str], max_length: int = 512, pad: bool = True) -> torch.Tensor:
         """Batch encode texts with optional padding"""
+        if not self.tokenizer_available:
+            # Fallback: simple character-based encoding
+            encoded = []
+            for text in texts:
+                tokens = [ord(c) for c in text[:max_length]]
+                encoded.append(tokens)
+            
+            if pad:
+                max_len = max(len(x) for x in encoded)
+                encoded = [x + [0] * (max_len - len(x)) for x in encoded]
+            return torch.tensor(encoded, dtype=torch.long)
+        
         encoded = []
         for text in texts:
             # Add BOS token and encode
@@ -64,6 +98,10 @@ class AdvancedTextProcessor:
     
     def create_attention_mask(self, encoded_texts: torch.Tensor) -> torch.Tensor:
         """Create attention mask for padded sequences"""
+        if not self.tokenizer_available:
+            # Fallback: assume no padding in fallback mode
+            return torch.ones_like(encoded_texts, dtype=torch.float)
+        
         return (encoded_texts != self.pad_token_id).float()
 
 # Additional utility functions for text preprocessing

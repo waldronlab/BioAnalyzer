@@ -1,9 +1,10 @@
 import re
 import logging
 from typing import Dict, List, Union, Tuple
+import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModel
-from utils.utils import config
+from app.utils.utils import config
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +17,22 @@ class TextPreprocessor:
         Args:
             model_name: Name of the pretrained model to use
         """
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = AutoModel.from_pretrained(model_name)
+            self.model_available = True
+            print(f"Successfully loaded model: {model_name}")
+        except Exception as e:
+            print(f"Warning: Failed to load model '{model_name}': {e}")
+            print("Falling back to basic text processing without ML models")
+            self.tokenizer = None
+            self.model = None
+            self.model_available = False
         
         # Move model to GPU if available
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = self.model.to(self.device)
+        if self.model_available:
+            self.model = self.model.to(self.device)
         
     def clean_text(self, text: str) -> str:
         """Clean and normalize text.
@@ -71,6 +82,26 @@ class TextPreprocessor:
         Returns:
             Tensor of embeddings
         """
+        if not self.model_available:
+            # Fallback: return simple TF-IDF like features
+            print("Warning: Using fallback embedding generation (no ML model available)")
+            # Create simple feature vectors based on text length and word counts
+            features = []
+            for text in texts:
+                words = text.split()
+                feature_vector = [
+                    len(text),  # text length
+                    len(words),  # word count
+                    len(set(words)),  # unique word count
+                    sum(len(word) for word in words),  # total character count
+                ]
+                features.append(feature_vector)
+            
+            # Convert to tensor and pad to consistent size
+            max_len = max(len(f) for f in features)
+            padded_features = [f + [0] * (max_len - len(f)) for f in features]
+            return torch.tensor(padded_features, dtype=torch.float)
+        
         # Tokenize texts
         encoded = self.tokenizer(
             texts,

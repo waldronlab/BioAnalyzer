@@ -5,7 +5,7 @@ from pathlib import Path
 import requests
 from Bio import Entrez
 from bs4 import BeautifulSoup
-from utils.utils import config, create_cache_key, save_json, load_json
+from app.utils.utils import config, create_cache_key, save_json, load_json
 
 logger = logging.getLogger(__name__)
 

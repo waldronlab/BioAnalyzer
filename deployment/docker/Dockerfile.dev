@@ -1,0 +1,54 @@
+# Development Dockerfile with debugging tools
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+ENV DEBUG=true
+
+# Install system dependencies including development tools
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    vim \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY config/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install development dependencies
+RUN pip install --no-cache-dir \
+    pytest \
+    black \
+    flake8 \
+    mypy \
+    ipython
+
+# Copy application code
+COPY app/ ./app/
+COPY config/ ./config/
+
+# Create necessary directories
+RUN mkdir -p data cache results
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash app && \
+    chown -R app:app /app
+USER app
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the application with auto-reload
+CMD ["uvicorn", "app.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 

@@ -205,3 +205,36 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+!docker-compose.dev.yml
+!docker-compose.prod.yml
+.docker/
+
+# Docker volumes and data
+docker-data/
+volumes/
+*.tar
+*.tar.gz
+
+# Nginx
+nginx/logs/
+nginx/ssl/
+nginx/error_pages/
+
+# Monitoring
+monitoring/data/
+prometheus-data/
+
+# Redis
+redis-data/
+
+# PostgreSQL
+postgres-data/
+
+# Application logs
+app-logs/

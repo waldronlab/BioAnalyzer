@@ -10,17 +10,17 @@ import torch
 from pathlib import Path
 from datetime import datetime
 import pytz
-from models.config import ModelConfig
-from models.unified_qa import UnifiedQA
-from retrieve.data_retrieval import PubMedRetriever
-from utils.text_processing import AdvancedTextProcessor
-from utils.config import (
+from app.models.config import ModelConfig
+from app.models.unified_qa import UnifiedQA
+from app.services.data_retrieval import PubMedRetriever
+from app.utils.text_processing import AdvancedTextProcessor
+from app.utils.config import (
     NCBI_API_KEY, 
     GEMINI_API_KEY, 
     DEFAULT_MODEL,
     AVAILABLE_MODELS
 )
-from utils.methods_scorer import MethodsScorer
+from app.utils.methods_scorer import MethodsScorer
 import re
 import asyncio
 import logging
@@ -30,7 +30,7 @@ from bs4 import BeautifulSoup
 import csv
 
 # Add the project root to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -61,7 +61,7 @@ qa_system = UnifiedQA(
 )
 
 # Mount static files after API routes
-static_dir = Path(__file__).parent / "static"
+static_dir = Path(__file__).parent.parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 class Message(BaseModel):
@@ -758,6 +758,27 @@ def list_pmids():
     except Exception as e:
         return {"error": str(e)}
     return pmids
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and load balancers"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "BugSigDB Analyzer",
+        "version": "1.0.0"
+    }
+
+@app.get("/metrics")
+async def metrics():
+    """Basic metrics endpoint for monitoring"""
+    return {
+        "uptime": "running",
+        "requests_processed": 0,  # TODO: Implement request counting
+        "active_connections": 0,  # TODO: Implement connection tracking
+        "memory_usage": "N/A",    # TODO: Implement memory monitoring
+        "cpu_usage": "N/A"        # TODO: Implement CPU monitoring
+    }
 
 if __name__ == "__main__":
     import uvicorn

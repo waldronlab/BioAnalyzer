@@ -87,7 +87,7 @@ pip install --upgrade pip
 
 # Install dependencies
 print_status "Installing dependencies..."
-pip install -r config/requirements.txt
+pip install -r requirements.txt
 print_success "Dependencies installed"
 
 # Create .env file if it doesn't exist
@@ -101,10 +101,6 @@ EMAIL=your_email@example.com
 
 # Model Configuration
 DEFAULT_MODEL=gemini
-
-# Application Configuration
-DEBUG=true
-LOG_LEVEL=INFO
 EOF
     print_success ".env file created"
     print_warning "Please edit .env file with your actual API keys before running the application"
@@ -117,9 +113,9 @@ print_status "Creating necessary directories..."
 mkdir -p results cache data
 print_success "Directories created"
 
-# Make main.py executable
-print_status "Making main script executable..."
-chmod +x main.py
+# Make start.py executable
+print_status "Making start script executable..."
+chmod +x start.py
 
 print_success "Setup completed successfully!"
 echo ""
@@ -128,15 +124,13 @@ echo "1. Edit .env file with your API keys:"
 echo "   nano .env"
 echo ""
 echo "2. Run the application:"
-echo "   python3 main.py"
+echo "   python3 start.py"
 echo ""
 echo "3. Open your browser and go to:"
 echo "   http://127.0.0.1:8000"
 echo ""
-echo "📚 For more information, see docs/README.md and docs/QUICKSTART.md"
+echo "📚 For more information, see README.md and QUICKSTART.md"
 echo ""
 echo "🔑 To get API keys:"
 echo "   - NCBI: https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/"
-echo "   - Gemini: https://makersuite.google.com/app/apikey"
-echo ""
-echo "🐳 For Docker deployment, see docs/DOCKER_DEPLOYMENT.md" 
+echo "   - Gemini: https://makersuite.google.com/app/apikey" 

@@ -1,0 +1,78 @@
+services:
+  analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bugsigdb-analyzer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - DEBUG=true
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache
+      - ./results:/app/results
+      - ./.env:/app/.env:ro
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    build:
+      context: .
+      dockerfile: deployment/docker/nginx.Dockerfile
+    container_name: bugsigdb-analyzer-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - nginx_logs:/var/log/nginx
+      - nginx_cache:/var/cache/nginx
+      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deployment/nginx/error_pages:/usr/share/nginx/html/error_pages:ro
+    depends_on:
+      analyzer:
+        condition: service_healthy
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: bugsigdb-analyzer-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bugsigdb-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  nginx_logs:
+  nginx_cache:
+  redis_data:
+
+networks:
+  bugsigdb-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

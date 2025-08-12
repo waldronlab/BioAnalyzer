@@ -4,15 +4,16 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import torch
-from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
-from retrieve.data_retrieval import PubMedRetriever
-from process.preprocessing import TextPreprocessor
-from models.model import MicrobeSigClassifier, ModelTrainer, PaperDataset
-from utils.utils import config, get_sequencing_types, get_body_sites, format_prediction_output
+from app.services.preprocessing import TextPreprocessor
+from app.models.model import MicrobeSigClassifier, ModelTrainer, PaperDataset
+from app.utils.utils import config, get_sequencing_types, get_body_sites, format_prediction_output
 
 # Configure logging
 logging.basicConfig(
@@ -44,7 +45,7 @@ def save_predictions(predictions: List[Dict], output_path: str):
         json.dump(predictions, f, indent=2)
 
 def train_model(
-    retriever: PubMedRetriever,
+    retriever,
     preprocessor: TextPreprocessor,
     model_path: Optional[str] = None
 ) -> MicrobeSigClassifier:
@@ -142,7 +143,7 @@ def train_model(
 def predict_papers(
     pmids: List[str],
     model: MicrobeSigClassifier,
-    retriever: PubMedRetriever,
+    retriever,
     preprocessor: TextPreprocessor
 ) -> List[Dict]:
     """Make predictions for a list of papers.

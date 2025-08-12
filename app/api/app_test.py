@@ -15,13 +15,13 @@ import random
 import re
 import torch
 from torch import serialization
-from models.config import ModelConfig
-from utils.text_processing import AdvancedTextProcessor
-from utils.data_processor import clean_scientific_text
+from app.models.config import ModelConfig
+from app.utils.text_processing import AdvancedTextProcessor
+from app.utils.data_processor import clean_scientific_text
 from starlette.websockets import WebSocketState
 from pydantic import validator
 import asyncio
-from utils.config import (
+from app.utils.config import (
     NCBI_API_KEY,
     GEMINI_API_KEY,
     EMAIL,
@@ -29,9 +29,9 @@ from utils.config import (
 )
 from fastapi.testclient import TestClient
 import pytz
-from models.unified_qa import UnifiedQA
-from retrieve.data_retrieval import PubMedRetriever
-from utils.user_manager import UserManager
+from app.models.unified_qa import UnifiedQA
+from app.services.data_retrieval import PubMedRetriever
+from app.utils.user_manager import UserManager
 import pytest
 
 class Message(BaseModel):

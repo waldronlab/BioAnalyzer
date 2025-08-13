@@ -319,14 +319,6 @@ docker compose logs -f
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 **Acknowledgments**
-
-- **BugSigDB Team**: For the microbial signatures database
-- **NCBI**: For PubMed data access
-- **Google**: For Gemini AI capabilities
-- **FastAPI**: For the excellent web framework
-- **Docker**: For containerization technology
-
 ## 📞 **Support**
 
 - **Issues**: [GitHub Issues](https://github.com/waldronlab/BugsigdbAnalyzer/issues)

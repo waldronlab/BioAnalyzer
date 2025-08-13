@@ -1,6 +1,6 @@
 # 🏗️ BugSigDB Analyzer - Project Structure
 
-This document provides a comprehensive overview of the reorganized project structure for the BugSigDB Analyzer.
+This document provides a comprehensive overview of the project structure for the BugSigDB Analyzer.
 
 ## 📁 **Root Directory Structure**
 

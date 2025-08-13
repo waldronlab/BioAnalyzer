@@ -4,7 +4,7 @@ Welcome to the  BugSigDB Analyzer! This guide will help you get started quickly 
 
 ## 📁 **What Changed?**
 
-The project has been organized the project to eliminate confusion and improve maintainability:
+The project is organised to improve maintainability:
 
 - **`app/`** - All the application code
 - **`deployment/`** - All Docker, Nginx, and deployment files

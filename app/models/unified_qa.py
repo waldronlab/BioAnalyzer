@@ -70,3 +70,16 @@ class UnifiedQA:
                 "confidence": 0.0,
                 "status": "error"
             } 
+
+    async def analyze_paper_enhanced(self, prompt: str) -> Dict[str, Union[str, float, List[str]]]:
+        """
+        Enhanced analysis method for BugSigDB curation requirements.
+        """
+        if self.use_gemini and self.qa_system:
+            return await self.qa_system.analyze_paper_enhanced(prompt)
+        else:
+            return {
+                "error": "No enhanced analysis available",
+                "key_findings": "{}",
+                "confidence": 0.0
+            } 

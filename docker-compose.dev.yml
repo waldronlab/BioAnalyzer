@@ -7,7 +7,7 @@ services:
         PIP_TIMEOUT: 600
         PIP_RETRIES: 10
         BUILDKIT_INLINE_CACHE: 1
-    container_name: bugsigdb-analyzer
+    container_name: bioanalyzer-dev
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -15,6 +15,7 @@ services:
       - PYTHONPATH=/app
       - DEBUG=true
       - WATCHFILES_FORCE_POLLING=true
+      - ENVIRONMENT=development
     volumes:
       # Mount source code for live reloading
       - ./app:/app/app
@@ -26,20 +27,29 @@ services:
       - ./cache:/app/cache
       - ./results:/app/results
       - ./.env:/app/.env:ro
+      # Development volumes
+      - ./logs:/app/logs
     networks:
-      - bugsigdb-network
+      - bioanalyzer-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    # Enable auto-restart on file changes
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
 
   nginx:
     build:
       context: .
       dockerfile: deployment/docker/nginx.Dockerfile
-    container_name: bugsigdb-analyzer-nginx
+    container_name: bioanalyzer-nginx-dev
     restart: unless-stopped
     ports:
       - "80:80"
@@ -47,12 +57,13 @@ services:
       - nginx_logs:/var/log/nginx
       - nginx_cache:/var/cache/nginx
       - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./deployment/nginx/error_pages:/usr/share/nginx/html/error_pages:ro
+      # Mount frontend for live reloading
+      - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       analyzer:
         condition: service_healthy
     networks:
-      - bugsigdb-network
+      - bioanalyzer-network
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s
@@ -61,7 +72,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: bugsigdb-analyzer-redis
+    container_name: bioanalyzer-redis-dev
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
@@ -69,7 +80,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - bugsigdb-network
+      - bioanalyzer-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -82,7 +93,7 @@ volumes:
   redis_data:
 
 networks:
-  bugsigdb-network:
+  bioanalyzer-network:
     driver: bridge
     ipam:
       config:

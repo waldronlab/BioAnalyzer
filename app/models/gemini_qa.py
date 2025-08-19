@@ -5,6 +5,7 @@ from datetime import datetime
 import pytz
 import google.generativeai as genai
 import os
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -497,6 +498,140 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                     "confidence": 0.0
                 }
             }
+
+    async def analyze_paper_enhanced(self, prompt: str) -> Dict[str, Union[str, float, List[str]]]:
+        """
+        Enhanced analysis method specifically for BugSigDB curation requirements.
+        Focuses on structured extraction of key information.
+        """
+        try:
+            if not self.api_key:
+                return {
+                    "error": "No Gemini API key available",
+                    "key_findings": "{}",
+                    "confidence": 0.0
+                }
+            
+            # Configure the model for structured output
+            model = genai.GenerativeModel('gemini-1.5-pro-latest')
+            
+            # Create a more structured prompt for better JSON output
+            structured_prompt = f"""
+            You are a specialized AI assistant for BugSigDB curation. Your task is to analyze scientific papers and extract specific information in a structured JSON format.
+
+            {prompt}
+
+            IMPORTANT: You must respond with ONLY valid JSON. Do not include any explanatory text before or after the JSON. The response should be parseable by json.loads().
+
+            Focus on accuracy and provide confidence scores based on how clearly the information is stated in the text.
+            """
+            
+            # Generate response
+            response = model.generate_content(structured_prompt)
+            
+            if not response or not response.text:
+                return {
+                    "error": "No response generated",
+                    "key_findings": "{}",
+                    "confidence": 0.0
+                }
+            
+            # Clean the response text to extract just the JSON
+            response_text = response.text.strip()
+            
+            # Try to find JSON in the response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            
+            if json_start >= 0 and json_end > json_start:
+                json_text = response_text[json_start:json_end]
+            else:
+                json_text = response_text
+            
+            # Validate JSON structure
+            try:
+                parsed_json = json.loads(json_text)
+                confidence = self.estimate_enhanced_confidence(parsed_json)
+                
+                return {
+                    "key_findings": json_text,
+                    "confidence": confidence,
+                    "status": "success"
+                }
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse JSON response: {e}")
+                # Return a structured fallback
+                fallback_json = {
+                    "differentially_abundant_microbes": {"reported": False, "list": [], "confidence": 0.0},
+                    "host_species": {"primary": "Unknown", "confidence": 0.0},
+                    "body_site_habitat": {"site": "Unknown", "confidence": 0.0},
+                    "condition_treatment_exposure": {"description": "Unknown", "confidence": 0.0},
+                    "host_species_list": {"multiple_species": False, "species": [], "confidence": 0.0},
+                    "overall_confidence": 0.0,
+                    "analysis_quality": "LOW"
+                }
+                
+                return {
+                    "key_findings": json.dumps(fallback_json),
+                    "confidence": 0.0,
+                    "status": "fallback",
+                    "error": f"JSON parsing failed: {str(e)}"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in enhanced analysis: {str(e)}")
+            return {
+                "error": str(e),
+                "key_findings": "{}",
+                "confidence": 0.0,
+                "status": "error"
+            }
+    
+    def estimate_enhanced_confidence(self, parsed_analysis: Dict) -> float:
+        """
+        Estimate confidence based on the quality of extracted information.
+        """
+        try:
+            confidence_scores = []
+            
+            # Check differentially abundant microbes
+            microbes = parsed_analysis.get("differentially_abundant_microbes", {})
+            if microbes.get("reported") and microbes.get("list"):
+                confidence_scores.append(min(1.0, len(microbes["list"]) * 0.1))
+            
+            # Check host species
+            host = parsed_analysis.get("host_species", {})
+            if host.get("primary") and host.get("primary") != "Unknown":
+                confidence_scores.append(0.8)
+            
+            # Check body site
+            body_site = parsed_analysis.get("body_site_habitat", {})
+            if body_site.get("site") and body_site.get("site") != "Unknown":
+                confidence_scores.append(0.8)
+            
+            # Check condition/treatment
+            condition = parsed_analysis.get("condition_treatment_exposure", {})
+            if condition.get("description") and condition.get("description") != "Unknown":
+                confidence_scores.append(0.8)
+            
+            # Check analysis quality
+            quality = parsed_analysis.get("analysis_quality", "LOW")
+            if quality == "HIGH":
+                confidence_scores.append(0.9)
+            elif quality == "MEDIUM":
+                confidence_scores.append(0.6)
+            else:
+                confidence_scores.append(0.3)
+            
+            if not confidence_scores:
+                return 0.0
+            
+            return sum(confidence_scores) / len(confidence_scores)
+            
+        except Exception as e:
+            logger.warning(f"Error estimating enhanced confidence: {str(e)}")
+            return 0.5
 
     async def chat(self, prompt: str) -> dict:
         """Chat with Gemini using a conversational prompt."""

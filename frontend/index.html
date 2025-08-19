@@ -3,1979 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BugSigDB Analyzer</title>
+    <title>BioAnalyzer - Scientific Paper Analysis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* General styles, kept as is for other components */
-        .confidence-bar {
-            height: 20px;
-            background-color: #e9ecef;
-            border-radius: 10px;
-            overflow: hidden;
-            margin-top: 5px;
-        }
-        .confidence-fill {
-            height: 100%;
-            background-color: #28a745;
-            transition: width 0.6s ease-in-out;
-        }
-        .category-score {
-            margin: 10px 0;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-        }
-        .found-term {
-            display: inline-block;
-            background-color: #e7f3ff;
-            padding: 6px 12px;
-            margin: 3px;
-            border-radius: 15px;
-            font-size: 0.9em;
-            color: #0d6efd;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        }
-        .found-term:hover {
-            background-color: #0d6efd;
-            color: white;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .loading {
-            /* Keep original .loading styles here if any, but remove spinner related ones */
-        }
-        .paper-metadata {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .analysis-results {
-            display: none;
-            opacity: 0;
-            transition: opacity 0.3s ease-in-out;
-        }
-        .card {
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            transition: all 0.3s ease-in-out;
-        }
-        .card:hover {
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-        .card-body {
-            padding: 25px;
-        }
-        .h6 {
-            color: #495057;
-            font-weight: 600;
-            margin-bottom: 15px;
-        }
-        #paper-abstract {
-            line-height: 1.6;
-            color: #495057;
-        }
-        .badge {
-            padding: 8px 12px;
-            font-size: 0.9em;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        .badge:hover {
-            transform: translateY(-1px);
-        }
-        .text-muted {
-            color: #6c757d !important;
-        }
-        .mb-4 {
-            margin-bottom: 2rem !important;
-        }
-        .chat-container {
-            height: 400px;
-            overflow-y: auto;
-            border: none;
-            border-radius: 0;
-            padding: 0 0 0 0;
-            margin-bottom: 15px;
-            background: #fff;
-            box-shadow: none;
-            position: relative;
-        }
-        .message {
-            margin: 32px 0 32px 0;
-            padding: 16px 20px;
-            border-radius: 18px;
-            max-width: 60%;
-            position: relative;
-            clear: both;
-            font-size: 1.1em;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        .user-message {
-            background-color: #23272f;
-            color: #fff;
-            float: right;
-            border-bottom-right-radius: 8px;
-            margin-left: 30%;
-        }
-        .assistant-message {
-            background-color: #222b3a;
-            color: #e6e6e6;
-            float: left;
-            border-bottom-left-radius: 8px;
-            margin-right: 30%;
-        }
-        .system-message {
-            background-color: #2d3748;
-            color: #f6e05e;
-            text-align: center;
-            margin: 20px auto;
-            float: none;
-            font-size: 1em;
-            border-radius: 10px;
-        }
-        .error-message {
-            background-color: #dc3545;
-            color: white;
-            text-align: center;
-            margin: 20px auto;
-            float: none;
-            font-size: 1em;
-            border-radius: 10px;
-        }
-        .message-sender {
-            font-size: 0.8em;
-            margin-bottom: 4px;
-            opacity: 0.8;
-        }
-        .message-time {
-            font-size: 0.7em;
-            opacity: 0.7;
-            margin-top: 4px;
-        }
-        .chat-input-container {
-            display: flex;
-            gap: 10px;
-            padding: 15px;
-            background-color: white;
-            border-top: 1px solid #dee2e6;
-        }
-        #message-input {
-            flex-grow: 1;
-            padding: 8px 12px;
-            border: 1px solid #dee2e6;
-            border-radius: 20px;
-            outline: none;
-        }
-        #message-input:focus {
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-        }
-        #send-button {
-            padding: 8px 20px;
-            border-radius: 20px;
-            background-color: #0d6efd;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        #send-button:disabled {
-            background-color: #e9ecef;
-            cursor: not-allowed;
-        }
-        .code-panel {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
-        .paper-analysis-table {
-            font-size: 0.9rem;
-            width: 100% !important;
-            table-layout: auto;
-        }
-        .paper-analysis-table th {
-            background-color: #f0f2f5;
-            font-weight: 600;
-            text-align: center;
-            vertical-align: middle;
-            white-space: nowrap;
-            padding: 0.5rem;
-        }
-        .paper-analysis-table td {
-            vertical-align: middle;
-            padding: 0.5rem;
-        }
-        .paper-analysis-table .yes-value {
-            color: #28a745;
-            font-weight: 600;
-        }
-        .paper-analysis-table .no-value {
-            color: #dc3545;
-        }
-        .paper-analysis-table .high-prob {
-            color: #28a745;
-            font-weight: 600;
-        }
-        .paper-analysis-table .medium-prob {
-            color: #fd7e14;
-            font-weight: 600;
-        }
-        .paper-analysis-table .low-prob {
-            color: #dc3545;
-        }
-        .analysis-row {
-            transition: background-color 0.2s ease;
-        }
-        .analysis-row:hover {
-            background-color: rgba(13, 110, 253, 0.1);
-        }
-        .table-responsive {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            max-width: 100%;
-        }
-        .nav-tabs {
-            margin-bottom: 20px;
-            position: sticky;
-            top: 20px;
-            z-index: 1000;
-            background-color: white;
-        }
-        #chat-interface {
-            display: none;
-        }
-        .code-output {
-            background-color: #272822;
-            color: #f8f8f2;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 10px;
-        }
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px; /* Overall page max width */
-            margin: 0 auto; /* Center the body content */
-            padding: 20px;
-            padding-top: 80px; /* Space for fixed header */
-            position: relative;
-            display: flex; /* Flex container for body */
-            flex-direction: column; /* Stack children vertically */
-            min-height: 100vh; /* Ensure body takes full viewport height */
-        }
-        .container {
-            position: relative;
-            z-index: 1000;
-        }
-        /* Fixed header elements */
-        .logo-container {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1002;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: transparent;
-        }
-        .theme-toggle-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1002;
-        }
-        /* Logo sizes */
-        .logo-img {
-            height: auto;
-            transition: all 0.3s ease;
-        }
-        .logo-img.primary {
-            max-width: 150px;
-        }
-        .logo-img.secondary {
-            max-width: 75px;
-        }
-        body.dark-mode .logo-img {
-            filter: brightness(0.8);
-        }
-        /* Chat container */
-        #chat-container {
-            border: 1px solid #ccc;
-            padding: 20px;
-            margin-top: 20px;
-            height: 400px;
-            overflow-y: auto;
-        }
-        #connection-status {
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 5px;
-        }
-        .connected {
-            background-color: #c8e6c9;
-            color: #2e7d32;
-        }
-        .disconnected {
-            background-color: #ffcdd2;
-            color: #c62828;
-        }
-        #found-terms {
-            display: block;
-        }
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            body {
-                padding-top: 100px;
-                max-width: 90%;
-            }
-            .logo-container {
-                gap: 10px;
-            }
-            .logo-img.primary {
-                max-width: 100px;
-            }
-            .logo-img.secondary {
-                max-width: 50px;
-            }
-        }
-        body.dark-mode {
-            background-color: #212529;
-            color: #f8f9fa;
-        }
-        body.dark-mode .card, body.dark-mode .paper-metadata, body.dark-mode .chat-container {
-            background-color: #343a40;
-            border-color: #495057;
-        }
-        body.dark-mode .user-message {
-            background-color: #0d6efd;
-        }
-        body.dark-mode .assistant-message {
-            background-color: #495057;
-        }
-        body.dark-mode .code-output {
-            background-color: #1e1e1e;
-        }
-        footer {
-            border-top: 1px solid #dee2e6;
-        }
-        .fa-chevron-down {
-            transition: transform 0.3s ease;
-        }
-        .fa-chevron-down.collapsed {
-            transform: rotate(180deg);
-        }
-        .resource-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .resource-item i {
-            margin-right: 10px;
-            color: #0d6efd;
-        }
-        .category-scores-list {
-            margin-top: 1rem;
-        }
-        .category-score-item {
-            background-color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 0.75rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-        }
-        .category-score-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        body.dark-mode .category-score-item {
-            background-color: #343a40;
-        }
-        .category-name {
-            color: #495057;
-            font-size: 1rem;
-            font-weight: 500;
-            text-transform: capitalize;
-        }
-        body.dark-mode .category-name {
-            color: #f8f9fa;
-        }
-        .score-value {
-            font-weight: 600;
-            color: #0d6efd;
-            font-size: 0.9rem;
-        }
-        body.dark-mode .score-value {
-            color: #6ea8fe;
-        }
-        .progress {
-            height: 8px !important;
-            background-color: #e9ecef;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 0.5rem;
-            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
-        }
-        body.dark-mode .progress {
-            background-color: #495057;
-        }
-        .progress-bar {
-            transition: width 0.6s ease;
-        }
-        .progress-bar.bg-success {
-            background-color: #198754 !important;
-        }
-        .progress-bar.bg-warning {
-            background-color: #ffc107 !important;
-        }
-        .progress-bar.bg-danger {
-            background-color: #dc3545 !important;
-        }
-        body.dark-mode .text-success {
-            color: #75b798 !important;
-        }
-        body.dark-mode .text-warning {
-            color: #ffda6a !important;
-        }
-        body.dark-mode .text-danger {
-            color: #ea868f !important;
-        }
-        /* Dark mode toggle button */
-        #theme-toggle {
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-        }
-        #theme-toggle:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        /* Title styles */
-        .main-app-title {
-            text-align: center;
-            margin-bottom: 40px; /* Space below the title */
-            padding-top: 20px; /* Padding from the top of the main content div */
-        }
-        .main-app-title h1 {
-            display: inline; /* Keep spans inline */
-            font-size: 2.5rem;
-            font-weight: bold;
-        }
-        .main-app-title .bugsigdb-blue {
-            color: #0d6efd;
-        }
-        .main-app-title .bugsigdb-black {
-            color: #212529; /* Bootstrap's default dark text color */
-        }
-        body.dark-mode .main-app-title .bugsigdb-black {
-            color: #f8f9fa; /* Light text color for dark mode */
-        }
-        .title-description {
-            text-align: center;
-            color: #6c757d;
-            max-width: 800px;
-            margin: 0 auto 40px;
-            line-height: 1.6;
-            font-size: 1.1rem;
-        }
-        body.dark-mode .title-description {
-            color: #adb5bd;
-        }
-        #main-interface .nav-tabs {
-            margin-top: 20px;
-        }
-        
-        /* Ensure container-fluid is properly centered */
-        #main-interface .container-fluid {
-            max-width: 100%;
-            padding-left: 15px;
-            padding-right: 15px;
-        }
-        
-        /* Center the main content elements */
-        #main-interface .row {
-            justify-content: center;
-        }
-        
-        #main-interface .col-md-12 {
-            max-width: 1000px; /* Limit content width for better readability */
-        }
-        @media (max-width: 768px) {
-            .main-app-title {
-                font-size: 2rem;
-                padding-top: 15px;
-            }
-            .title-description {
-                font-size: 1rem;
-                padding: 0 20px;
-                margin-bottom: 30px;
-            }
-        }
-        .welcome-title .blue-text {
-            color: #0d6efd;
-            font-weight: bold;
-        }
-        /* Responsive table styles for mobile */
-        @media (max-width: 768px) {
-            .paper-analysis-table {
-                font-size: 0.75rem;
-            }
-            .paper-analysis-table th,
-            .paper-analysis-table td {
-                padding: 0.25rem;
-            }
-            .table-responsive {
-                max-width: 100vw;
-            }
-        }
-        /* Add Whirl container styles */
-        .whirl-container {
-            display: none;
-        }
-        /* Custom CSS Spinner Styles */
-        .custom-spinner {
-            display: none;
-        }
-
-        @keyframes custom-spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Sidebar styles */
-        .sidebar {
-            position: fixed;
-            top: 0;
-            bottom: 0;
-            width: 250px;
-            background-color: #f8f9fa;
-            padding: 20px;
-            overflow-y: auto;
-            transition: all 0.3s ease;
-            z-index: 1000;
-        }
-        
-        .left-sidebar {
-            left: 0;
-            border-right: 1px solid #dee2e6;
-        }
-        
-        .right-sidebar {
-            right: 0;
-            border-left: 1px solid #dee2e6;
-        }
-        
-        .main-content {
-            margin-left: 250px;
-            margin-right: 250px;
-            padding: 20px;
-            transition: all 0.3s ease;
-            flex-grow: 1; /* Make main content expand to push footer down */
-            width: calc(100% - 500px); /* Adjust for both sidebars */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        
-        /* Responsive sidebar behavior */
-        @media (max-width: 1200px) {
-            .sidebar {
-                width: 200px;
-            }
-            .main-content {
-                margin-left: 200px;
-                margin-right: 200px;
-                width: calc(100% - 400px);
-            }
-        }
-        
-        @media (max-width: 992px) {
-            .sidebar {
-                transform: translateX(-100%);
-                width: 280px;
-            }
-            .right-sidebar {
-                transform: translateX(100%);
-            }
-            .main-content {
-                margin-left: 0;
-                margin-right: 0;
-                width: 100%;
-            }
-            .sidebar.active {
-                transform: translateX(0);
-            }
-            .right-sidebar.active {
-                transform: translateX(0);
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                max-width: 320px;
-            }
-            .main-content {
-                padding: 10px;
-            }
-        }
-        
-        /* Sidebar toggle buttons */
-        .sidebar-toggle {
-            position: fixed;
-            top: 20px;
-            z-index: 1001;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 10px 15px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .sidebar-toggle:hover {
-            background: #0056b3;
-        }
-        
-        .left-sidebar-toggle {
-            left: 20px;
-        }
-        
-        .right-sidebar-toggle {
-            right: 20px;
-        }
-        
-        @media (min-width: 993px) {
-            .sidebar-toggle {
-                display: none;
-            }
-        }
-        
-        /* Overlay for mobile */
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 999;
-            display: none;
-        }
-        
-        .sidebar-overlay.active {
-            display: block;
-        }
-        
-        .sidebar-header {
-            font-size: 1.2em;
-            font-weight: 600;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #dee2e6;
-        }
-        
-        .sidebar-item {
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .sidebar-item:hover {
-            background-color: #e9ecef;
-        }
-        
-        /* Settings styles */
-        .settings-group {
-            margin-bottom: 20px;
-        }
-        
-        .settings-label {
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
-        
-        /* Improved table styles */
-        .paper-analysis-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            margin: 20px 0;
-        }
-        
-        .paper-analysis-table th,
-        .paper-analysis-table td {
-            padding: 12px;
-            border: 1px solid #dee2e6;
-        }
-        
-        .paper-analysis-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-        }
-        
-        .paper-analysis-table tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-        
-        /* Search bar improvements */
-        .search-container {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            width: 100%; /* Ensure it fills its wrapper */
-        }
-        
-        .search-type-selector {
-            width: 120px;
-        }
-        
-        #main-interface {
-            width: 100%; /* Ensure it fills its wrapper */
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-height: 0; /* Allows content to scroll properly */
-            padding: 20px;
-            max-width: 1200px; /* Limit maximum width for better readability */
-            margin: 0 auto; /* Center the content */
-        }
-        #main-interface .nav-tabs {
-            margin-top: 20px;
-        }
-        
-        /* Chat download button */
-        .download-chat {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            padding: 5px 10px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            z-index: 10;
-        }
-        
-        .download-chat:hover {
-            background-color: #218838;
-        }
-        
-        /* Logo styles */
-        .logo-img {
-            height: 60px;
-            width: auto;
-        }
-        
-        /* BugSigDB blue color */
-        .bugsigdb-blue {
-            color: #0d6efd;
-        }
-        /* Black color for "Analyzer" */
-        .bugsigdb-black {
-            color: #212529; /* Bootstrap's default dark text color */
-        }
-        body.dark-mode .bugsigdb-black {
-            color: #f8f9fa; /* Light text color for dark mode */
-        }
-        
-        /* About link styles */
-        .about-link {
-            color: #0d6efd;
-            text-decoration: none;
-        }
-        
-        .about-link:hover {
-            text-decoration: underline;
-        }
-        
-        /* Upload section improvements */
-        .upload-section {
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            margin-top: 20px;
-        }
-        
-        .upload-features {
-            margin-top: 20px;
-        }
-        
-        .feature-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        
-        .feature-item i {
-            color: #0d6efd;
-            margin-right: 10px;
-        }
-
-        /* Footer styles */
-        /* Enhanced Footer Styles */
-        .app-footer {
-            margin-top: auto;
-            width: 100%;
-            padding: 40px 20px 30px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-top: 2px solid #dee2e6;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 25px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .app-footer::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #0d6efd, #6ea8fe, #0d6efd);
-            background-size: 200% 100%;
-            animation: gradientShift 3s ease-in-out infinite;
-        }
-
-        @keyframes gradientShift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
-
-        .footer-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 30px;
-            max-width: 1200px;
-            width: 100%;
-        }
-
-        .footer-logos {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 40px;
-            flex-wrap: wrap;
-            padding: 20px 0;
-            background: rgba(255, 255, 255, 0.7);
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .footer-logo-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            padding: 15px;
-            border-radius: 10px;
-            transition: all 0.3s ease;
-            position: relative;
-        }
-
-        .footer-logo-item:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-            background: rgba(255, 255, 255, 0.9);
-        }
-
-        .footer-logo-item img {
-            height: 60px;
-            width: auto;
-            max-width: 120px;
-            object-fit: contain;
-            filter: grayscale(20%);
-            transition: all 0.3s ease;
-        }
-
-        .footer-logo-item:hover img {
-            filter: grayscale(0%);
-            transform: scale(1.05);
-        }
-
-        .footer-logo-label {
-            font-size: 0.8rem;
-            color: #6c757d;
-            font-weight: 500;
-            text-align: center;
-            margin: 0;
-        }
-
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 30px;
-            flex-wrap: wrap;
-            padding: 20px 0;
-        }
-
-        .footer-link {
-            color: #495057;
-            text-decoration: none;
-            font-weight: 500;
-            padding: 10px 20px;
-            border-radius: 25px;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            background: rgba(255, 255, 255, 0.5);
-            border: 1px solid rgba(13, 110, 253, 0.1);
-        }
-
-        .footer-link::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(13, 110, 253, 0.1), transparent);
-            transition: left 0.5s ease;
-        }
-
-        .footer-link:hover {
-            color: #0d6efd;
-            background: rgba(13, 110, 253, 0.1);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(13, 110, 253, 0.2);
-            text-decoration: none;
-        }
-
-        .footer-link:hover::before {
-            left: 100%;
-        }
-
-        .footer-divider {
-            width: 100%;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, #dee2e6, transparent);
-            margin: 10px 0;
-        }
-
-        .footer-info {
-            text-align: center;
-            color: #6c757d;
-            font-size: 0.9rem;
-            line-height: 1.6;
-        }
-
-        .footer-powered-by {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #6c757d;
-            font-size: 0.85rem;
-        }
-
-        .footer-powered-by i {
-            color: #0d6efd;
-            font-size: 1rem;
-        }
-
-        /* Dark mode footer styles */
-        body.dark-mode .app-footer {
-            background: linear-gradient(135deg, #212529 0%, #343a40 100%);
-            border-top-color: #495057;
-        }
-
-        body.dark-mode .footer-logos {
-            background: rgba(52, 58, 64, 0.7);
-            border-color: rgba(255, 255, 255, 0.1);
-        }
-
-        body.dark-mode .footer-logo-item:hover {
-            background: rgba(52, 58, 64, 0.9);
-        }
-
-        body.dark-mode .footer-logo-label {
-            color: #adb5bd;
-        }
-
-        body.dark-mode .footer-link {
-            color: #adb5bd;
-            background: rgba(52, 58, 64, 0.5);
-            border-color: rgba(13, 110, 253, 0.2);
-        }
-
-        body.dark-mode .footer-link:hover {
-            color: #6ea8fe;
-            background: rgba(13, 110, 253, 0.2);
-        }
-
-        body.dark-mode .footer-info {
-            color: #adb5bd;
-        }
-
-        body.dark-mode .footer-powered-by {
-            color: #adb5bd;
-        }
-
-        /* Responsive footer */
-        @media (max-width: 768px) {
-            .app-footer {
-                padding: 30px 15px 20px;
-                gap: 20px;
-            }
-
-            .footer-logos {
-                gap: 20px;
-                padding: 15px;
-            }
-
-            .footer-logo-item {
-                padding: 10px;
-            }
-
-            .footer-logo-item img {
-                height: 45px;
-                max-width: 90px;
-            }
-
-            .footer-links {
-                gap: 15px;
-                flex-direction: column;
-            }
-
-            .footer-link {
-                padding: 8px 16px;
-                font-size: 0.9rem;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .footer-logos {
-                gap: 15px;
-            }
-
-            .footer-logo-item img {
-                height: 40px;
-                max-width: 80px;
-            }
-
-            .footer-logo-label {
-                font-size: 0.7rem;
-            }
-        }
-        
-        .footer-divider {
-            width: 100%;
-            height: 1px;
-            background-color: #dee2e6;
-            margin: 20px 0;
-        }
-        
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        .footer-link {
-            color: #0d6efd;
-            text-decoration: none;
-            font-size: 0.9em;
-            display: flex;
-            align-items: center;
-        }
-        .footer-link:hover {
-            text-decoration: underline;
-        }
-        .footer-link i {
-            margin-right: 5px;
-        }
-        .footer-info {
-            text-align: center;
-            color: #6c757d;
-            font-size: 0.8em;
-        }
-        .footer-powered-by {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            margin-bottom: 10px;
-        }
-        .footer-powered-by i {
-            animation: spin 1s linear infinite;
-        }
-        
-        /* Centering for the main content elements */
-        .centered-content-wrapper {
-            max-width: 900px; /* Adjusted max-width for better balance */
-            margin: 0 auto; /* Center the content wrapper */
-            width: 100%; /* Ensure it takes full width up to max-width */
-        }
-        /* Remove spinner styles */
-        .whirl-container {
-            display: none;
-        }
-        .custom-spinner {
-            display: none;
-        }
-        
-        /* Enhanced Tab Management Styles */
-        .nav-tabs {
-            margin-bottom: 20px;
-            position: sticky;
-            top: 20px;
-            z-index: 1000;
-            background-color: white;
-            border-bottom: 2px solid #dee2e6;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .nav-tabs .nav-link {
-            border: none;
-            border-radius: 8px 8px 0 0;
-            margin-right: 4px;
-            padding: 12px 20px;
-            font-weight: 500;
-            color: #6c757d;
-            background-color: #f8f9fa;
-            transition: all 0.3s ease;
-            position: relative;
-            opacity: 0.7;
-        }
-        
-        .nav-tabs .nav-link:hover {
-            background-color: #e9ecef;
-            color: #495057;
-            opacity: 0.9;
-            transform: translateY(-2px);
-        }
-        
         .nav-tabs .nav-link.active {
-            background-color: #0d6efd;
-            color: white;
-            opacity: 1;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3);
-            border-bottom: 3px solid #0d6efd;
+            background-color: #f8f9fa;
+            border-color: #dee2e6 #dee2e6 #f8f9fa;
         }
-        
-        .nav-tabs .nav-link.active::after {
-            content: '';
-            position: absolute;
-            bottom: -2px;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background-color: #0d6efd;
-            border-radius: 0 0 8px 8px;
+        .table-hover tbody tr:hover {
+            background-color: rgba(0,0,0,.075);
+            cursor: pointer;
         }
-        
-        /* Tab Content Management */
-        .tab-content {
-            position: relative;
-        }
-        
-        .tab-pane {
-            transition: all 0.3s ease;
-            opacity: 0;
-            transform: translateY(10px);
-            pointer-events: none;
-        }
-        
-        .tab-pane.active {
-            opacity: 1;
-            transform: translateY(0);
-            pointer-events: auto;
-        }
-        
-        .tab-pane:not(.active) {
-            opacity: 0.3;
-            transform: translateY(5px);
-            filter: blur(1px);
-            pointer-events: none;
-        }
-        
-        /* Active Window Enhancement */
-        .tab-pane.active .container,
-        .tab-pane.active .card,
-        .tab-pane.active .paper-metadata {
-            animation: fadeInActive 0.5s ease-out;
-        }
-        
-        @keyframes fadeInActive {
-            from {
-                opacity: 0.7;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        /* Inactive Window Styling */
-        .tab-pane:not(.active) .container,
-        .tab-pane:not(.active) .card,
-        .tab-pane:not(.active) .paper-metadata {
-            opacity: 0.4;
-            filter: grayscale(30%);
-            transform: scale(0.98);
-        }
-        
-        /* Scroll Behavior Enhancement */
-        .tab-pane.active {
+        .status-present { color: #28a745; }
+        .status-partial { color: #ffc107; }
+        .status-absent { color: #dc3545; }
+        .field-details-modal .modal-body {
+            max-height: 70vh;
             overflow-y: auto;
-            max-height: calc(100vh - 200px);
-            scroll-behavior: smooth;
         }
-        
-        .tab-pane:not(.active) {
-            overflow: hidden;
-            max-height: 0;
-        }
-        
-        /* Focus Management */
-        .tab-pane.active:focus-within {
-            outline: none;
-        }
-        
-        /* Visual Indicator for Active Tab */
-        .nav-tabs .nav-link.active::before {
-            content: '●';
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            font-size: 8px;
-            color: #fff;
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        /* Enhanced Card Styling for Active Tab */
-        .tab-pane.active .card {
-            border: 2px solid rgba(13, 110, 253, 0.1);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        .tab-pane.active .card:hover {
-            border-color: rgba(13, 110, 253, 0.3);
-            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
-        }
-        
-        /* Inactive Tab Content Styling */
-        .tab-pane:not(.active) .card {
-            border: 1px solid #dee2e6;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-        
-        /* Tab Switch Animation */
-        .tab-content {
-            min-height: 400px;
-            position: relative;
-        }
-        
-        .tab-pane {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            width: 100%;
-        }
-        
-        .tab-pane.active {
-            position: relative;
-        }
-        
-        /* Responsive Tab Management */
-        @media (max-width: 768px) {
-            .nav-tabs .nav-link {
-                padding: 8px 12px;
-                font-size: 0.9rem;
-            }
-            
-            .nav-tabs .nav-link.active {
-                transform: translateY(-1px);
-            }
-            
-            .tab-pane.active {
-                max-height: calc(100vh - 150px);
-            }
-        }
-        
-        /* Dark Mode Support */
-        body.dark-mode .nav-tabs {
-            background-color: #212529;
-            border-bottom-color: #495057;
-        }
-        
-        body.dark-mode .nav-tabs .nav-link {
-            background-color: #343a40;
-            color: #adb5bd;
-        }
-        
-        body.dark-mode .nav-tabs .nav-link:hover {
-            background-color: #495057;
-            color: #f8f9fa;
-        }
-        
-        body.dark-mode .nav-tabs .nav-link.active {
-            background-color: #0d6efd;
-            color: white;
-        }
-        
-        body.dark-mode .tab-pane:not(.active) .container,
-        body.dark-mode .tab-pane:not(.active) .card,
-        body.dark-mode .tab-pane:not(.active) .paper-metadata {
-            opacity: 0.3;
-            filter: grayscale(50%);
-        }
-        
-        /* Tab Indicators */
-        .tab-indicator {
-            position: absolute;
-            bottom: -2px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 3px;
-            background-color: #0d6efd;
-            border-radius: 2px;
-            transition: width 0.3s ease;
-        }
-        
-        .nav-tabs .nav-link.active .tab-indicator {
-            width: 80%;
-        }
-        
-        /* Enhanced Tab Hover Effects */
-        .nav-tabs .nav-link:hover .tab-indicator {
-            width: 60%;
-            background-color: #6ea8fe;
-        }
-        
-        /* Tab Content Loading States */
-        .tab-pane.loading {
-            opacity: 0.7;
-            pointer-events: none;
-        }
-        
-        .tab-pane.loading::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #0d6efd;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: translate(-50%, -50%) rotate(0deg); }
-            100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        
-        /* Tab Switch Transition */
-        .tab-content {
-            transition: all 0.3s ease;
-        }
-        
-        .tab-pane {
-            transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease;
-        }
-        
-        /* Active Tab Content Highlighting */
-        .tab-pane.active .main-app-title {
-            animation: titleGlow 0.5s ease-out;
-        }
-        
-        @keyframes titleGlow {
-            0% { text-shadow: 0 0 5px rgba(13, 110, 253, 0.3); }
-            100% { text-shadow: none; }
-        }
-        
-        /* Inactive Tab Content Dimming */
-        .tab-pane:not(.active) .main-app-title {
-            opacity: 0.5;
-            filter: grayscale(50%);
-        }
-        
-        /* Tab Accessibility Improvements */
-        .nav-tabs .nav-link:focus {
-            outline: 2px solid #0d6efd;
-            outline-offset: 2px;
-        }
-        
-        .nav-tabs .nav-link:focus:not(:focus-visible) {
-            outline: none;
-        }
-        
-        /* Tab Counter Badges */
-        .tab-counter {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background-color: #dc3545;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-        }
-        
-        /* Tab Status Indicators */
-        .tab-status {
-            position: absolute;
-            top: 4px;
-            right: 4px;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #28a745;
-            animation: statusPulse 2s infinite;
-        }
-        
-        @keyframes statusPulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.2); }
-        }
-        
-        /* Enhanced Popup Window Styles - REMOVED - Now using page-based approach */
-        /* All popup-related CSS has been removed to prevent interference */
-        
-        /* Enhanced formatting for headings vs bullet points */
-        .finding-heading, .topic-heading {
-            padding: 15px 0 8px 0 !important;
-            border-bottom: 2px solid #0d6efd !important;
-            margin-bottom: 10px !important;
-            font-size: 1.1rem !important;
-            font-weight: 600 !important;
-            color: #0d6efd !important;
-            background: #f8f9fa !important;
-            padding-left: 15px !important;
-            border-radius: 5px !important;
-            list-style: none !important;
-        }
-
-        .finding-heading strong, .topic-heading strong {
-            color: #0d6efd !important;
-            font-size: 1.2rem !important;
-        }
-
-        /* Enhanced tab management for smooth transitions */
-        .tab-pane {
-            transition: all 0.3s ease-in-out;
-        }
-
-        .tab-pane.active {
-            animation: fadeInUp 0.4s ease-out;
-        }
-
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Smooth hover effects for interactive elements */
-        .btn, .nav-link, .sidebar-item {
-            transition: all 0.2s ease-in-out;
-        }
-
-        .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-
-        .nav-link:hover {
-            transform: translateY(-1px);
-        }
-
-        .sidebar-item:hover {
-            background: rgba(13, 110, 253, 0.1);
-            transform: translateX(5px);
-        }
-
-        /* Enhanced loading states */
-        .loading-enhanced {
-            position: relative;
-            overflow: hidden;
-        }
-
-        .loading-enhanced::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-            animation: shimmer 1.5s infinite;
-        }
-
-        @keyframes shimmer {
-            0% { left: -100%; }
-            100% { left: 100%; }
-        }
-
-        /* Responsive improvements */
-        @media (max-width: 768px) {
-            .finding-heading, .topic-heading {
-                font-size: 1rem !important;
-                padding: 12px 0 6px 0 !important;
-            }
-
-            .finding-heading strong, .topic-heading strong {
-                font-size: 1.1rem !important;
-            }
-        }
-        
     </style>
 </head>
 <body>
-    <!-- Sidebar Toggle Buttons -->
-    <button class="sidebar-toggle left-sidebar-toggle" onclick="toggleSidebar('left')">
-        <i class="fas fa-bars"></i> Resources
-    </button>
-    <button class="sidebar-toggle right-sidebar-toggle" onclick="toggleSidebar('right')">
-        <i class="fas fa-cog"></i> Settings
-    </button>
-    
-    <!-- Sidebar Overlay -->
-    <div class="sidebar-overlay" onclick="closeAllSidebars()"></div>
-    
-    <!-- Left Sidebar -->
-    <div class="sidebar left-sidebar">
-        <div class="sidebar-header">BugSigDB Resources</div>
-        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org', '_blank')">
-            <i class="fas fa-home"></i> BugSigDB Home
-        </div>
-        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org/documentation', '_blank')">
-            <i class="fas fa-book"></i> Documentation
-        </div>
-        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org/api', '_blank')">
-            <i class="fas fa-code"></i> API Reference
-        </div>
-        <div class="sidebar-item" onclick="window.open('https://bugsigdb.org/contact', '_blank')">
-            <i class="fas fa-envelope"></i> Contact
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="row bg-primary text-white p-3">
+            <div class="col">
+                <h1 class="mb-0"><i class="fas fa-microscope me-2"></i>BioAnalyzer</h1>
+                <p class="mb-0">Scientific Paper Analysis for Microbiome Research</p>
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div id="main-interface" class="main-content">
-        <div class="container-fluid">
+        <!-- Navigation -->
             <div class="row">
-                <div class="col-md-12">
-                    <!-- Title and Description -->
-                    <div class="main-app-title">
-                        <h1><span class="bugsigdb-blue">BugSigDB</span> <span class="bugsigdb-black">Analyzer</span></h1>
-                    </div>
-                    <p class="title-description">
-                        Explore and analyze scientific papers with advanced AI assistance. Extract key findings, analyze microbiome signatures, and generate insights from research papers.
-                    </p>
-
-                    <!-- Navigation Tabs -->
+            <div class="col">
                     <ul class="nav nav-tabs" id="mainTabs" role="tablist">
-                        <li class="nav-item">
-                            <a class="nav-link active" id="analyze-tab" data-bs-toggle="tab" href="#analyze" role="tab">Paper Analysis</a>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse" type="button" role="tab" aria-controls="browse" aria-selected="true">
+                            <i class="fas fa-search me-2"></i>Browse Papers
+                        </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse" type="button" role="tab" aria-controls="browse" aria-selected="false">
-                                Browse Papers
+                        <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat" type="button" role="tab" aria-controls="chat" aria-selected="false">
+                            <i class="fas fa-comments me-2"></i>Chat Assistant
                             </button>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" id="chat-tab" data-bs-toggle="tab" href="#chat" role="tab">Chat Assistant</a>
-                        </li>
                     </ul>
+            </div>
+        </div>
 
                     <!-- Tab Content -->
-                    <div class="tab-content" id="mainTabContent">
-                        <!-- Paper Analysis Tab -->
-                        <div class="tab-pane fade show active" id="analyze" role="tabpanel">
+        <div class="tab-content" id="mainTabsContent">
+            <!-- Browse Papers Tab -->
+            <div class="tab-pane fade show active" id="browse" role="tabpanel" aria-labelledby="browse-tab">
                             <div class="container mt-4">
-                                <div class="row">
-                                    <div class="col-12">
-                                        <div class="card">
-                                            <div class="card-body">
-                                                <h2 class="card-title mb-4">BugSigDB Analyzer</h2>
-                                                
-                                                <!-- Input Form -->
-                                                <div class="mb-4">
-                                                    <div class="input-group">
-                                                        <input type="text" id="pmid" class="form-control" placeholder="Enter PubMed ID (PMID)">
-                                                        <button id="analyze-button" class="btn btn-primary">Analyze</button>
+                    <h3>Browse Papers - BioAnalyzer Curation Analysis</h3>
+                    <p class="text-muted">
+                        Analyze scientific papers for curation readiness based on 6 essential fields: 
+                        <strong>Host Species</strong>, <strong>Body Site</strong>, <strong>Condition</strong>, 
+                        <strong>Sequencing Type</strong>, <strong>Taxa Level</strong>, and <strong>Sample Size</strong>.
+                    </p>
+
+                    <!-- File Upload Section -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5><i class="fas fa-upload me-2"></i>Upload Papers for Analysis</h5>
                                                     </div>
-                                                </div>
-
-                                                <!-- Loading Indicator -->
-                                                <div id="loading" class="text-center mb-4" style="display: none;">
-                                                    <div class="spinner-border text-primary" role="status">
-                                                        <span class="visually-hidden">Loading...</span>
-                                                    </div>
-                                                    <p class="mt-2">Analyzing paper...</p>
-                                                </div>
-
-                                                <!-- Error Message -->
-                                                <div id="error-message" class="alert alert-danger" style="display: none;"></div>
-
-                                                <!-- Results Container -->
-                                                <div id="results" class="analysis-results">
-                                                    <!-- Paper Metadata -->
-                                                    <div class="paper-metadata mb-4">
-                                                        <h3 id="paper-title" class="h4 mb-3"></h3>
-                                                        <p id="paper-authors" class="text-muted mb-2"></p>
-                                                        <p id="paper-journal" class="text-muted mb-2"></p>
-                                                        <p id="paper-abstract" class="mt-3"></p>
-                                                        <p id="paper-doi" class="text-muted mb-2"></p>
-                                                        <p id="paper-date" class="text-muted mb-2"></p>
-                                                    </div>
-                                                    <div id="mesh-terms-section" class="mb-4"></div>
-
-                                                    <!-- Analysis Results -->
+                        <div class="card-body">
+                            <p class="text-muted">
+                                Upload an Excel file (.xlsx or .xls) containing PMIDs in the first column. 
+                                The system will analyze each paper for BugSigDB curation readiness based on the 6 essential fields.
+                            </p>
                                                     <div class="row">
                                                         <div class="col-md-6">
-                                                            <div class="card mb-4">
-                                                                <div class="card-body">
-                                                                    <h5 class="card-title">Confidence Score</h5>
-                                                                    <div class="confidence-bar">
-                                                                        <div id="confidence-fill" class="confidence-fill" style="width: 0%"></div>
-                                                                    </div>
-                                                                    <p id="confidence-value" class="text-center mt-2">0%</p>
-                                                                </div>
-                                                            </div>
+                                    <input type="file" class="form-control" id="fileInput" accept=".xlsx,.xls">
                                                         </div>
                                                         <div class="col-md-6">
-                                                            <div class="card mb-4">
-                                                                <div class="card-body">
-                                                                    <h5 class="card-title">Category Scores</h5>
-                                                                    <div id="category-scores"></div>
+                                    <button class="btn btn-primary" onclick="uploadFile()">
+                                        <i class="fas fa-upload me-2"></i>Upload and Analyze
+                                    </button>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     </div>
 
-                                                    <!-- Found Terms -->
-                                                    <div class="card mb-4">
-                                                        <div class="card-body">
-                                                            <h5 class="card-title">Found Terms</h5>
-                                                            <div id="found-terms"></div>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Key Findings -->
-                                                    <div class="card mb-4">
-                                                        <div class="card-body">
-                                                            <h5 class="card-title">Key Findings</h5>
-                                                            <ul id="key-findings" class="list-unstyled"></ul>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Suggested Topics -->
-                                                    <div class="card mb-4">
-                                                        <div class="card-body">
-                                                            <h5 class="card-title">Suggested Topics</h5>
-                                                            <ul id="suggested-topics" class="list-unstyled"></ul>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Enhanced Curation Analysis -->
+                    <!-- Single PMID Search -->
                                                     <div class="card mb-4">
                                                         <div class="card-header">
-                                                            <h5 class="mb-0">
-                                                                <i class="fas fa-clipboard-check me-2"></i>Detailed Curation Readiness Analysis
-                                                            </h5>
+                            <h5><i class="fas fa-search me-2"></i>Single Paper Analysis</h5>
                                                         </div>
                                                         <div class="card-body">
-                                                            <!-- Curation Readiness Status -->
-                                                            <div id="curation-readiness-status" class="alert alert-info mb-3">
-                                                                <div id="curation-readiness-text">Analysis in progress...</div>
-                                                            </div>
-                                                            
-                                                            <!-- Factor-Based Analysis -->
-                                                            <div class="row mb-3">
-                                                                <div class="col-md-6">
-                                                                    <h6 class="text-primary">Factor-Based Analysis</h6>
-                                                                    <div class="mb-2">
-                                                                        <strong>General Factors Present:</strong>
-                                                                        <div id="general-factors-list" class="text-muted">Loading...</div>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Human/Animal Factors Present:</strong>
-                                                                        <div id="human-animal-factors-list" class="text-muted">Loading...</div>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Environmental Factors Present:</strong>
-                                                                        <div id="environmental-factors-list" class="text-muted">Loading...</div>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Missing Critical Factors:</strong>
-                                                                        <div id="missing-factors-list" class="text-danger">Loading...</div>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Factor-Based Score:</strong>
-                                                                        <div id="factor-based-score" class="text-primary">Loading...</div>
-                                                                    </div>
-                                                                </div>
-                                                                <div class="col-md-6">
-                                                                    <h6 class="text-primary">Detailed Explanation</h6>
-                                                                    <div id="curation-explanation-text" class="text-muted">Loading...</div>
-                                                                </div>
-                                                            </div>
-                                                            
-                                                            <!-- Microbial Signature Analysis -->
-                                                            <div class="row mb-3">
-                                                                <div class="col-md-6">
-                                                                    <h6 class="text-primary">Microbial Signature Analysis</h6>
-                                                                    <div class="mb-2">
-                                                                        <strong>Presence:</strong>
-                                                                        <span id="microbial-signatures" class="text-muted">Loading...</span>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Data Quality:</strong>
-                                                                        <span id="data-quality" class="text-muted">Loading...</span>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Statistical Significance:</strong>
-                                                                        <span id="statistical-significance" class="text-muted">Loading...</span>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Signature Types:</strong>
-                                                                        <div id="signature-types" class="text-muted">Loading...</div>
-                                                                    </div>
-                                                                    <div class="mb-2">
-                                                                        <strong>Data Completeness:</strong>
-                                                                        <span id="data-completeness" class="text-muted">Loading...</span>
-                                                                    </div>
-                                                                </div>
-                                                                <div class="col-md-6">
-                                                                    <h6 class="text-primary">Specific Reasons</h6>
-                                                                    <ul id="specific-reasons-list" class="text-muted">Loading...</ul>
-                                                                </div>
-                                                            </div>
-                                                            
-                                                            <!-- Examples and Evidence -->
                                                             <div class="row">
-                                                                <div class="col-12">
-                                                                    <h6 class="text-primary">Examples and Evidence</h6>
-                                                                    <ul id="examples-list" class="text-muted">Loading...</ul>
+                                <div class="col-md-8">
+                                    <input type="text" class="form-control" id="singlePmid" placeholder="Enter PMID (e.g., 12345678)">
+                                    <div class="form-text">Enter a single PMID to analyze for curation readiness</div>
                                                                 </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Analysis Details -->
-                                                    <div class="card">
-                                                        <div class="card-body">
-                                                            <h5 class="card-title">Analysis Details</h5>
-                                                            <div class="table-responsive">
-                                                                <table class="table table-bordered paper-analysis-table">
-                                                                    <tbody>
-                                                                        <tr>
-                                                                            <th>PMID</th>
-                                                                            <td id="paper-pmid"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Journal</th>
-                                                                            <td id="paper-journal-short"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Title</th>
-                                                                            <td id="paper-title-short"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Year</th>
-                                                                            <td id="paper-year"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Host</th>
-                                                                            <td id="paper-host"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Body Site</th>
-                                                                            <td id="paper-body-site"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Condition</th>
-                                                                            <td id="paper-condition"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Sequencing Type</th>
-                                                                            <td id="paper-sequencing-type"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>In BugSigDB</th>
-                                                                            <td id="paper-in-bugsigdb"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Signature Probability</th>
-                                                                            <td id="paper-signature-prob"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Sample Size</th>
-                                                                            <td id="paper-sample-size"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Taxa Level</th>
-                                                                            <td id="paper-taxa-level"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Statistical Method</th>
-                                                                            <td id="paper-statistical-method"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>DOI</th>
-                                                                            <td id="paper-doi-detail"></td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <th>Publication Date</th>
-                                                                            <td id="paper-date-detail"></td>
-                                                                        </tr>
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <!-- Paper Q&A Section -->
-                                                    <div class="card mt-4">
-                                                        <div class="card-body">
-                                                            <h4 class="h6 mb-3">Ask Questions About This Paper</h4>
-                                                            <div class="input-group mb-3">
-                                                                <input type="text" id="paper-question" class="form-control" placeholder="Ask a question about this paper...">
-                                                                <button class="btn btn-outline-primary" onclick="askQuestion()">Ask</button>
-                                                            </div>
-                                                            <div id="qa-results"></div>
-                                                            <!-- Chat about paper button -->
-                                                            <div class="mt-3 text-center">
-                                                                <button id="chat-about-paper-btn" class="btn btn-primary" onclick="switchToChatWithPaper()">
-                                                                    <i class="fas fa-comments me-2"></i><span id="chat-btn-text">Continue discussing this paper in Chat</span>
+                                <div class="col-md-4">
+                                    <button class="btn btn-success" onclick="analyzeSinglePaper()">
+                                        <i class="fas fa-microscope me-2"></i>Analyze for Curation
                                                                 </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Browse Tab -->
-                        <div class="tab-pane fade" id="browse" role="tabpanel" aria-labelledby="browse-tab">
-                            <div class="container mt-4">
-                                <h3>Browse Papers</h3>
-                                
-                                <!-- File Upload Section -->
+                    <!-- Batch Search -->
                                 <div class="card mb-4">
                                     <div class="card-header">
-                                        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload PMID List</h5>
+                            <h5><i class="fas fa-list me-2"></i>Batch Analysis</h5>
                                     </div>
                                     <div class="card-body">
-                                        <p class="text-muted mb-3">Upload an Excel file (XLS/XLSX) containing PMIDs to check their curation statuses.</p>
-                                        <div class="mb-3">
-                                            <label for="pmid-file-upload" class="form-label">Select Excel File:</label>
-                                            <input type="file" class="form-control" id="pmid-file-upload" accept=".xls,.xlsx">
-                                            <div class="form-text">Supported formats: XLS, XLSX. The file should contain PMIDs in any column.</div>
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <textarea class="form-control" id="batchPmids" rows="3" placeholder="Enter multiple PMIDs, one per line or separated by commas"></textarea>
+                                    <div class="form-text">Enter multiple PMIDs for batch curation analysis</div>
                                         </div>
-                                        <button class="btn btn-primary" onclick="uploadPmidsFile()">
-                                            <i class="fas fa-upload me-2"></i>Upload and Analyze PMIDs
+                                <div class="col-md-4">
+                                    <button class="btn btn-info" onclick="analyzeBatchPapers()">
+                                        <i class="fas fa-cogs me-2"></i>Batch Analyze
                                         </button>
-                                        <div id="upload-status" class="mt-3"></div>
+                                    </div>
+                                </div>
                                     </div>
                                 </div>
                                 
-                                <!-- Manual PMID Input Section -->
-                                <div class="card mb-4">
-                                    <div class="card-header">
-                                        <h5 class="mb-0"><i class="fas fa-edit me-2"></i>Manual PMID Input</h5>
-                                    </div>
-                                    <div class="card-body">
-                                        <div id="browse-pmid-input" class="mb-3">
-                                            <label for="user-pmid-list" class="form-label">Enter PMIDs (comma or newline separated):</label>
-                                            <textarea id="user-pmid-list" class="form-control mb-2" rows="2" placeholder="e.g. 12345678, 23456789 or one per line"></textarea>
-                                            <button class="btn btn-outline-primary mb-2" onclick="analyzeUserPmids()">
-                                                <i class="fas fa-search me-2"></i>Analyze Entered PMIDs
+                    <!-- Results Section -->
+                    <div id="results-section" style="display: none;">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5><i class="fas fa-chart-bar me-2"></i>BioAnalyzer Curation Analysis Results</h5>
+                                <div>
+                                    <button class="btn btn-outline-success btn-sm me-2" onclick="exportResults()">
+                                        <i class="fas fa-download me-2"></i>Export CSV
+                                            </button>
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="clearResults()">
+                                        <i class="fas fa-trash me-2"></i>Clear
                                             </button>
                                         </div>
                                     </div>
+                            <div class="card-body">
+                                <div id="loading" style="display: none;">
+                                    <div class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
                                 </div>
-                                
-                                <!-- Controls Section -->
-                                <div class="card mb-4">
-                                    <div class="card-header">
-                                        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Controls</h5>
-                                    </div>
-                                    <div class="card-body">
-                                        <div id="browse-controls" class="mb-3">
-                                            <button class="btn btn-primary" onclick="loadBrowsePapers()">
-                                                <i class="fas fa-database me-2"></i>Load All Papers
-                                            </button>
-                                            <button class="btn btn-success ms-2" onclick="exportBrowseResults()">
-                                                <i class="fas fa-download me-2"></i>Export Filtered Results
-                                            </button>
-                                            <button class="btn btn-info ms-2" onclick="exportAnalysisReport()">
-                                                <i class="fas fa-file-excel me-2"></i>Export Analysis Report
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div id="browse-table-container"></div>
+                                        <p class="mt-2">Analyzing papers for BioAnalyzer curation readiness...</p>
                             </div>
                         </div>
-
-                        <!-- Chat Tab -->
-                        <div class="tab-pane fade" id="chat" role="tabpanel">
-                            <div id="connection-status" class="alert mb-3"></div>
-                            
-                            <!-- Current paper indicator -->
-                            <div id="current-paper-indicator" class="alert alert-info mb-3" style="display: none;">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <i class="fas fa-file-alt me-2"></i>
-                                        <span id="current-paper-title">Discussing paper</span>
+                                <div id="results-container">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead class="table-dark">
+                                                <tr>
+                                                    <th>PMID</th>
+                                                    <th>Title</th>
+                                                    <th>Host Species</th>
+                                                    <th>Body Site</th>
+                                                    <th>Condition</th>
+                                                    <th>Sequencing Type</th>
+                                                    <th>Taxa Level</th>
+                                                    <th>Sample Size</th>
+                                                    <th>Curation Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="results-table-body">
+                                                <!-- Results will be populated here -->
+                                            </tbody>
+                                        </table>
                                     </div>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="clearCurrentPaperContext()">
-                                        <i class="fas fa-times"></i> Clear paper context
-                                    </button>
                                 </div>
-                            </div>
+                                    </div>
+                                </div>
                             
-                            <div class="chat-tab-header mb-3">
-                                <input type="text" id="chat-search" class="form-control" placeholder="Search chat history...">
+                    <!-- Curation Statistics Section -->
+                    <div class="card mt-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Curation Analysis Statistics</h5>
+                            <button class="btn btn-outline-primary btn-sm" onclick="refreshCurationStats()">
+                                <i class="fas fa-sync-alt me-2"></i>Refresh
+                            </button>
                             </div>
-                            <div id="chat-container" class="chat-container">
-                                <button class="download-chat" onclick="downloadChat()">Download Chat</button>
-                            </div>
-                            <div class="chat-input-container">
-                                <input type="text" id="message-input" placeholder="Type your message..." disabled>
-                                <button id="send-button" onclick="sendMessage()" disabled>Send</button>
-                            </div>
+                        <div class="card-body">
+                            <div id="curation-stats-container">
+                                <div class="text-center text-muted">
+                                    <i class="fas fa-chart-line fa-2x mb-2"></i>
+                                    <p>Click "Refresh" to load curation statistics</p>
                         </div>
                     </div>
                 </div>
@@ -1983,226 +195,53 @@
         </div>
     </div>
 
-    <!-- Right Sidebar -->
-    <div class="sidebar right-sidebar">
-        <div class="sidebar-header">Page Settings</div>
-        
-        <div class="settings-group">
-            <div class="settings-label">Font Size</div>
-            <input type="range" class="form-range" id="fontSize" min="12" max="24" value="16">
-            <div class="settings-value" id="fontSizeValue">16px</div>
+            <!-- Chat Assistant Tab -->
+            <div class="tab-pane fade" id="chat" role="tabpanel" aria-labelledby="chat-tab">
+                <div class="container mt-4">
+                    <h3>Chat Assistant</h3>
+                    <p class="text-muted">Ask questions about your analysis results or get help with the system.</p>
+                    
+                    <div class="card">
+                        <div class="card-body">
+                            <div id="chat-messages" class="mb-3" style="height: 400px; overflow-y: auto; border: 1px solid #dee2e6; padding: 15px; background-color: #f8f9fa;">
+                                <div class="text-center text-muted">
+                                    <i class="fas fa-comments fa-2x mb-2"></i>
+                                    <p>Start a conversation by typing a message below</p>
+        </div>
         </div>
         
-        <div class="settings-group">
-            <div class="settings-label">Zoom Level</div>
-            <input type="range" class="form-range" id="zoomLevel" min="50" max="150" value="100">
-            <div class="settings-value" id="zoomLevelValue">100%</div>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="chat-input" placeholder="Type your message here..." onkeypress="handleChatKeyPress(event)">
+                                <button class="btn btn-primary" onclick="sendMessage()">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
         </div>
-        
-        <div class="settings-group">
-            <div class="settings-label">Theme</div>
-            <select class="form-select" id="themeSelect">
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="auto">System Default</option>
-            </select>
-        </div>
-
-        <div class="settings-group">
-            <div class="settings-label">Table Display</div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="compactTable" checked>
-                <label class="form-check-label" for="compactTable">
-                    Compact View
-                </label>
             </div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="showConfidence" checked>
-                <label class="form-check-label" for="showConfidence">
-                    Show Confidence Scores
-                </label>
             </div>
         </div>
-
-        <div class="settings-group">
-            <div class="settings-label">Chat Display</div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="showTimestamps" checked>
-                <label class="form-check-label" for="showTimestamps">
-                    Show Timestamps
-                </label>
-            </div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="autoScroll" checked>
-                <label class="form-check-label" for="autoScroll">
-                    Auto-scroll to Latest
-                </label>
             </div>
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="app-footer">
-        <div class="footer-content">
-            <div class="footer-logos">
-                <div class="footer-logo-item">
-                    <img src="/static/images/bio.png" alt="Bioconductor" class="logo-img">
-                    <p class="footer-logo-label">Bioconductor</p>
+    <!-- Field Details Modal -->
+    <div class="modal fade" id="fieldDetailsModal" tabindex="-1" aria-labelledby="fieldDetailsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="fieldDetailsModalLabel">Field Analysis Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="footer-logo-item">
-                    <img src="/static/images/image.png" alt="BugSigDB Logo" class="logo-img">
-                    <p class="footer-logo-label">BugSigDB</p>
+                <div class="modal-body field-details-modal">
+                    <div id="fieldDetailsContent"></div>
                 </div>
-                <div class="footer-logo-item">
-                    <img src="/static/images/wl.png" alt="Waldron Lab Logo" class="logo-img">
-                    <p class="footer-logo-label">Waldron Lab</p>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
-                <div class="footer-logo-item">
-                    <img src="/static/images/un.png" alt="CUNY Logo" class="logo-img">
-                    <p class="footer-logo-label">CUNY</p>
                 </div>
             </div>
-            
-            <div class="footer-divider"></div>
-            
-            <div class="footer-links">
-                <a href="https://bugsigdb.org/about" class="footer-link" target="_blank">
-                    <i class="fas fa-info-circle me-2"></i>About BugSigDB Analyzer
-                </a>
-                <a href="https://waldronlab.io/" class="footer-link" target="_blank">
-                    <i class="fas fa-flask me-2"></i>About Waldron Lab
-                </a>
-                <a href="https://bugsigdb.org/documentation" class="footer-link" target="_blank">
-                    <i class="fas fa-book me-2"></i>Documentation
-                </a>
-                <a href="https://bugsigdb.org/contact" class="footer-link" target="_blank">
-                    <i class="fas fa-envelope me-2"></i>Contact
-                </a>
             </div>
             
-            <div class="footer-info">
-                <div class="footer-powered-by">
-                    <i class="fas fa-cog fa-spin"></i>
-                    <span>Powered by AI and Advanced Bioinformatics</span>
-                </div>
-                <p class="mt-2 mb-0">© 2024 BugSigDB Analyzer. A collaborative effort in microbiome research.</p>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Add necessary JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-r.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-javascript.min.js"></script>
-    <!-- Add Whirl library -->
-    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/react-whirl@1.0.0/dist/index.js"></script>
-
-    <script src="/static/js/app.js?v=3"></script>
-    <script src="/static/js/curation-analysis.js?v=2"></script>
-    <span id="paper-date" style="display:none"></span>
-    <span id="paper-doi" style="display:none"></span>
-    <span id="analysis-status" style="display:none"></span>
-    <span id="tokens-generated" style="display:none"></span>
-
-    <!-- Responsive Sidebar JavaScript -->
-    <script>
-        // Sidebar toggle functionality
-        function toggleSidebar(side) {
-            const sidebar = document.querySelector(`.${side}-sidebar`);
-            const overlay = document.querySelector('.sidebar-overlay');
-            
-            if (sidebar.classList.contains('active')) {
-                closeSidebar(side);
-            } else {
-                openSidebar(side);
-            }
-        }
-        
-        function openSidebar(side) {
-            const sidebar = document.querySelector(`.${side}-sidebar`);
-            const overlay = document.querySelector('.sidebar-overlay');
-            
-            // Close other sidebar if open
-            const otherSide = side === 'left' ? 'right' : 'left';
-            const otherSidebar = document.querySelector(`.${otherSide}-sidebar`);
-            if (otherSidebar.classList.contains('active')) {
-                closeSidebar(otherSide);
-            }
-            
-            sidebar.classList.add('active');
-            overlay.classList.add('active');
-        }
-        
-        function closeSidebar(side) {
-            const sidebar = document.querySelector(`.${side}-sidebar`);
-            const overlay = document.querySelector('.sidebar-overlay');
-            
-            sidebar.classList.remove('active');
-            overlay.classList.remove('active');
-        }
-        
-        function closeAllSidebars() {
-            const sidebars = document.querySelectorAll('.sidebar');
-            const overlay = document.querySelector('.sidebar-overlay');
-            
-            sidebars.forEach(sidebar => {
-                sidebar.classList.remove('active');
-            });
-            overlay.classList.remove('active');
-        }
-        
-        // Handle window resize
-        window.addEventListener('resize', function() {
-            if (window.innerWidth >= 993) {
-                // On larger screens, ensure sidebars are visible
-                const sidebars = document.querySelectorAll('.sidebar');
-                const overlay = document.querySelector('.sidebar-overlay');
-                
-                sidebars.forEach(sidebar => {
-                    sidebar.classList.remove('active');
-                });
-                overlay.classList.remove('active');
-            }
-        });
-        
-        // Close sidebars when clicking outside on mobile
-        document.addEventListener('click', function(event) {
-            if (window.innerWidth < 993) {
-                const sidebars = document.querySelectorAll('.sidebar');
-                const toggleButtons = document.querySelectorAll('.sidebar-toggle');
-                const overlay = document.querySelector('.sidebar-overlay');
-                
-                let clickedInsideSidebar = false;
-                let clickedOnToggle = false;
-                
-                sidebars.forEach(sidebar => {
-                    if (sidebar.contains(event.target)) {
-                        clickedInsideSidebar = true;
-                    }
-                });
-                
-                toggleButtons.forEach(button => {
-                    if (button.contains(event.target)) {
-                        clickedOnToggle = true;
-                    }
-                });
-                
-                if (!clickedInsideSidebar && !clickedOnToggle && !overlay.contains(event.target)) {
-                    closeAllSidebars();
-                }
-            }
-        });
-        
-        // Handle escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                closeAllSidebars();
-            }
-        });
-    </script>
+    <script src="js/app.js"></script>
 </body>
 </html>

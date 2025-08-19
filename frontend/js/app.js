@@ -5,6 +5,594 @@ window.chatHistory = [];
 window.ws = null;
 window.isConnected = false;
 
+// Global functions for HTML onclick attributes
+window.analyzeSinglePaper = async function() {
+    const pmid = document.getElementById('singlePmid').value.trim();
+    if (!pmid) {
+        alert('Please enter a PMID');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('results-section').style.display = 'block';
+    
+    try {
+        const data = await analyzePaperEnhanced(pmid);
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Display results
+        const results = [{
+            pmid: pmid,
+            title: data.title || 'N/A',
+            authors: data.authors || 'N/A',
+            journal: data.journal || 'N/A',
+            date: data.date || 'N/A',
+            enhanced_analysis: data.enhanced_analysis || {}
+        }];
+        
+        displayBrowseResults(results);
+    } catch (error) {
+        console.error('Error analyzing single paper:', error);
+        document.getElementById('results-container').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error analyzing paper: ${error.message}
+            </div>
+        `;
+    } finally {
+        document.getElementById('loading').style.display = 'none';
+    }
+};
+
+window.analyzeBatchPapers = async function() {
+    const pmidsText = document.getElementById('batchPmids').value.trim();
+    if (!pmidsText) {
+        alert('Please enter PMIDs');
+        return;
+    }
+    
+    // Parse PMIDs (support both comma-separated and newline-separated)
+    const pmids = pmidsText.split(/[,\n]/).map(pmid => pmid.trim()).filter(pmid => pmid);
+    if (pmids.length === 0) {
+        alert('Please enter valid PMIDs');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('results-section').style.display = 'block';
+    
+    try {
+        const response = await fetch('/enhanced_analysis_batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ pmids: pmids })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Display results
+        displayBrowseResults(data.results || []);
+    } catch (error) {
+        console.error('Error analyzing batch papers:', error);
+        document.getElementById('results-container').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error analyzing batch papers: ${error.message}
+            </div>
+        `;
+    } finally {
+        document.getElementById('loading').style.display = 'none';
+    }
+};
+
+window.uploadFile = function() {
+    const fileInput = document.getElementById('fileInput');
+    if (!fileInput || !fileInput.files[0]) {
+        alert('Please select a file first');
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Show loading
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('results-section').style.display = 'block';
+    
+    fetch('/upload_csv', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Display results
+        if (data.results && data.results.length > 0) {
+            displayBrowseResults(data.results);
+        } else {
+            document.getElementById('results-container').innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    File uploaded successfully, but no results to display.
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading file:', error);
+        document.getElementById('results-container').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error uploading file: ${error.message}
+            </div>
+        `;
+    })
+    .finally(() => {
+        document.getElementById('loading').style.display = 'none';
+    });
+};
+
+window.refreshCurationStats = async function() {
+    const statsContainer = document.getElementById('curation-stats-container');
+    statsContainer.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2 text-muted">Loading curation statistics...</p>
+        </div>
+    `;
+    
+    try {
+        const response = await fetch('/curation/statistics');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        displayCurationStats(data);
+    } catch (error) {
+        console.error('Error fetching curation statistics:', error);
+        statsContainer.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading curation statistics: ${error.message}
+            </div>
+        `;
+    }
+};
+
+window.exportResults = function() {
+    const table = document.getElementById('results-table');
+    if (!table) {
+        alert('No results to export');
+        return;
+    }
+
+    const headers = ['PMID', 'Title', 'Host Species', 'Body Site', 'Condition', 'Sequencing Type', 'Taxa Level', 'Sample Size', 'Curation Ready'];
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => !row.classList.contains('error-row'));
+    
+    let csvContent = headers.join(',') + '\n';
+    
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        const rowData = Array.from(cells).map(cell => {
+            // Extract text content and clean it
+            let text = cell.textContent || cell.innerText || '';
+            // Remove status indicators and extra text
+            text = text.replace(/[✓⚠✗]/g, '').trim();
+            // Handle the curation ready column
+            if (text.includes('Ready') || text.includes('Not Ready')) {
+                text = text.includes('Ready') && !text.includes('Not') ? 'Ready' : 'Not Ready';
+            }
+            // Escape quotes and wrap in quotes if contains comma
+            if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+                text = '"' + text.replace(/"/g, '""') + '"';
+            }
+            return text;
+        });
+        csvContent += rowData.join(',') + '\n';
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'bioanalyzer_curation_analysis.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+window.clearResults = function() {
+    if (confirm('Are you sure you want to clear all results?')) {
+        document.getElementById('results-table-body').innerHTML = '';
+        const resultsContainer = document.getElementById('results-table-container');
+        if (resultsContainer) {
+            resultsContainer.style.display = 'none';
+        }
+        const errorSection = document.getElementById('browse-error');
+        if (errorSection) {
+            errorSection.style.display = 'none';
+        }
+    }
+};
+
+// Helper function to create enhanced field cells with status indicators
+function getFieldCell(fieldData, valueKey, fieldName) {
+    if (!fieldData) {
+        return '<span class="text-muted">No data</span>';
+    }
+    
+    const value = fieldData[valueKey] || 'Unknown';
+    const status = fieldData.status || 'UNKNOWN';
+    const confidence = fieldData.confidence || 0.0;
+    const reasonIfMissing = fieldData.reason_if_missing || '';
+    const suggestions = fieldData.suggestions_for_curation || '';
+    
+    let statusBadge = '';
+    let tooltipContent = '';
+    
+    switch (status) {
+        case 'PRESENT':
+            statusBadge = '<span class="badge bg-success me-1" title="Field is present">✓</span>';
+            tooltipContent = `Confidence: ${(confidence * 100).toFixed(1)}%`;
+            break;
+        case 'PARTIALLY_PRESENT':
+            statusBadge = '<span class="badge bg-warning me-1" title="Field is partially present">⚠</span>';
+            tooltipContent = `Partial data available. Confidence: ${(confidence * 100).toFixed(1)}%`;
+            break;
+        case 'ABSENT':
+            statusBadge = '<span class="text-muted me-1" title="Field is missing">✗</span>';
+            tooltipContent = `Missing: ${reasonIfMissing}. Suggestion: ${suggestions}`;
+            break;
+        default:
+            statusBadge = '<span class="badge bg-secondary me-1" title="Status unknown">?</span>';
+            tooltipContent = 'Status unknown';
+    }
+    
+    return `
+        <div class="d-flex align-items-center" data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltipContent}">
+            ${statusBadge}
+            <span class="${status === 'ABSENT' ? 'text-muted' : ''}">${value}</span>
+        </div>
+    `;
+}
+
+// Function to show detailed field information in a modal
+function showFieldDetails(result) {
+    const analysis = result.enhanced_analysis;
+    const metadata = result.metadata;
+    
+    let modalHtml = `
+        <div class="modal-header">
+            <h5 class="modal-title">Field Analysis Details - PMID ${result.pmid}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <h6>Paper Information</h6>
+            <p><strong>Title:</strong> ${metadata.title || 'No title'}</p>
+            <p><strong>Curation Status:</strong> 
+                <span class="badge ${result.curation_ready ? 'bg-success' : 'bg-warning'}">
+                    ${result.curation_ready ? 'Ready for Curation' : 'Not Ready for Curation'}
+                </span>
+            </p>
+            
+            <hr>
+            <h6>Field Analysis Details</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Status</th>
+                            <th>Value</th>
+                            <th>Confidence</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+    
+    const fieldLabels = {
+        "host_species": "Host Species",
+        "body_site": "Body Site", 
+        "condition": "Condition",
+        "sequencing_type": "Sequencing Type",
+        "taxa_level": "Taxa Level",
+        "sample_size": "Sample Size"
+    };
+    
+    const fieldKeys = {
+        "host_species": "primary",
+        "body_site": "site",
+        "condition": "description", 
+        "sequencing_type": "method",
+        "taxa_level": "level",
+        "sample_size": "size"
+    };
+    
+    for (const [fieldName, fieldLabel] of Object.entries(fieldLabels)) {
+        const fieldData = analysis[fieldName] || {};
+        const valueKey = fieldKeys[fieldName];
+        const value = fieldData[valueKey] || 'Unknown';
+        const status = fieldData.status || 'UNKNOWN';
+        const confidence = fieldData.confidence || 0.0;
+        const reasonIfMissing = fieldData.reason_if_missing || '';
+        const suggestions = fieldData.suggestions_for_curation || '';
+        
+        let statusBadge = '';
+        let details = '';
+        
+        switch (status) {
+            case 'PRESENT':
+                statusBadge = '<span class="badge bg-success">Present</span>';
+                details = `Field is complete with ${(confidence * 100).toFixed(1)}% confidence`;
+                break;
+            case 'PARTIALLY_PRESENT':
+                statusBadge = '<span class="badge bg-warning">Partial</span>';
+                details = `Partial information available. Confidence: ${(confidence * 100).toFixed(1)}%`;
+                break;
+            case 'ABSENT':
+                statusBadge = '<span class="badge bg-danger">Missing</span>';
+                details = `<strong>Reason:</strong> ${reasonIfMissing}<br><strong>Suggestion:</strong> ${suggestions}`;
+                break;
+            default:
+                statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+                details = 'Status could not be determined';
+        }
+        
+        modalHtml += `
+            <tr>
+                <td><strong>${fieldLabel}</strong></td>
+                <td>${statusBadge}</td>
+                <td>${value}</td>
+                <td>${(confidence * 100).toFixed(1)}%</td>
+                <td>${details}</td>
+            </tr>
+        `;
+    }
+    
+    modalHtml += `
+                    </tbody>
+                </table>
+            </div>
+            
+            ${analysis.curation_preparation_summary ? `
+                <hr>
+                <h6>Curation Preparation Summary</h6>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    ${analysis.curation_preparation_summary}
+                </div>
+            ` : ''}
+            
+            ${analysis.missing_fields && analysis.missing_fields.length > 0 ? `
+                <hr>
+                <h6>Missing Fields Summary</h6>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>${analysis.missing_fields.length} field(s) missing:</strong> ${analysis.missing_fields.join(', ')}
+                    <br><small>Click on individual fields above for specific details and suggestions.</small>
+                </div>
+            ` : ''}
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+    `;
+    
+    // Create and show modal
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.id = 'field-details-modal';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                ${modalHtml}
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    // Clean up modal after it's hidden
+    modal.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(modal);
+    });
+}
+
+// Function to display browse results
+function displayBrowseResults(data) {
+    const { batch_results, summary } = data;
+    
+    const tbody = document.getElementById('results-table-body');
+    if (!tbody) {
+        console.error('Results table body not found');
+        return;
+    }
+    
+    tbody.innerHTML = '';
+    
+    batch_results.forEach(result => {
+        if (result.status === 'error') {
+            const row = tbody.insertRow();
+            row.className = 'table-danger';
+            row.innerHTML = `
+                <td>${result.pmid}</td>
+                <td colspan="8">
+                    <span class="text-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        ${result.error}
+                    </span>
+                </td>
+            `;
+        } else {
+            const row = tbody.insertRow();
+            row.className = result.curation_ready ? 'table-success' : 'table-warning';
+            
+            const analysis = result.enhanced_analysis;
+            const metadata = result.metadata;
+            
+            // Enhanced display with field status and missing field information
+            const hostSpeciesCell = getFieldCell(analysis.host_species, 'primary', 'host_species');
+            const bodySiteCell = getFieldCell(analysis.body_site, 'site', 'body_site');
+            const conditionCell = getFieldCell(analysis.condition, 'description', 'condition');
+            const sequencingTypeCell = getFieldCell(analysis.sequencing_type, 'method', 'sequencing_type');
+            const taxaLevelCell = getFieldCell(analysis.taxa_level, 'level', 'taxa_level');
+            const sampleSizeCell = getFieldCell(analysis.sample_size, 'size', 'sample_size');
+            
+            row.innerHTML = `
+                <td><strong>${result.pmid}</strong></td>
+                <td>${metadata.title ? metadata.title.substring(0, 80) + '...' : 'No title'}</td>
+                <td>${hostSpeciesCell}</td>
+                <td>${bodySiteCell}</td>
+                <td>${conditionCell}</td>
+                <td>${sequencingTypeCell}</td>
+                <td>${taxaLevelCell}</td>
+                <td>${sampleSizeCell}</td>
+                <td>
+                    <span class="badge ${result.curation_ready ? 'bg-success' : 'bg-warning'}">
+                        ${result.curation_ready ? 'Ready' : 'Not Ready'}
+                    </span>
+                    ${!result.curation_ready && analysis.missing_fields && analysis.missing_fields.length > 0 ? 
+                        `<br><small class="text-muted">Missing: ${analysis.missing_fields.length} fields</small>` : ''}
+                </td>
+            `;
+            
+            // Add click handler to show detailed field information
+            row.addEventListener('click', () => showFieldDetails(result));
+        }
+    });
+}
+
+// Function to display curation statistics
+function displayCurationStats(data) {
+    const statsContainer = document.getElementById('curation-stats-container');
+    
+    const { overall_statistics, field_statistics } = data;
+    
+    let html = `
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="text-center p-3 bg-light rounded">
+                    <h4 class="text-primary mb-1">${overall_statistics.total_papers_analyzed}</h4>
+                    <small class="text-muted">Total Papers Analyzed</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-center p-3 bg-light rounded">
+                    <h4 class="text-success mb-1">${overall_statistics.papers_ready_for_curation}</h4>
+                    <small class="text-muted">Ready for Curation</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-center p-3 bg-light rounded">
+                    <h4 class="text-info mb-1">${(overall_statistics.overall_readiness_rate * 100).toFixed(1)}%</h4>
+                    <small class="text-muted">Overall Readiness Rate</small>
+                </div>
+            </div>
+        </div>
+        
+        <h6 class="mb-3">Field Analysis Performance</h6>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Ready</th>
+                        <th>Total</th>
+                        <th>Readiness Rate</th>
+                        <th>Avg Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    // Display statistics for each of the 6 essential fields
+    const fieldLabels = {
+        "host_species": "Host Species",
+        "body_site": "Body Site",
+        "condition": "Condition",
+        "sequencing_type": "Sequencing Type",
+        "taxa_level": "Taxa Level",
+        "sample_size": "Sample Size"
+    };
+    
+    for (const [fieldName, fieldData] of Object.entries(field_statistics)) {
+        const readinessRate = (fieldData.readiness_rate * 100).toFixed(1);
+        const avgConfidence = (fieldData.avg_confidence * 100).toFixed(1);
+        
+        html += `
+            <tr>
+                <td><strong>${fieldLabels[fieldName] || fieldName}</strong></td>
+                <td><span class="badge bg-success">${fieldData.ready}</span></td>
+                <td>${fieldData.total}</td>
+                <td>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar ${fieldData.readiness_rate >= 0.7 ? 'bg-success' : fieldData.readiness_rate >= 0.4 ? 'bg-warning' : 'bg-danger'}" 
+                             style="width: ${readinessRate}%">
+                            ${readinessRate}%
+                        </div>
+                    </div>
+                </td>
+                <td>${avgConfidence}%</td>
+            </tr>
+        `;
+    }
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="mt-3 text-muted small">
+            <i class="fas fa-info-circle me-1"></i>
+            Statistics show how well the AI analysis is identifying the 6 essential BugSigDB curation fields.
+        </div>
+    `;
+    
+    statsContainer.innerHTML = html;
+}
+
+// Enhanced analysis function for Browse Papers tab
+async function analyzePaperEnhanced(pmid) {
+    console.log(`Running enhanced analysis for PMID: ${pmid}`);
+    
+    try {
+        const response = await fetch(`/enhanced_analysis/${pmid}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('Enhanced analysis response:', data);
+        return data;
+    } catch (error) {
+        console.error('Error in enhanced analysis:', error);
+        throw error;
+    }
+}
+
 // Display chat message - global function
 function displayChatMessage(message, type) {
     console.log("=== displayChatMessage called ===");
@@ -948,22 +1536,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Initialize WebSocket
         initWebSocket();
 
-        // Add event listeners
-        const analyzeButton = document.getElementById('analyze-button');
-        if (analyzeButton) {
-            console.log("Attaching analyzePaper to analyzeButton", analyzeButton);
-            analyzeButton.addEventListener('click', analyzePaper);
-        }
-
-        const pmidInput = document.getElementById('pmid');
-        if (pmidInput) {
-            pmidInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    analyzePaper();
-                }
-            });
-        }
-
+        // Add event listeners - removed old analyze button and pmid input references
+        
         const sendButton = document.getElementById('send-button');
         const messageInput = document.getElementById('message-input');
         if (sendButton && messageInput) {
@@ -975,20 +1549,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Create loading indicator if it doesn't exist
-        if (analyzeTab && !document.getElementById('loading')) {
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = 'loading';
-            loadingDiv.className = 'text-center mt-4';
-            loadingDiv.style.display = 'none';
-            loadingDiv.innerHTML = `
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2">Analyzing paper...</p>
-            `;
-            analyzeTab.appendChild(loadingDiv);
-        }
+        // Remove old loading indicator creation - no longer needed
     }
 
     // Initialize the UI when the DOM is loaded
@@ -1236,64 +1797,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize enhanced tab management
     document.addEventListener('DOMContentLoaded', initializeEnhancedTabManagement);
 
-    // Page Settings Event Handlers
-    const fontSizeSlider = document.getElementById('fontSize');
-    const fontSizeValue = document.getElementById('fontSizeValue');
-    if (!fontSizeSlider || !fontSizeValue) {
-        console.warn('Font size slider or value element missing');
-    } else {
-        fontSizeSlider.addEventListener('input', function() {
-            const size = this.value;
-            console.log('Font size changed to:', size);
-            document.body.style.fontSize = size + 'px';
-            fontSizeValue.textContent = size + 'px';
-            localStorage.setItem('fontSize', size);
-        });
-    }
-    const zoomSlider = document.getElementById('zoomLevel');
-    const zoomValue = document.getElementById('zoomLevelValue');
-    if (!zoomSlider || !zoomValue) {
-        console.warn('Zoom slider or value element missing');
-    } else {
-        zoomSlider.addEventListener('input', function() {
-            const zoom = this.value;
-            console.log('Zoom level changed to:', zoom);
-            document.body.style.zoom = zoom + '%';
-            zoomValue.textContent = zoom + '%';
-            localStorage.setItem('zoomLevel', zoom);
-        });
-    }
-    const themeSelect = document.getElementById('themeSelect');
-    if (!themeSelect) {
-        console.warn('Theme select element missing');
-    } else {
-        themeSelect.addEventListener('change', function() {
-            const theme = this.value;
-            console.log('Theme changed to:', theme);
-            document.body.classList.remove('dark', 'light');
-            document.body.classList.add(theme);
-            localStorage.setItem('theme', theme);
-        });
-    }
-    // Load saved settings
-    const savedFontSize = localStorage.getItem('fontSize') || '16';
-    const savedZoom = localStorage.getItem('zoomLevel') || '100';
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    if (fontSizeSlider && fontSizeValue) {
-        fontSizeSlider.value = savedFontSize;
-        document.body.style.fontSize = savedFontSize + 'px';
-        fontSizeValue.textContent = savedFontSize + 'px';
-    }
-    if (zoomSlider && zoomValue) {
-        zoomSlider.value = savedZoom;
-        document.body.style.zoom = savedZoom + '%';
-        zoomValue.textContent = savedZoom + '%';
-    }
-    if (themeSelect) {
-        themeSelect.value = savedTheme;
-        document.body.classList.remove('dark', 'light');
-        document.body.classList.add(savedTheme);
-    }
+    // Page Settings Event Handlers - Removed as these elements don't exist in current interface
+    // Font size, zoom, and theme controls were removed during refactoring
 
     function getScoreColor(score) {
         const percentage = score * 100;
@@ -1396,13 +1901,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return element;
     }
 
-    const analyzeButton = document.getElementById('analyze-button');
-    if (analyzeButton) {
-        analyzeButton.addEventListener('click', analyzePaper);
-        console.log('Analyze button listener registered');
-    } else {
-        console.error('Analyze button not found');
-    }
+    // Remove old analyze button references - no longer needed
+    
     initWebSocket();
 
     // Download chat as .txt file
@@ -1557,7 +2057,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make switchToChatWithPaper globally available
     window.switchToChatWithPaper = switchToChatWithPaper;
 
-    window.analyzePaper = analyzePaper;
+    // Remove old analyzePaper reference - no longer needed
 
     // === Browse Papers Tab Logic ===
     window.loadBrowsePapers = async function() {
@@ -1784,6 +2284,754 @@ document.addEventListener('DOMContentLoaded', () => {
             browseTable.innerHTML = `<div class="alert alert-danger">Error analyzing PMIDs: ${error.message}</div>`;
         }
     }
+
+    // New Browse Papers functionality
+    async function searchSinglePmid() {
+        const pmidInput = document.getElementById('single-pmid-input');
+        const pmid = pmidInput.value.trim();
+        
+        if (!pmid) {
+            showBrowseError('Please enter a valid PubMed ID (PMID)');
+            return;
+        }
+        
+        if (!/^\d+$/.test(pmid)) {
+            showBrowseError('PMID must contain only numbers');
+            return;
+        }
+        
+        await searchPmids([pmid]);
+    }
+
+    async function searchBatchPmids() {
+        const batchInput = document.getElementById('batch-pmids-input');
+        const pmidsText = batchInput.value.trim();
+        
+        if (!pmidsText) {
+            showBrowseError('Please enter PMIDs for batch search');
+            return;
+        }
+        
+        const pmids = pmidsText.split(/[\n,]/).map(pmid => pmid.trim()).filter(pmid => pmid);
+        
+        if (pmids.length === 0) {
+            showBrowseError('No valid PMIDs found');
+            return;
+        }
+        
+        if (pmids.length > 50) {
+            showBrowseError('Batch search limited to 50 PMIDs at a time');
+            return;
+        }
+        
+        await searchPmids(pmids);
+    }
+
+    async function searchPmids(pmids) {
+        showBrowseLoading(true);
+        hideBrowseError();
+        hideResultsTable();
+        
+        try {
+            console.log(`Starting search for ${pmids.length} PMIDs`);
+            
+            // Call the enhanced analysis batch endpoint
+            const response = await fetch('/enhanced_analysis_batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ pmids: pmids })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('Search response:', data);
+            
+            // Display results in the table
+            displayBrowseResults(data);
+            
+            // Show results table
+            showResultsTable();
+            
+        } catch (error) {
+            console.error('Search error:', error);
+            showBrowseError(`Search failed: ${error.message}`);
+        } finally {
+            showBrowseLoading(false);
+        }
+    }
+
+    function displayBrowseResults(data) {
+        const { batch_results, summary } = data;
+        
+        const tbody = document.getElementById('results-table-body');
+        tbody.innerHTML = '';
+        
+        batch_results.forEach(result => {
+            if (result.status === 'error') {
+                const row = tbody.insertRow();
+                row.className = 'table-danger';
+                row.innerHTML = `
+                    <td>${result.pmid}</td>
+                    <td colspan="8">
+                        <span class="text-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${result.error}
+                        </span>
+                    </td>
+                `;
+            } else {
+                const row = tbody.insertRow();
+                row.className = result.curation_ready ? 'table-success' : 'table-warning';
+                
+                const analysis = result.enhanced_analysis;
+                const metadata = result.metadata;
+                
+                // Enhanced display with field status and missing field information
+                const hostSpeciesCell = getFieldCell(analysis.host_species, 'primary', 'host_species');
+                const bodySiteCell = getFieldCell(analysis.body_site, 'site', 'body_site');
+                const conditionCell = getFieldCell(analysis.condition, 'description', 'condition');
+                const sequencingTypeCell = getFieldCell(analysis.sequencing_type, 'method', 'sequencing_type');
+                const taxaLevelCell = getFieldCell(analysis.taxa_level, 'level', 'taxa_level');
+                const sampleSizeCell = getFieldCell(analysis.sample_size, 'size', 'sample_size');
+                
+                row.innerHTML = `
+                    <td><strong>${result.pmid}</strong></td>
+                    <td>${metadata.title ? metadata.title.substring(0, 80) + '...' : 'No title'}</td>
+                    <td>${hostSpeciesCell}</td>
+                    <td>${bodySiteCell}</td>
+                    <td>${conditionCell}</td>
+                    <td>${sequencingTypeCell}</td>
+                    <td>${taxaLevelCell}</td>
+                    <td>${sampleSizeCell}</td>
+                    <td>
+                        <span class="badge ${result.curation_ready ? 'bg-success' : 'bg-warning'}">
+                            ${result.curation_ready ? 'Ready' : 'Not Ready'}
+                        </span>
+                        ${!result.curation_ready && analysis.missing_fields && analysis.missing_fields.length > 0 ? 
+                            `<br><small class="text-muted">Missing: ${analysis.missing_fields.length} fields</small>` : ''}
+                    </td>
+                `;
+                
+                // Add click handler to show detailed field information
+                row.addEventListener('click', () => showFieldDetails(result));
+            }
+        });
+    }
+
+    // Helper function to create enhanced field cells with status indicators
+    function getFieldCell(fieldData, valueKey, fieldName) {
+        if (!fieldData) {
+            return '<span class="text-muted">No data</span>';
+        }
+        
+        const value = fieldData[valueKey] || 'Unknown';
+        const status = fieldData.status || 'UNKNOWN';
+        const confidence = fieldData.confidence || 0.0;
+        const reasonIfMissing = fieldData.reason_if_missing || '';
+        const suggestions = fieldData.suggestions_for_curation || '';
+        
+        let statusBadge = '';
+        let tooltipContent = '';
+        
+        switch (status) {
+            case 'PRESENT':
+                statusBadge = '<span class="badge bg-success me-1" title="Field is present">✓</span>';
+                tooltipContent = `Confidence: ${(confidence * 100).toFixed(1)}%`;
+                break;
+            case 'PARTIALLY_PRESENT':
+                statusBadge = '<span class="badge bg-warning me-1" title="Field is partially present">⚠</span>';
+                tooltipContent = `Partial data available. Confidence: ${(confidence * 100).toFixed(1)}%`;
+                break;
+            case 'ABSENT':
+                statusBadge = '<span class="text-muted me-1" title="Field is missing">✗</span>';
+                tooltipContent = `Missing: ${reasonIfMissing}. Suggestion: ${suggestions}`;
+                break;
+            default:
+                statusBadge = '<span class="badge bg-secondary me-1" title="Status unknown">?</span>';
+                tooltipContent = 'Status unknown';
+        }
+        
+        return `
+            <div class="d-flex align-items-center" data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltipContent}">
+                ${statusBadge}
+                <span class="${status === 'ABSENT' ? 'text-muted' : ''}">${value}</span>
+            </div>
+        `;
+    }
+
+    // Function to show detailed field information in a modal
+    function showFieldDetails(result) {
+        const analysis = result.enhanced_analysis;
+        const metadata = result.metadata;
+        
+        let modalHtml = `
+            <div class="modal-header">
+                <h5 class="modal-title">Field Analysis Details - PMID ${result.pmid}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Paper Information</h6>
+                <p><strong>Title:</strong> ${metadata.title || 'No title'}</p>
+                <p><strong>Curation Status:</strong> 
+                    <span class="badge ${result.curation_ready ? 'bg-success' : 'bg-warning'}">
+                        ${result.curation_ready ? 'Ready for Curation' : 'Not Ready for Curation'}
+                    </span>
+                </p>
+                
+                <hr>
+                <h6>Field Analysis Details</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Status</th>
+                                <th>Value</th>
+                                <th>Confidence</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        const fieldLabels = {
+            "host_species": "Host Species",
+            "body_site": "Body Site", 
+            "condition": "Condition",
+            "sequencing_type": "Sequencing Type",
+            "taxa_level": "Taxa Level",
+            "sample_size": "Sample Size"
+        };
+        
+        const fieldKeys = {
+            "host_species": "primary",
+            "body_site": "site",
+            "condition": "description", 
+            "sequencing_type": "method",
+            "taxa_level": "level",
+            "sample_size": "size"
+        };
+        
+        for (const [fieldName, fieldLabel] of Object.entries(fieldLabels)) {
+            const fieldData = analysis[fieldName] || {};
+            const valueKey = fieldKeys[fieldName];
+            const value = fieldData[valueKey] || 'Unknown';
+            const status = fieldData.status || 'UNKNOWN';
+            const confidence = fieldData.confidence || 0.0;
+            const reasonIfMissing = fieldData.reason_if_missing || '';
+            const suggestions = fieldData.suggestions_for_curation || '';
+            
+            let statusBadge = '';
+            let details = '';
+            
+            switch (status) {
+                case 'PRESENT':
+                    statusBadge = '<span class="badge bg-success">Present</span>';
+                    details = `Field is complete with ${(confidence * 100).toFixed(1)}% confidence`;
+                    break;
+                case 'PARTIALLY_PRESENT':
+                    statusBadge = '<span class="badge bg-warning">Partial</span>';
+                    details = `Partial information available. Confidence: ${(confidence * 100).toFixed(1)}%`;
+                    break;
+                case 'ABSENT':
+                    statusBadge = '<span class="badge bg-danger">Missing</span>';
+                    details = `<strong>Reason:</strong> ${reasonIfMissing}<br><strong>Suggestion:</strong> ${suggestions}`;
+                    break;
+                default:
+                    statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+                    details = 'Status could not be determined';
+            }
+            
+            modalHtml += `
+                <tr>
+                    <td><strong>${fieldLabel}</strong></td>
+                    <td>${statusBadge}</td>
+                    <td>${value}</td>
+                    <td>${(confidence * 100).toFixed(1)}%</td>
+                    <td>${details}</td>
+                </tr>
+            `;
+        }
+        
+        modalHtml += `
+                        </tbody>
+                    </table>
+                </div>
+                
+                ${analysis.curation_preparation_summary ? `
+                    <hr>
+                    <h6>Curation Preparation Summary</h6>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        ${analysis.curation_preparation_summary}
+                    </div>
+                ` : ''}
+                
+                ${analysis.missing_fields && analysis.missing_fields.length > 0 ? `
+                    <hr>
+                    <h6>Missing Fields Summary</h6>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>${analysis.missing_fields.length} field(s) missing:</strong> ${analysis.missing_fields.join(', ')}
+                        <br><small>Click on individual fields above for specific details and suggestions.</small>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        `;
+        
+        // Create and show modal
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'field-details-modal';
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    ${modalHtml}
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+        
+        // Clean up modal after it's hidden
+        modal.addEventListener('hidden.bs.modal', () => {
+            document.body.removeChild(modal);
+        });
+    }
+
+    // Utility functions for Browse Papers tab
+    function showBrowseLoading(show) {
+        const loadingSection = document.getElementById('browse-loading');
+        loadingSection.style.display = show ? 'block' : 'none';
+    }
+
+    function showResultsTable() {
+        const resultsContainer = document.getElementById('results-table-container');
+        resultsContainer.style.display = 'block';
+    }
+
+    function hideResultsTable() {
+        const resultsContainer = document.getElementById('results-table-container');
+        resultsContainer.style.display = 'none';
+    }
+
+    function showBrowseError(message) {
+        const errorSection = document.getElementById('browse-error');
+        const errorMessage = errorSection.querySelector('p');
+        errorMessage.textContent = message;
+        errorSection.style.display = 'block';
+    }
+
+    function hideBrowseError() {
+        const errorSection = document.getElementById('browse-error');
+        errorSection.style.display = 'none';
+    }
+
+    // Export functions for Browse Papers tab
+    function exportResults() {
+        const table = document.getElementById('results-table');
+        if (!table) {
+            alert('No results to export');
+            return;
+        }
+
+        const headers = ['PMID', 'Title', 'Host Species', 'Body Site', 'Condition', 'Sequencing Type', 'Taxa Level', 'Sample Size', 'Curation Ready'];
+        const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => !row.classList.contains('error-row'));
+        
+        let csvContent = headers.join(',') + '\n';
+        
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            const rowData = Array.from(cells).map(cell => {
+                // Extract text content and clean it
+                let text = cell.textContent || cell.innerText || '';
+                // Remove status indicators and extra text
+                text = text.replace(/[✓⚠✗]/g, '').trim();
+                // Handle the curation ready column
+                if (text.includes('Ready') || text.includes('Not Ready')) {
+                    text = text.includes('Ready') && !text.includes('Not') ? 'Ready' : 'Not Ready';
+                }
+                // Escape quotes and wrap in quotes if contains comma
+                if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+                    text = '"' + text.replace(/"/g, '""') + '"';
+                }
+                return text;
+            });
+            csvContent += rowData.join(',') + '\n';
+        });
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'bioanalyzer_curation_analysis.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function clearResults() {
+        if (confirm('Are you sure you want to clear all results?')) {
+            document.getElementById('results-table-body').innerHTML = '';
+            hideResultsTable();
+            hideBrowseError();
+        }
+    }
+
+    // Essential paper analysis functions for Browse Papers tab
+    async function analyzePaper(pmid) {
+        console.log(`Analyzing paper with PMID: ${pmid}`);
+        
+        try {
+            const response = await fetch(`/analyze/${pmid}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log('Paper analysis response:', data);
+            return data;
+        } catch (error) {
+            console.error('Error analyzing paper:', error);
+            throw error;
+        }
+    }
+
+    // Single paper analysis function for Browse Papers tab
+    async function analyzeSinglePaper() {
+        const pmid = document.getElementById('singlePmid').value.trim();
+        if (!pmid) {
+            alert('Please enter a PMID');
+            return;
+        }
+        
+        // Show loading
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results-section').style.display = 'block';
+        
+        try {
+            const data = await analyzePaperEnhanced(pmid);
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Format the single result to match the batch results structure
+            const results = [{
+                pmid: pmid,
+                metadata: {
+                    title: data.title || 'N/A'
+                },
+                enhanced_analysis: data.enhanced_analysis || {},
+                curation_ready: data.curation_ready || false,
+                status: 'success'
+            }];
+            
+            displayBrowseResults({ batch_results: results, summary: { total_pmids: 1 } });
+        } catch (error) {
+            console.error('Error analyzing single paper:', error);
+            document.getElementById('results-container').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error analyzing paper: ${error.message}
+                </div>
+            `;
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    // Batch papers analysis function for Browse Papers tab
+    async function analyzeBatchPapers() {
+        const pmidsText = document.getElementById('batchPmids').value.trim();
+        if (!pmidsText) {
+            alert('Please enter PMIDs');
+            return;
+        }
+        
+        // Parse PMIDs (support both comma-separated and newline-separated)
+        const pmids = pmidsText.split(/[,\n]/).map(pmid => pmid.trim()).filter(pmid => pmid);
+        if (pmids.length === 0) {
+            alert('Please enter valid PMIDs');
+            return;
+        }
+        
+        // Show loading
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results-section').style.display = 'block';
+        
+        try {
+            const response = await fetch('/enhanced_analysis_batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ pmids: pmids })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Display results
+            displayBrowseResults(data.results || []);
+        } catch (error) {
+            console.error('Error analyzing batch papers:', error);
+            document.getElementById('results-container').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error analyzing batch papers: ${error.message}
+                </div>
+            `;
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    // Enhanced analysis function for Browse Papers tab
+    async function analyzePaperEnhanced(pmid) {
+        console.log(`Running enhanced analysis for PMID: ${pmid}`);
+        
+        try {
+            const response = await fetch(`/enhanced_analysis/${pmid}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log('Enhanced analysis response:', data);
+            return data;
+        } catch (error) {
+            console.error('Error in enhanced analysis:', error);
+            throw error;
+        }
+    }
+
+    // Curation Statistics Functions
+    async function refreshCurationStats() {
+        const statsContainer = document.getElementById('curation-stats-container');
+        statsContainer.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading curation statistics...</p>
+            </div>
+        `;
+        
+        try {
+            const response = await fetch('/curation/statistics');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            displayCurationStats(data);
+        } catch (error) {
+            console.error('Error fetching curation statistics:', error);
+            statsContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error loading curation statistics: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    function displayCurationStats(data) {
+        const statsContainer = document.getElementById('curation-stats-container');
+        
+        const { overall_statistics, field_statistics } = data;
+        
+        let html = `
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-primary mb-1">${overall_statistics.total_papers_analyzed}</h4>
+                        <small class="text-muted">Total Papers Analyzed</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-success mb-1">${overall_statistics.papers_ready_for_curation}</h4>
+                        <small class="text-muted">Ready for Curation</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-info mb-1">${(overall_statistics.overall_readiness_rate * 100).toFixed(1)}%</h4>
+                        <small class="text-muted">Overall Readiness Rate</small>
+                    </div>
+                </div>
+            </div>
+            
+            <h6 class="mb-3">Field Analysis Performance</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Ready</th>
+                            <th>Total</th>
+                            <th>Readiness Rate</th>
+                            <th>Avg Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        // Display statistics for each of the 6 essential fields
+        const fieldLabels = {
+            "host_species": "Host Species",
+            "body_site": "Body Site",
+            "condition": "Condition",
+            "sequencing_type": "Sequencing Type",
+            "taxa_level": "Taxa Level",
+            "sample_size": "Sample Size"
+        };
+        
+        for (const [fieldName, fieldData] of Object.entries(field_statistics)) {
+            const readinessRate = (fieldData.readiness_rate * 100).toFixed(1);
+            const avgConfidence = (fieldData.avg_confidence * 100).toFixed(1);
+            
+            html += `
+                <tr>
+                    <td><strong>${fieldLabels[fieldName] || fieldName}</strong></td>
+                    <td><span class="badge bg-success">${fieldData.ready}</span></td>
+                    <td>${fieldData.total}</td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar ${fieldData.readiness_rate >= 0.7 ? 'bg-success' : fieldData.readiness_rate >= 0.4 ? 'bg-warning' : 'bg-danger'}" 
+                                 style="width: ${readinessRate}%">
+                                ${readinessRate}%
+                            </div>
+                        </div>
+                    </td>
+                    <td>${avgConfidence}%</td>
+                </tr>
+            `;
+        }
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-3 text-muted small">
+                <i class="fas fa-info-circle me-1"></i>
+                Statistics show how well the AI analysis is identifying the 6 essential BugSigDB curation fields.
+            </div>
+        `;
+        
+        statsContainer.innerHTML = html;
+    }
+
+    // Chat helper functions
+    function handleChatKeyPress(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    }
+
+    function sendMessage() {
+        const messageInput = document.getElementById('chat-input');
+        if (!messageInput) return;
+        
+        const message = messageInput.value.trim();
+        if (!message) return;
+        
+        // For now, just display the message (WebSocket functionality can be added later)
+        displayChatMessage(message, 'user');
+        messageInput.value = '';
+        
+        // Simulate a response (replace with actual AI chat later)
+        setTimeout(() => {
+            displayChatMessage('Thank you for your message. The chat assistant is currently being configured.', 'assistant');
+        }, 1000);
+    }
+
+    function displayChatMessage(message, role) {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `mb-3 ${role === 'user' ? 'text-end' : 'text-start'}`;
+        
+        const messageBubble = document.createElement('div');
+        messageBubble.className = `d-inline-block p-2 rounded ${role === 'user' ? 'bg-primary text-white' : 'bg-light'}`;
+        messageBubble.style.maxWidth = '70%';
+        messageBubble.textContent = message;
+        
+        messageDiv.appendChild(messageBubble);
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // File upload function
+    function uploadFile() {
+        const fileInput = document.getElementById('fileInput');
+        if (!fileInput || !fileInput.files[0]) {
+            alert('Please select a file first');
+            return;
+        }
+        
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Show loading
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results-section').style.display = 'block';
+        
+        fetch('/upload_csv', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Display results
+            if (data.results && data.results.length > 0) {
+                displayBrowseResults(data.results);
+            } else {
+                document.getElementById('results-container').innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        File uploaded successfully, but no results to display.
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error uploading file:', error);
+            document.getElementById('results-container').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error uploading file: ${error.message}
+                </div>
+            `;
+        })
+        .finally(() => {
+            document.getElementById('loading').style.display = 'none';
+        });
+    }
 });
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -1797,16 +3045,8 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    // Enable analyze paper with Enter in PMID input
-    const pmidInput = document.getElementById('pmid');
-    if (pmidInput) {
-        pmidInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                window.analyzePaper();
-            }
-        });
-    }
+    // Remove old pmid input and analyzePaper references - no longer needed
+    
     // Enable Analyze Entered PMIDs with Enter in textarea
     const userPmidList = document.getElementById('user-pmid-list');
     if (userPmidList) {

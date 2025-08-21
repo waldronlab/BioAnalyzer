@@ -502,7 +502,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
     async def analyze_paper_enhanced(self, prompt: str) -> Dict[str, Union[str, float, List[str]]]:
         """
         Enhanced analysis method specifically for BugSigDB curation requirements.
-        Focuses on structured extraction of key information.
+        Focuses on structured extraction of key information with improved accuracy.
         """
         try:
             if not self.api_key:
@@ -515,19 +515,69 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             # Configure the model for structured output
             model = genai.GenerativeModel('gemini-1.5-pro-latest')
             
-            # Create a more structured prompt for better JSON output
-            structured_prompt = f"""
-            You are a specialized AI assistant for BugSigDB curation. Your task is to analyze scientific papers and extract specific information in a structured JSON format.
+            # Enhanced structured prompt for better field extraction accuracy
+            enhanced_structured_prompt = f"""
+            You are a specialized AI assistant for BugSigDB curation with expertise in microbial signature analysis. Your task is to analyze scientific papers and extract specific information in a structured JSON format with high accuracy.
 
             {prompt}
+
+            CRITICAL EXTRACTION GUIDELINES FOR ACCURACY:
+
+            1. HOST SPECIES EXTRACTION:
+               - Look for explicit mentions: "Human participants", "Mouse model", "Rat study", "Environmental samples"
+               - Check study population descriptions, methods section, and abstract
+               - For environmental studies, identify: "Built environment", "Indoor air", "Soil samples", "Water samples"
+               - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+
+            2. BODY SITE EXTRACTION:
+               - Human/Animal: Look for "fecal", "oral swab", "skin sample", "vaginal swab", "nasal swab"
+               - Environmental: Look for "indoor surface", "restroom", "hospital room", "classroom", "office"
+               - Check sample collection methods and study location descriptions
+               - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+
+            3. CONDITION EXTRACTION:
+               - Look for disease names: "IBD", "Obesity", "Diabetes", "Cancer"
+               - Check experimental conditions: "Antibiotic treatment", "Diet intervention", "Seasonal changes"
+               - Identify comparative studies: "Men vs women", "Healthy vs diseased", "Before vs after"
+               - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+
+            4. SEQUENCING TYPE EXTRACTION:
+               - Look for specific methods: "16S rRNA gene sequencing", "V4 region amplification"
+               - Check for platforms: "Illumina MiSeq", "Next-generation sequencing"
+               - Identify techniques: "Shotgun metagenomics", "Amplicon sequencing"
+               - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+
+            5. TAXA LEVEL EXTRACTION:
+               - Look for taxonomic classifications: "Phylum Proteobacteria", "Genus Bacteroides"
+               - Check for specific names: "E. coli", "B. fragilis", "Lactobacillus spp."
+               - Identify analysis levels: "Phylum level", "Genus level", "Species level"
+               - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+
+            6. SAMPLE SIZE EXTRACTION:
+               - Look for numbers: "n=50 participants", "100 samples", "Three time points"
+               - Check study design: "Multiple floors sampled", "Longitudinal study with 6 visits"
+               - Identify sample counts: "48 fecal samples", "24 oral swabs"
+               - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+
+            CONFIDENCE SCORING GUIDELINES:
+            - PRESENT (0.8-1.0): Information is explicitly stated and clear
+            - PARTIALLY_PRESENT (0.4-0.7): Information is implied or partially described
+            - ABSENT (0.0): Information is completely missing or unclear
+
+            JSON RESPONSE REQUIREMENTS:
+            - Return ONLY valid JSON without any explanatory text
+            - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
+            - Each field must have the exact structure specified in the prompt
+            - Use proper JSON syntax with double quotes for strings
+            - Include all required sub-fields for each main field
 
             IMPORTANT: You must respond with ONLY valid JSON. Do not include any explanatory text before or after the JSON. The response should be parseable by json.loads().
 
             Focus on accuracy and provide confidence scores based on how clearly the information is stated in the text.
             """
             
-            # Generate response
-            response = model.generate_content(structured_prompt)
+            # Generate response with enhanced prompt
+            response = model.generate_content(enhanced_structured_prompt)
             
             if not response or not response.text:
                 return {
@@ -539,7 +589,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             # Clean the response text to extract just the JSON
             response_text = response.text.strip()
             
-            # Try to find JSON in the response
+            # Try to find JSON in the response with improved extraction
             json_start = response_text.find('{')
             json_end = response_text.rfind('}') + 1
             
@@ -548,32 +598,32 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             else:
                 json_text = response_text
             
-            # Validate JSON structure
+            # Validate and clean JSON structure
             try:
+                # First attempt to parse the JSON
                 parsed_json = json.loads(json_text)
-                confidence = self.estimate_enhanced_confidence(parsed_json)
+                
+                # Validate and normalize the structure
+                validated_json = self._validate_and_normalize_json(parsed_json)
+                
+                # Calculate enhanced confidence
+                confidence = self._calculate_enhanced_confidence(validated_json)
                 
                 return {
-                    "key_findings": json_text,
+                    "key_findings": json.dumps(validated_json, indent=2),
                     "confidence": confidence,
                     "status": "success"
                 }
                 
             except json.JSONDecodeError as e:
                 logger.warning(f"Failed to parse JSON response: {e}")
-                # Return a structured fallback
-                fallback_json = {
-                    "differentially_abundant_microbes": {"reported": False, "list": [], "confidence": 0.0},
-                    "host_species": {"primary": "Unknown", "confidence": 0.0},
-                    "body_site_habitat": {"site": "Unknown", "confidence": 0.0},
-                    "condition_treatment_exposure": {"description": "Unknown", "confidence": 0.0},
-                    "host_species_list": {"multiple_species": False, "species": [], "confidence": 0.0},
-                    "overall_confidence": 0.0,
-                    "analysis_quality": "LOW"
-                }
+                logger.warning(f"Raw response: {response_text[:500]}...")
+                
+                # Return a structured fallback with proper field structure
+                fallback_json = self._create_fallback_json()
                 
                 return {
-                    "key_findings": json.dumps(fallback_json),
+                    "key_findings": json.dumps(fallback_json, indent=2),
                     "confidence": 0.0,
                     "status": "fallback",
                     "error": f"JSON parsing failed: {str(e)}"
@@ -587,51 +637,223 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                 "confidence": 0.0,
                 "status": "error"
             }
-    
-    def estimate_enhanced_confidence(self, parsed_analysis: Dict) -> float:
+
+    def _validate_and_normalize_json(self, parsed_json: Dict) -> Dict:
         """
-        Estimate confidence based on the quality of extracted information.
+        Validate and normalize the JSON structure to ensure all required fields are present.
+        """
+        # Define the required field structure
+        required_fields = {
+            "host_species": {
+                "primary": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Field not found in analysis",
+                "suggestions_for_curation": "Review paper for host species information"
+            },
+            "body_site": {
+                "site": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Field not found in analysis",
+                "suggestions_for_curation": "Review paper for body site information"
+            },
+            "condition": {
+                "description": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Field not found in analysis",
+                "suggestions_for_curation": "Review paper for condition information"
+            },
+            "sequencing_type": {
+                "method": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Field not found in analysis",
+                "suggestions_for_curation": "Review paper for sequencing method information"
+            },
+            "taxa_level": {
+                "level": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Field not found in analysis",
+                "suggestions_for_curation": "Review paper for taxonomic level information"
+            },
+            "sample_size": {
+                "size": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Field not found in analysis",
+                "suggestions_for_curation": "Review paper for sample size information"
+            }
+        }
+        
+        # Ensure all required fields exist with proper structure
+        for field_name, default_structure in required_fields.items():
+            if field_name not in parsed_json:
+                parsed_json[field_name] = default_structure.copy()
+            else:
+                # Ensure the field has the required structure
+                field_data = parsed_json[field_name]
+                if not isinstance(field_data, dict):
+                    parsed_json[field_name] = default_structure.copy()
+                else:
+                    # Merge with default structure to ensure all required keys exist
+                    for key, default_value in default_structure.items():
+                        if key not in field_data:
+                            field_data[key] = default_value
+        
+        # Add curation readiness assessment
+        curation_ready = all(
+            parsed_json.get(field, {}).get("status") == "PRESENT" 
+            for field in required_fields.keys()
+        )
+        
+        # Add missing fields list
+        missing_fields = [
+            field for field in required_fields.keys()
+            if parsed_json.get(field, {}).get("status") != "PRESENT"
+        ]
+        
+        # Add summary fields
+        parsed_json["curation_ready"] = curation_ready
+        parsed_json["missing_fields"] = missing_fields
+        parsed_json["curation_preparation_summary"] = self._generate_curation_summary(parsed_json, missing_fields)
+        
+        return parsed_json
+
+    def _create_fallback_json(self) -> Dict:
+        """
+        Create a properly structured fallback JSON when parsing fails.
+        """
+        return {
+            "host_species": {
+                "primary": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Analysis failed - re-run required",
+                "suggestions_for_curation": "Re-run analysis with corrected prompt"
+            },
+            "body_site": {
+                "site": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Analysis failed - re-run required",
+                "suggestions_for_curation": "Re-run analysis with corrected prompt"
+            },
+            "condition": {
+                "description": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Analysis failed - re-run required",
+                "suggestions_for_curation": "Re-run analysis with corrected prompt"
+            },
+            "sequencing_type": {
+                "method": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Analysis failed - re-run required",
+                "suggestions_for_curation": "Re-run analysis with corrected prompt"
+            },
+            "taxa_level": {
+                "level": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Analysis failed - re-run required",
+                "suggestions_for_curation": "Re-run analysis with corrected prompt"
+            },
+            "sample_size": {
+                "size": "Unknown",
+                "confidence": 0.0,
+                "status": "ABSENT",
+                "reason_if_missing": "Analysis failed - re-run required",
+                "suggestions_for_curation": "Re-run analysis with corrected prompt"
+            },
+            "curation_ready": False,
+            "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
+            "curation_preparation_summary": "Analysis failed - re-run required"
+        }
+
+    def _calculate_enhanced_confidence(self, validated_json: Dict) -> float:
+        """
+        Calculate enhanced confidence based on the quality of extracted information.
         """
         try:
             confidence_scores = []
             
-            # Check differentially abundant microbes
-            microbes = parsed_analysis.get("differentially_abundant_microbes", {})
-            if microbes.get("reported") and microbes.get("list"):
-                confidence_scores.append(min(1.0, len(microbes["list"]) * 0.1))
-            
-            # Check host species
-            host = parsed_analysis.get("host_species", {})
-            if host.get("primary") and host.get("primary") != "Unknown":
-                confidence_scores.append(0.8)
-            
-            # Check body site
-            body_site = parsed_analysis.get("body_site_habitat", {})
-            if body_site.get("site") and body_site.get("site") != "Unknown":
-                confidence_scores.append(0.8)
-            
-            # Check condition/treatment
-            condition = parsed_analysis.get("condition_treatment_exposure", {})
-            if condition.get("description") and condition.get("description") != "Unknown":
-                confidence_scores.append(0.8)
-            
-            # Check analysis quality
-            quality = parsed_analysis.get("analysis_quality", "LOW")
-            if quality == "HIGH":
-                confidence_scores.append(0.9)
-            elif quality == "MEDIUM":
-                confidence_scores.append(0.6)
-            else:
-                confidence_scores.append(0.3)
+            # Check each field for quality indicators
+            for field_name, field_data in validated_json.items():
+                if field_name in ["curation_ready", "missing_fields", "curation_preparation_summary"]:
+                    continue
+                    
+                if not isinstance(field_data, dict):
+                    continue
+                
+                # Get field status and confidence
+                status = field_data.get("status", "ABSENT")
+                field_confidence = field_data.get("confidence", 0.0)
+                
+                # Score based on status
+                if status == "PRESENT":
+                    # Boost confidence if the field has meaningful content
+                    content_key = self._get_content_key_for_field(field_name)
+                    content_value = field_data.get(content_key, "")
+                    
+                    if content_value and content_value.lower() not in ["unknown", "not specified", ""]:
+                        confidence_scores.append(min(1.0, field_confidence + 0.1))
+                    else:
+                        confidence_scores.append(field_confidence)
+                        
+                elif status == "PARTIALLY_PRESENT":
+                    confidence_scores.append(field_confidence)
+                else:  # ABSENT
+                    confidence_scores.append(0.0)
             
             if not confidence_scores:
                 return 0.0
             
-            return sum(confidence_scores) / len(confidence_scores)
+            # Calculate weighted average (give more weight to PRESENT fields)
+            weighted_scores = []
+            for score in confidence_scores:
+                if score >= 0.8:  # PRESENT fields
+                    weighted_scores.append(score * 1.2)
+                else:
+                    weighted_scores.append(score)
+            
+            final_confidence = sum(weighted_scores) / len(weighted_scores)
+            return min(1.0, final_confidence)
             
         except Exception as e:
-            logger.warning(f"Error estimating enhanced confidence: {str(e)}")
+            logger.warning(f"Error calculating enhanced confidence: {str(e)}")
             return 0.5
+
+    def _get_content_key_for_field(self, field_name: str) -> str:
+        """
+        Get the appropriate content key for a given field.
+        """
+        content_keys = {
+            "host_species": "primary",
+            "body_site": "site",
+            "condition": "description",
+            "sequencing_type": "method",
+            "taxa_level": "level",
+            "sample_size": "size"
+        }
+        return content_keys.get(field_name, "value")
+
+    def _generate_curation_summary(self, parsed_json: Dict, missing_fields: List[str]) -> str:
+        """
+        Generate a summary of what's needed for curation.
+        """
+        if not missing_fields:
+            return "All required fields are present. Paper is ready for curation."
+        
+        if len(missing_fields) == 1:
+            return f"Missing 1 field: {missing_fields[0]}. Review paper for this information."
+        elif len(missing_fields) <= 3:
+            return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper needs additional review."
+        else:
+            return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper requires significant review before curation."
 
     async def chat(self, prompt: str) -> dict:
         """Chat with Gemini using a conversational prompt."""

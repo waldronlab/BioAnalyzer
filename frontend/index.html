@@ -3,191 +3,323 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BioAnalyzer - Scientific Paper Analysis</title>
+    <title>BioAnalyzer - BugSigDB Curation Analysis</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧬</text></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        .nav-tabs .nav-link.active {
+        body {
             background-color: #f8f9fa;
-            border-color: #dee2e6 #dee2e6 #f8f9fa;
         }
-        .table-hover tbody tr:hover {
-            background-color: rgba(0,0,0,.075);
-            cursor: pointer;
+        
+        .main-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
         }
-        .status-present { color: #28a745; }
-        .status-partial { color: #ffc107; }
-        .status-absent { color: #dc3545; }
-        .field-details-modal .modal-body {
-            max-height: 70vh;
-            overflow-y: auto;
+        
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 0;
+            padding: 1rem 2rem;
+            font-weight: 500;
+            color: #6c757d;
+            background-color: transparent;
+        }
+        
+        .nav-tabs .nav-link.active {
+            background-color: #667eea;
+            color: white;
+            border: none;
+        }
+        
+        .input-section {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .analyze-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 50px;
+            padding: 1rem 3rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+        
+        .analyze-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .results-section {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            min-height: 400px;
+        }
+        
+        .input-group-custom {
+            margin-bottom: 1rem;
+        }
+        
+        .input-group-custom label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
+        
+        .field-card {
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .field-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        /* Status colors for field analysis */
+        .status-present { color: #28a745; font-weight: 600; }
+        .status-partially_present { color: #ffc107; font-weight: 600; }
+        .status-absent { color: #dc3545; font-weight: 600; }
+        
+        /* Results content styling */
+        #results-content {
+            min-height: 200px;
+        }
+        
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Footer styles */
+        .app-footer {
+            width: 100%;
+            text-align: center;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #6c757d;
+            border-top: 1px solid #e9ecef;
+            margin-top: 2rem;
+        }
+        
+        .footer-logos {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .footer-link {
+            display: inline-block;
+            transition: transform 0.3s ease;
+            text-decoration: none;
+        }
+        
+        .footer-link:hover {
+            transform: scale(1.05);
+        }
+        
+        .footer-link img {
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 120px;
+            height: auto;
+            object-fit: contain;
+        }
+        
+        /* Responsive footer for mobile */
+        @media (max-width: 768px) {
+            .footer-logos {
+                gap: 20px;
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .footer-link img {
+                max-width: 100px;
+                height: auto;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .footer-logos {
+                gap: 15px;
+            }
+            
+            .footer-link img {
+                max-width: 80px;
+                height: auto;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container-fluid">
-        <!-- Header -->
-        <div class="row bg-primary text-white p-3">
-            <div class="col">
-                <h1 class="mb-0"><i class="fas fa-microscope me-2"></i>BioAnalyzer</h1>
-                <p class="mb-0">Scientific Paper Analysis for Microbiome Research</p>
-        </div>
-    </div>
-
-        <!-- Navigation -->
-            <div class="row">
-            <div class="col">
-                    <ul class="nav nav-tabs" id="mainTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse" type="button" role="tab" aria-controls="browse" aria-selected="true">
-                            <i class="fas fa-search me-2"></i>Browse Papers
-                        </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat" type="button" role="tab" aria-controls="chat" aria-selected="false">
-                            <i class="fas fa-comments me-2"></i>Chat Assistant
-                            </button>
-                        </li>
-                    </ul>
+        <!-- Main Header -->
+        <div class="main-header">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h1 class="mb-2">
+                            <i class="fas fa-microscope me-3"></i>BioAnalyzer
+                        </h1>
+                        <p class="mb-0 fs-5 opacity-75">BugSigDB Curation Analysis System</p>
+                    </div>
+                </div>
             </div>
         </div>
 
-                    <!-- Tab Content -->
+        <!-- Navigation Tabs -->
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <ul class="nav nav-tabs justify-content-center" id="mainTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse" type="button" role="tab">
+                                <i class="fas fa-search me-2"></i>Browse Papers
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat" type="button" role="tab">
+                                <i class="fas fa-comments me-2"></i>Chat Ass.
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
         <div class="tab-content" id="mainTabsContent">
             <!-- Browse Papers Tab -->
-            <div class="tab-pane fade show active" id="browse" role="tabpanel" aria-labelledby="browse-tab">
-                            <div class="container mt-4">
-                    <h3>Browse Papers - BioAnalyzer Curation Analysis</h3>
-                    <p class="text-muted">
-                        Analyze scientific papers for curation readiness based on 6 essential fields: 
-                        <strong>Host Species</strong>, <strong>Body Site</strong>, <strong>Condition</strong>, 
-                        <strong>Sequencing Type</strong>, <strong>Taxa Level</strong>, and <strong>Sample Size</strong>.
-                    </p>
-
-                    <!-- File Upload Section -->
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5><i class="fas fa-upload me-2"></i>Upload Papers for Analysis</h5>
-                                                    </div>
-                        <div class="card-body">
-                            <p class="text-muted">
-                                Upload an Excel file (.xlsx or .xls) containing PMIDs in the first column. 
-                                The system will analyze each paper for BugSigDB curation readiness based on the 6 essential fields.
-                            </p>
-                                                    <div class="row">
-                                                        <div class="col-md-6">
-                                    <input type="file" class="form-control" id="fileInput" accept=".xlsx,.xls">
-                                                        </div>
-                                                        <div class="col-md-6">
-                                    <button class="btn btn-primary" onclick="uploadFile()">
-                                        <i class="fas fa-upload me-2"></i>Upload and Analyze
-                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                    <!-- Single PMID Search -->
-                                                    <div class="card mb-4">
-                                                        <div class="card-header">
-                            <h5><i class="fas fa-search me-2"></i>Single Paper Analysis</h5>
-                                                        </div>
-                                                        <div class="card-body">
-                                                            <div class="row">
-                                <div class="col-md-8">
-                                    <input type="text" class="form-control" id="singlePmid" placeholder="Enter PMID (e.g., 12345678)">
-                                    <div class="form-text">Enter a single PMID to analyze for curation readiness</div>
-                                                                </div>
-                                <div class="col-md-4">
-                                    <button class="btn btn-success" onclick="analyzeSinglePaper()">
-                                        <i class="fas fa-microscope me-2"></i>Analyze for Curation
-                                                                </button>
-                                    </div>
+            <div class="tab-pane fade show active" id="browse" role="tabpanel">
+                <div class="container">
+                    <!-- Input Section -->
+                    <div class="input-section">
+                        <div class="row">
+                            <!-- Upload File -->
+                            <div class="col-md-4">
+                                <div class="input-group-custom">
+                                    <label for="fileInput">
+                                        <i class="fas fa-upload me-2"></i>Upload file
+                                    </label>
+                                    <input type="file" class="form-control" id="fileInput" accept=".xlsx,.xls,.csv">
+                                    <small class="form-text text-muted">Excel or CSV with PMIDs</small>
                                 </div>
                             </div>
-                        </div>
-
-                    <!-- Batch Search -->
-                                <div class="card mb-4">
-                                    <div class="card-header">
-                            <h5><i class="fas fa-list me-2"></i>Batch Analysis</h5>
-                                    </div>
-                                    <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-8">
-                                    <textarea class="form-control" id="batchPmids" rows="3" placeholder="Enter multiple PMIDs, one per line or separated by commas"></textarea>
-                                    <div class="form-text">Enter multiple PMIDs for batch curation analysis</div>
-                                        </div>
-                                <div class="col-md-4">
-                                    <button class="btn btn-info" onclick="analyzeBatchPapers()">
-                                        <i class="fas fa-cogs me-2"></i>Batch Analyze
-                                        </button>
-                                    </div>
-                                </div>
-                                    </div>
-                                </div>
-                                
-                    <!-- Results Section -->
-                    <div id="results-section" style="display: none;">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5><i class="fas fa-chart-bar me-2"></i>BioAnalyzer Curation Analysis Results</h5>
-                                <div>
-                                    <button class="btn btn-outline-success btn-sm me-2" onclick="exportResults()">
-                                        <i class="fas fa-download me-2"></i>Export CSV
-                                            </button>
-                                    <button class="btn btn-outline-secondary btn-sm" onclick="clearResults()">
-                                        <i class="fas fa-trash me-2"></i>Clear
-                                            </button>
-                                        </div>
-                                    </div>
-                            <div class="card-body">
-                                <div id="loading" style="display: none;">
-                                    <div class="text-center">
-                                        <div class="spinner-border text-primary" role="status">
-                                            <span class="visually-hidden">Loading...</span>
-                                </div>
-                                        <p class="mt-2">Analyzing papers for BioAnalyzer curation readiness...</p>
-                            </div>
-                        </div>
-                                <div id="results-container">
-                                    <div class="table-responsive">
-                                        <table class="table table-hover">
-                                            <thead class="table-dark">
-                                                <tr>
-                                                    <th>PMID</th>
-                                                    <th>Title</th>
-                                                    <th>Host Species</th>
-                                                    <th>Body Site</th>
-                                                    <th>Condition</th>
-                                                    <th>Sequencing Type</th>
-                                                    <th>Taxa Level</th>
-                                                    <th>Sample Size</th>
-                                                    <th>Curation Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="results-table-body">
-                                                <!-- Results will be populated here -->
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                                    </div>
-                                </div>
                             
-                    <!-- Curation Statistics Section -->
-                    <div class="card mt-4">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Curation Analysis Statistics</h5>
-                            <button class="btn btn-outline-primary btn-sm" onclick="refreshCurationStats()">
-                                <i class="fas fa-sync-alt me-2"></i>Refresh
-                            </button>
+                            <!-- Enter PMID -->
+                            <div class="col-md-4">
+                                <div class="input-group-custom">
+                                    <label for="singlePmid">
+                                        <i class="fas fa-search me-2"></i>Enter PMID
+                                    </label>
+                                    <input type="text" class="form-control" id="singlePmid" placeholder="e.g., 12345678">
+                                    <small class="form-text text-muted">Single PubMed ID</small>
+                                </div>
                             </div>
-                        <div class="card-body">
-                            <div id="curation-stats-container">
-                                <div class="text-center text-muted">
-                                    <i class="fas fa-chart-line fa-2x mb-2"></i>
-                                    <p>Click "Refresh" to load curation statistics</p>
+                            
+                            <!-- List of PMIDs -->
+                            <div class="col-md-4">
+                                <div class="input-group-custom">
+                                    <label for="batchPmids">
+                                        <i class="fas fa-list me-2"></i>LIST OF PMIDS
+                                    </label>
+                                    <textarea class="form-control" id="batchPmids" rows="3" placeholder="Multiple PMIDs, one per line or comma-separated"></textarea>
+                                    <small class="form-text text-muted">Batch analysis</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Single Analyze Button -->
+                        <div class="text-center mt-4">
+                            <button class="btn analyze-button btn-lg" onclick="window.analyzeForCuration ? analyzeForCuration() : alert('Please wait for the page to fully load')">
+                                <i class="fas fa-microscope me-2"></i>Analyze for Curation
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Results Section -->
+                    <div class="results-section" id="results-section">
+                        <!-- Loading State -->
+                        <div class="loading-spinner" id="loading" style="display: none;">
+                            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 fs-5">Analyzing papers for BugSigDB curation readiness...</p>
+                            <p class="text-muted">This may take a few moments</p>
+                        </div>
+                        
+                        <!-- Empty State -->
+                        <div class="empty-state" id="empty-state">
+                            <i class="fas fa-chart-bar"></i>
+                            <h4>Ready for Analysis</h4>
+                            <p class="fs-5">Enter a PMID, upload a file, or provide a list of PMIDs above, then click "Analyze for Curation" to begin.</p>
+                            <p class="text-muted">The system will analyze the 6 essential fields: Host Species, Body Site, Condition, Sequencing Type, Taxa Level, and Sample Size.</p>
+                        </div>
+                        
+                        <!-- Results Content -->
+                        <div id="results-content" style="display: none;">
+                            <!-- Results will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Assistant Tab -->
+            <div class="tab-pane fade" id="chat" role="tabpanel">
+                <div class="container">
+                    <div class="results-section">
+                        <h4 class="mb-4">
+                            <i class="fas fa-comments me-2"></i>Chat Assistant
+                        </h4>
+                        <p class="text-muted mb-4">Ask questions about your analysis results or get help with the system.</p>
+                        
+                        <div id="chat-messages" class="mb-3" style="height: 400px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 10px; padding: 15px; background-color: #f8f9fa;">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-comments fa-2x mb-2"></i>
+                                <p>Start a conversation by typing a message below</p>
+                            </div>
+                        </div>
+                        
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="chat-input" placeholder="Type your message here..." onkeypress="handleChatKeyPress(event)">
+                            <button class="btn btn-primary" onclick="sendMessage()">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -195,33 +327,23 @@
         </div>
     </div>
 
-            <!-- Chat Assistant Tab -->
-            <div class="tab-pane fade" id="chat" role="tabpanel" aria-labelledby="chat-tab">
-                <div class="container mt-4">
-                    <h3>Chat Assistant</h3>
-                    <p class="text-muted">Ask questions about your analysis results or get help with the system.</p>
-                    
-                    <div class="card">
-                        <div class="card-body">
-                            <div id="chat-messages" class="mb-3" style="height: 400px; overflow-y: auto; border: 1px solid #dee2e6; padding: 15px; background-color: #f8f9fa;">
-                                <div class="text-center text-muted">
-                                    <i class="fas fa-comments fa-2x mb-2"></i>
-                                    <p>Start a conversation by typing a message below</p>
+    <!-- Footer with Logos -->
+    <footer class="app-footer">
+        <div class="footer-logos">
+            <a href="https://sph.cuny.edu/" target="_blank" class="footer-link" title="Graduate School of Public Health and Health Policy">
+                <img src="images/un.png" alt="Graduate School of Public Health and Health Policy" width="120" height="80">
+            </a>
+            <a href="https://bioconductor.org/" target="_blank" class="footer-link" title="Bioconductor">
+                <img src="images/bio.png" alt="Bioconductor" width="120" height="80">
+            </a>
+            <a href="https://bugsigdb.org/" target="_blank" class="footer-link" title="BugSigDB">
+                <img src="images/image.png" alt="BugSigDB" width="120" height="80">
+            </a>
+            <a href="https://waldronlab.io/" target="_blank" class="footer-link" title="Waldron Lab">
+                <img src="images/wl.png" alt="Waldron Lab" width="120" height="80">
+            </a>
         </div>
-        </div>
-        
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="chat-input" placeholder="Type your message here..." onkeypress="handleChatKeyPress(event)">
-                                <button class="btn btn-primary" onclick="sendMessage()">
-                                    <i class="fas fa-paper-plane"></i>
-                                </button>
-        </div>
-            </div>
-            </div>
-        </div>
-            </div>
-        </div>
-    </div>
+    </footer>
 
     <!-- Field Details Modal -->
     <div class="modal fade" id="fieldDetailsModal" tabindex="-1" aria-labelledby="fieldDetailsModalLabel" aria-hidden="true">
@@ -231,16 +353,16 @@
                     <h5 class="modal-title" id="fieldDetailsModalLabel">Field Analysis Details</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body field-details-modal">
+                <div class="modal-body">
                     <div id="fieldDetailsContent"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
-                </div>
             </div>
-            </div>
-            
+        </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/app.js"></script>
 </body>

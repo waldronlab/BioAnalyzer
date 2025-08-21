@@ -21,6 +21,7 @@ from app.utils.config import (
     AVAILABLE_MODELS
 )
 from app.utils.methods_scorer import MethodsScorer
+from app.utils.field_validator import FieldExtractionEnhancer
 import re
 import asyncio
 import logging
@@ -128,8 +129,9 @@ qa_system = UnifiedQA(
     gemini_api_key=GEMINI_API_KEY
 )
 
-# Initialize cache manager
+# Initialize cache manager and field enhancer
 cache_manager = CacheManager()
+field_enhancer = FieldExtractionEnhancer()
 
 # Mount static files after API routes
 static_dir = Path(__file__).parent.parent.parent / "frontend"
@@ -584,7 +586,7 @@ async def upload_csv(file: UploadFile = File(...)):
                                 parsed_analysis[field] = {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for taxonomic level information"}
                             elif field == "sample_size":
                                 parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
-                    
+                
                     # Determine curation readiness based on having all 6 fields with status "PRESENT"
                     curation_ready = len(missing_fields) == 0 and all(
                         parsed_analysis.get(field, {}).get("status") == "PRESENT" 
@@ -817,32 +819,38 @@ async def analyze_paper(pmid: str):
            - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
            - Check: Abstract, methods section, study population descriptions, mesh terms
            - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+           - Be specific: "Human" not "mammal", "Mouse" not "rodent"
 
         2. BODY SITE:
            - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
            - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
            - Check: Sample collection methods, study location descriptions, abstract
            - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+           - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
 
         3. CONDITION:
            - Look for: Disease names, experimental conditions, comparative studies, environmental factors
            - Check: Study objectives, hypothesis, experimental design, disease associations
            - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+           - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
 
         4. SEQUENCING TYPE:
            - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
            - Check: Methods section, molecular techniques, sequencing protocols
            - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+           - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
 
         5. TAXA LEVEL:
            - Look for: Taxonomic levels and specific names
            - Check: Results section, microbial community descriptions, diversity analysis
            - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+           - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
 
         6. SAMPLE SIZE:
            - Look for: Numbers, sample counts, participant numbers, collection descriptions
            - Check: Methods section, study design, sample collection details
            - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+           - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
 
         ANALYSIS INSTRUCTIONS:
         - Read the text THOROUGHLY for each field
@@ -851,6 +859,7 @@ async def analyze_paper(pmid: str):
         - If information is completely missing, mark as "ABSENT" with confidence 0.0
         - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
         - Pay attention to context clues and implicit information
+        - Extract actual information from the text, don't guess or infer
 
         CRITICAL: This paper contains microbial analysis. Look carefully for:
         - Any mention of bacteria, microbiome, microbial communities
@@ -901,10 +910,7 @@ async def analyze_paper(pmid: str):
                 "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                 "reason_if_missing": "explanation if absent",
                 "suggestions_for_curation": "what additional info is needed"
-            }},
-            "curation_ready": true/false,
-            "missing_fields": ["field1", "field2", ...],
-            "curation_preparation_summary": "Overall assessment of what's needed for curation"
+            }}
         }}
 
         FINAL INSTRUCTIONS:
@@ -912,7 +918,9 @@ async def analyze_paper(pmid: str):
         - Be thorough and careful in your analysis
         - Extract actual information from the text, don't guess
         - Return ONLY the JSON structure above
-        - Determine curation readiness: true if ALL 6 fields have status "PRESENT"
+        - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
+        - Use proper JSON syntax with double quotes for strings
+        - Include all required sub-fields for each main field
         """
         
         # Run enhanced analysis using Gemini
@@ -923,55 +931,53 @@ async def analyze_paper(pmid: str):
             try:
                 parsed_analysis = json.loads(analysis.get("key_findings", "{}"))
                 
-                # Validate that we have exactly the 6 required fields
+                # Enhanced field validation and normalization using the field enhancer
                 required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                
+                # Use the field enhancer to validate and improve extraction accuracy
+                enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                
+                # Ensure all required fields exist with proper structure
                 missing_fields = []
-                
                 for field in required_fields:
-                    if field not in parsed_analysis or not parsed_analysis[field]:
+                    if field not in enhanced_analysis:
                         missing_fields.append(field)
-                        # Ensure the field exists with default structure
-                        if field == "host_species":
-                            parsed_analysis[field] = {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for host species information"}
-                        elif field == "body_site":
-                            parsed_analysis[field] = {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for body site information"}
-                        elif field == "condition":
-                            parsed_analysis[field] = {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for condition information"}
-                        elif field == "sequencing_type":
-                            parsed_analysis[field] = {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sequencing method information"}
-                        elif field == "taxa_level":
-                            parsed_analysis[field] = {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for taxonomic level information"}
-                        elif field == "sample_size":
-                            parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
+                        enhanced_analysis[field] = create_default_field_structure(field)
+                    else:
+                        # Validate existing field structure
+                        field_data = enhanced_analysis[field]
+                        if not isinstance(field_data, dict):
+                            missing_fields.append(field)
+                            enhanced_analysis[field] = create_default_field_structure(field)
+                        else:
+                            # Ensure all required sub-fields exist
+                            if not validate_field_structure(field_data, field):
+                                missing_fields.append(field)
+                                enhanced_analysis[field] = create_default_field_structure(field)
                 
-                # Determine curation readiness based on having all 6 fields with status "PRESENT"
-                curation_ready = len(missing_fields) == 0 and all(
-                    parsed_analysis.get(field, {}).get("status") == "PRESENT" 
-                    for field in required_fields
-                )
+                # Determine curation readiness based on enhanced validation
+                curation_ready = enhanced_analysis.get("curation_ready", False)
                 
-                # Update the parsed analysis with curation readiness
-                parsed_analysis["curation_ready"] = curation_ready
-                parsed_analysis["missing_fields"] = missing_fields
+                # Update missing fields from enhanced analysis
+                missing_fields = enhanced_analysis.get("missing_fields", missing_fields)
                 
-            except json.JSONDecodeError:
-                # Fallback if JSON parsing fails - ensure we have exactly the 6 fields
-                parsed_analysis = {
-                    "host_species": {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "body_site": {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "condition": {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "curation_ready": False,
-                    "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
-                    "curation_preparation_summary": "Analysis failed - re-run required"
-                }
+                # Ensure we have the final structure
+                enhanced_analysis["missing_fields"] = missing_fields
+                enhanced_analysis["curation_ready"] = curation_ready
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing failed for PMID {pmid}: {str(e)}")
+                logger.error(f"Raw analysis response: {analysis.get('key_findings', '{}')[:500]}...")
+                
+                # Create comprehensive fallback structure
+                enhanced_analysis = create_comprehensive_fallback_analysis()
+                missing_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                curation_ready = False
             
             # Store analysis results in cache
             cache_manager.store_analysis_result(
                 pmid, 
-                parsed_analysis, 
+                enhanced_analysis, 
                 metadata, 
                 "gemini_enhanced", 
                 analysis.get("confidence", 0.0), 
@@ -982,7 +988,7 @@ async def analyze_paper(pmid: str):
             response = {
                 "pmid": pmid,
                 "title": metadata.get("title", ""),
-                "enhanced_analysis": parsed_analysis,
+                "enhanced_analysis": enhanced_analysis,
                 "curation_ready": curation_ready,
                 "timestamp": datetime.now().isoformat(),
                 "source": "gemini_enhanced_analysis",
@@ -999,7 +1005,132 @@ async def analyze_paper(pmid: str):
         raise he
     except Exception as e:
         logger.error(f"Error in analyze_paper endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Helper functions for field structure creation and validation
+def create_default_field_structure(field_name: str) -> Dict:
+    """Create a default structure for a missing field."""
+    field_structures = {
+        "host_species": {
+            "primary": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for host species information"
+        },
+        "body_site": {
+            "site": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for body site information"
+        },
+        "condition": {
+            "description": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for condition information"
+        },
+        "sequencing_type": {
+            "method": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for sequencing method information"
+        },
+        "taxa_level": {
+            "level": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for taxonomic level information"
+        },
+        "sample_size": {
+            "size": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for sample size information"
+        }
+    }
+    return field_structures.get(field_name, field_structures["host_species"]).copy()
+
+def validate_field_structure(field_data: Dict, field_name: str) -> bool:
+    """Validate that a field has the correct structure."""
+    required_keys = {
+        "host_species": ["primary", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "body_site": ["site", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "condition": ["description", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "sequencing_type": ["method", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "taxa_level": ["level", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "sample_size": ["size", "confidence", "status", "reason_if_missing", "suggestions_for_curation"]
+    }
+    
+    required_keys_for_field = required_keys.get(field_name, [])
+    return all(key in field_data for key in required_keys_for_field)
+
+def create_comprehensive_fallback_analysis() -> Dict:
+    """Create a comprehensive fallback analysis when parsing completely fails."""
+    return {
+        "host_species": {
+            "primary": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "body_site": {
+            "site": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "condition": {
+            "description": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "sequencing_type": {
+            "method": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "taxa_level": {
+            "level": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "sample_size": {
+            "size": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "curation_ready": False,
+        "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
+        "curation_preparation_summary": "Analysis failed - re-run required"
+    }
+
+def generate_curation_summary(parsed_analysis: Dict, missing_fields: List[str]) -> str:
+    """Generate a summary of what's needed for curation."""
+    if not missing_fields:
+        return "All required fields are present. Paper is ready for curation."
+    
+    if len(missing_fields) == 1:
+        return f"Missing 1 field: {missing_fields[0]}. Review paper for this information."
+    elif len(missing_fields) <= 3:
+        return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper needs additional review."
+    else:
+        return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper requires significant review before curation."
 
 @app.post("/analyze_batch", tags=["Batch Processing"])
 async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size: int = Query(20)):
@@ -1436,32 +1567,38 @@ async def enhanced_analysis(pmid: str):
            - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
            - Check: Abstract, methods section, study population descriptions, mesh terms
            - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+           - Be specific: "Human" not "mammal", "Mouse" not "rodent"
 
         2. BODY SITE:
            - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
            - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
            - Check: Sample collection methods, study location descriptions, abstract
            - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+           - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
 
         3. CONDITION:
            - Look for: Disease names, experimental conditions, comparative studies, environmental factors
            - Check: Study objectives, hypothesis, experimental design, disease associations
            - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+           - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
 
         4. SEQUENCING TYPE:
            - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
            - Check: Methods section, molecular techniques, sequencing protocols
            - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+           - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
 
         5. TAXA LEVEL:
            - Look for: Taxonomic levels and specific names
            - Check: Results section, microbial community descriptions, diversity analysis
            - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+           - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
 
         6. SAMPLE SIZE:
            - Look for: Numbers, sample counts, participant numbers, collection descriptions
            - Check: Methods section, study design, sample collection details
            - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+           - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
 
         ANALYSIS INSTRUCTIONS:
         - Read the text THOROUGHLY for each field
@@ -1470,6 +1607,7 @@ async def enhanced_analysis(pmid: str):
         - If information is completely missing, mark as "ABSENT" with confidence 0.0
         - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
         - Pay attention to context clues and implicit information
+        - Extract actual information from the text, don't guess or infer
 
         CRITICAL: This paper contains microbial analysis. Look carefully for:
         - Any mention of bacteria, microbiome, microbial communities
@@ -1520,18 +1658,17 @@ async def enhanced_analysis(pmid: str):
                 "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                 "reason_if_missing": "explanation if absent",
                 "suggestions_for_curation": "what additional info is needed"
-            }},
-            "curation_ready": true/false,
-            "missing_fields": ["field1", "field2", ...],
-            "curation_preparation_summary": "Overall assessment of what's needed for curation"
+            }}
         }}
 
         FINAL INSTRUCTIONS:
         - Focus ONLY on the 6 fields above
         - Be thorough and careful in your analysis
-        - Extract actual information from the text, don't guess
+        - Extract actual information from the text, don't guess or infer
         - Return ONLY the JSON structure above
-        - Determine curation readiness: true if ALL 6 fields have status "PRESENT"
+        - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
+        - Use proper JSON syntax with double quotes for strings
+        - Include all required sub-fields for each main field
         """
         
         # Run enhanced analysis using Gemini
@@ -1542,55 +1679,53 @@ async def enhanced_analysis(pmid: str):
             try:
                 parsed_analysis = json.loads(analysis.get("key_findings", "{}"))
                 
-                # Validate that we have exactly the 6 required fields
+                # Enhanced field validation and normalization using the field enhancer
                 required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                
+                # Use the field enhancer to validate and improve extraction accuracy
+                enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                
+                # Ensure all required fields exist with proper structure
                 missing_fields = []
-                
                 for field in required_fields:
-                    if field not in parsed_analysis or not parsed_analysis[field]:
+                    if field not in enhanced_analysis:
                         missing_fields.append(field)
-                        # Ensure the field exists with default structure
-                        if field == "host_species":
-                            parsed_analysis[field] = {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for host species information"}
-                        elif field == "body_site":
-                            parsed_analysis[field] = {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for body site information"}
-                        elif field == "condition":
-                            parsed_analysis[field] = {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for condition information"}
-                        elif field == "sequencing_type":
-                            parsed_analysis[field] = {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sequencing method information"}
-                        elif field == "taxa_level":
-                            parsed_analysis[field] = {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for taxonomic level information"}
-                        elif field == "sample_size":
-                            parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
+                        enhanced_analysis[field] = create_default_field_structure(field)
+                    else:
+                        # Validate existing field structure
+                        field_data = enhanced_analysis[field]
+                        if not isinstance(field_data, dict):
+                            missing_fields.append(field)
+                            enhanced_analysis[field] = create_default_field_structure(field)
+                        else:
+                            # Ensure all required sub-fields exist
+                            if not validate_field_structure(field_data, field):
+                                missing_fields.append(field)
+                                enhanced_analysis[field] = create_default_field_structure(field)
                 
-                # Determine curation readiness based on having all 6 fields with status "PRESENT"
-                curation_ready = len(missing_fields) == 0 and all(
-                    parsed_analysis.get(field, {}).get("status") == "PRESENT" 
-                    for field in required_fields
-                )
+                # Determine curation readiness based on enhanced validation
+                curation_ready = enhanced_analysis.get("curation_ready", False)
                 
-                # Update the parsed analysis with curation readiness
-                parsed_analysis["curation_ready"] = curation_ready
-                parsed_analysis["missing_fields"] = missing_fields
+                # Update missing fields from enhanced analysis
+                missing_fields = enhanced_analysis.get("missing_fields", missing_fields)
                 
-            except json.JSONDecodeError:
-                # Fallback if JSON parsing fails - ensure we have exactly the 6 fields
-                parsed_analysis = {
-                    "host_species": {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "body_site": {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "condition": {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "curation_ready": False,
-                    "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
-                    "curation_preparation_summary": "Analysis failed - re-run required"
-                }
+                # Ensure we have the final structure
+                enhanced_analysis["missing_fields"] = missing_fields
+                enhanced_analysis["curation_ready"] = curation_ready
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing failed for PMID {pmid}: {str(e)}")
+                logger.error(f"Raw analysis response: {analysis.get('key_findings', '{}')[:500]}...")
+                
+                # Create comprehensive fallback structure
+                enhanced_analysis = create_comprehensive_fallback_analysis()
+                missing_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                curation_ready = False
             
             # Store analysis results in cache
             cache_manager.store_analysis_result(
                 pmid, 
-                parsed_analysis, 
+                enhanced_analysis, 
                 metadata, 
                 "gemini_enhanced", 
                 analysis.get("confidence", 0.0), 
@@ -1601,7 +1736,7 @@ async def enhanced_analysis(pmid: str):
             response = {
                 "pmid": pmid,
                 "title": metadata.get("title", ""),
-                "enhanced_analysis": parsed_analysis,
+                "enhanced_analysis": enhanced_analysis,
                 "curation_ready": curation_ready,
                 "timestamp": datetime.now().isoformat(),
                 "source": "gemini_enhanced_analysis",

@@ -162,6 +162,17 @@ function hideLoading() {
     if (loadingElement) loadingElement.style.display = 'none';
 }
 
+// Escape HTML meta-characters in a string
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\//g, '&#x2F;');
+}
+
 // Show error message
 function showError(message) {
     const resultsContent = document.getElementById('results-content');
@@ -169,7 +180,7 @@ function showError(message) {
         resultsContent.innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                ${message}
+                ${escapeHtml(message)}
             </div>
         `;
         resultsContent.style.display = 'block';

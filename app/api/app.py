@@ -21,6 +21,7 @@ from app.utils.config import (
     AVAILABLE_MODELS
 )
 from app.utils.methods_scorer import MethodsScorer
+from app.utils.field_validator import FieldExtractionEnhancer
 import re
 import asyncio
 import logging
@@ -28,6 +29,7 @@ import sys
 import os
 from bs4 import BeautifulSoup
 import csv
+from app.services.cache_manager import CacheManager
 
 # Add the project root to Python path
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,7 +38,74 @@ import csv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="BugSigDB Analyzer")
+app = FastAPI(
+    title="BioAnalyzer - BugSigDB Curation Analysis",
+    description="""
+    **BioAnalyzer** - A specialized AI-powered tool for analyzing scientific papers for BugSigDB curation readiness.
+    
+    ## Core Functionality
+    
+    This API focuses on analyzing papers for **6 essential BugSigDB curation fields**:
+    
+    1. **Host Species** - What organism is being studied (e.g., Human, Mouse, Rat)
+    2. **Body Site** - Where the microbiome sample was collected (e.g., Gut, Oral, Skin)
+    3. **Condition** - What disease/treatment/exposure is being studied
+    4. **Sequencing Type** - What molecular method was used (e.g., 16S, metagenomics)
+    5. **Taxa Level** - What taxonomic level was analyzed (e.g., phylum, genus, species)
+    6. **Sample Size** - Number of samples analyzed
+    
+    ## Analysis Results
+    
+    For each field, the AI provides:
+    - **Status**: PRESENT, PARTIALLY_PRESENT, or ABSENT
+    - **Value**: The extracted information
+    - **Confidence**: AI confidence score (0.0-1.0)
+    - **Reason if Missing**: Why the field is not present
+    - **Suggestions**: What additional information is needed for curation
+    
+    ## Curation Readiness
+    
+    A paper is considered **ready for curation** when all 6 fields have status "PRESENT".
+    
+    ## Endpoints
+    
+    - **Paper Analysis**: Single and batch analysis of papers by PMID
+    - **CSV Upload**: Batch processing of multiple PMIDs from CSV files
+    - **Curation Statistics**: Performance metrics and field analysis statistics
+    - **Cache Management**: Efficient storage and retrieval of analysis results
+    """,
+    version="2.0.0",
+    contact={
+        "name": "BioAnalyzer Team",
+        "url": "https://github.com/your-repo/bioanalyzer",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    tags_metadata=[
+        {
+            "name": "Paper Analysis",
+            "description": "Core endpoints for analyzing papers for BugSigDB curation readiness using the 6 essential fields."
+        },
+        {
+            "name": "Batch Processing",
+            "description": "Endpoints for processing multiple papers at once, including CSV uploads."
+        },
+        {
+            "name": "Curation Statistics",
+            "description": "Endpoints for monitoring analysis performance and curation readiness metrics."
+        },
+        {
+            "name": "Cache Management",
+            "description": "Endpoints for managing cached analysis results and improving performance."
+        },
+        {
+            "name": "System",
+            "description": "System health and status endpoints."
+        }
+    ]
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -59,6 +128,10 @@ qa_system = UnifiedQA(
     use_gemini=bool(GEMINI_API_KEY),
     gemini_api_key=GEMINI_API_KEY
 )
+
+# Initialize cache manager and field enhancer
+cache_manager = CacheManager()
+field_enhancer = FieldExtractionEnhancer()
 
 # Mount static files after API routes
 static_dir = Path(__file__).parent.parent.parent / "frontend"
@@ -97,6 +170,17 @@ async def process_message(message):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """
+    **WebSocket endpoint for real-time communication.**
+    
+    This endpoint handles WebSocket connections for:
+    - Real-time paper analysis
+    - Chat functionality
+    - Live updates
+    
+    **Note:** This is a WebSocket endpoint and cannot be tested in the Swagger UI.
+    Use a WebSocket client to connect to `/ws`.
+    """
     await websocket.accept()
     print("WebSocket connection accepted")
     try:
@@ -194,9 +278,24 @@ async def websocket_endpoint(websocket: WebSocket):
         except:
             pass
 
-@app.post("/ask_question/{pmid}")
+@app.post("/ask_question/{pmid}", tags=["Paper Analysis"])
 async def ask_question(pmid: str, question: Question):
-    """Answer questions about a specific paper using available AI models"""
+    """
+    **Answer questions about a specific paper using AI analysis.**
+    
+    This endpoint allows users to ask specific questions about a paper and get AI-generated answers.
+    Useful for getting clarification on specific aspects of a paper's content.
+    
+    **Parameters:**
+    - `pmid`: PubMed ID of the paper
+    - `question`: The question object containing the user's query
+    
+    **Returns:**
+    - **answer**: AI-generated response to the question
+    - **confidence**: Confidence score for the answer
+    
+    **Note:** This endpoint uses the paper's metadata and abstract for context.
+    """
     try:
         # Get paper metadata
         metadata = retriever.get_paper_metadata(pmid)
@@ -253,82 +352,330 @@ async def ask_question(pmid: str, question: Question):
         print(f"Error in ask_question endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error answering question: {str(e)}")
 
-@app.post("/upload_paper")
-async def upload_paper(file: UploadFile = File(...), username: str = Form(None)):
-    """Upload a paper file (PDF or text) and extract information for curation"""
+@app.post("/upload_csv", tags=["Batch Processing"])
+async def upload_csv(file: UploadFile = File(...)):
+    """
+    **Upload CSV file with PMIDs for batch processing.**
+    
+    This endpoint processes a CSV file containing PubMed IDs and analyzes each paper
+    for BugSigDB curation readiness using the 6 essential fields.
+    
+    **Parameters:**
+    - `file`: CSV file with PMIDs (first column should contain PMIDs)
+    
+    **CSV Format:**
+    - First column: PubMed IDs (numeric)
+    - Additional columns: Optional metadata (not required)
+    
+    **Returns:**
+    - **results**: List of analysis results for each PMID
+    - **total_processed**: Number of PMIDs successfully processed
+    
+    **Limitations:**
+    - Maximum 10 PMIDs processed per upload (for performance)
+    - Only CSV files supported
+    - PMIDs must be numeric
+    
+    **Analysis Results:**
+    Each result contains the 6 essential fields analysis with curation readiness status.
+    """
     try:
         # Check file type
-        if file.content_type not in ["application/pdf", "text/plain"]:
-            raise HTTPException(status_code=400, detail="Only PDF and text files are supported")
+        if not file.filename.endswith('.csv'):
+            raise HTTPException(status_code=400, detail="Only CSV files are supported")
+        
         # Read file content
         content = await file.read()
-        # Process the file based on type
-        if file.content_type == "application/pdf":
-            paper_content = {
-                "title": "Extracted from PDF",
-                "abstract": "Abstract would be extracted from the PDF",
-                "full_text": "Full text would be extracted from the PDF"
-            }
-        else:
-            text_content = content.decode("utf-8")
-            paper_content = {
-                "title": file.filename,
-                "abstract": text_content[:500] + "...",
-                "full_text": text_content
-            }
-        # Use QA system to analyze the paper
-        results = await qa_system.analyze_paper(paper_content)
-        analysis_results = results.get("gemini", {})
-        analysis_results["taxa"] = extract_taxa(paper_content["full_text"])
-        response = {
-            "metadata": {
-                "title": paper_content["title"],
-                "abstract": paper_content["abstract"],
-                "pmid": "",
-                "doi": "",
-                "publication_date": ""
-            },
-            "analysis": analysis_results
-        }
-        return response
+        csv_text = content.decode("utf-8")
+        
+        # Parse CSV to extract PMIDs (assuming first column contains PMIDs)
+        import csv
+        from io import StringIO
+        
+        csv_reader = csv.reader(StringIO(csv_text))
+        pmids = []
+        
+        for row in csv_reader:
+            if row and row[0].strip().isdigit():  # Check if first column is a numeric PMID
+                pmids.append(row[0].strip())
+        
+        if not pmids:
+            raise HTTPException(status_code=400, detail="No valid PMIDs found in CSV file")
+        
+        # Process each PMID using the enhanced analysis
+        results = []
+        for pmid in pmids[:10]:  # Limit to first 10 PMIDs for performance
+            try:
+                # Get paper metadata
+                metadata = retriever.get_paper_metadata(pmid)
+                if not metadata:
+                    results.append({
+                        "pmid": pmid,
+                        "title": "Not found",
+                        "authors": "N/A",
+                        "journal": "N/A",
+                        "date": "N/A",
+                        "enhanced_analysis": {
+                            "host_species": {"status": "ABSENT", "reason": "Paper not found", "suggestion": "Verify PMID"},
+                            "body_site": {"status": "ABSENT", "reason": "Paper not found", "suggestion": "Verify PMID"},
+                            "condition": {"status": "ABSENT", "reason": "Paper not found", "suggestion": "Verify PMID"},
+                            "sequencing_type": {"status": "ABSENT", "reason": "Paper not found", "suggestion": "Verify PMID"},
+                            "taxa_level": {"status": "ABSENT", "reason": "Paper not found", "suggestion": "Verify PMID"},
+                            "sample_size": {"status": "ABSENT", "reason": "Paper not found", "suggestion": "Verify PMID"}
+                        }
+                    })
+                    continue
+                
+                # Get full text if available
+                full_text = ""
+                try:
+                    full_text = retriever.get_pmc_fulltext(pmid)
+                    if isinstance(full_text, str):
+                        try:
+                            soup = BeautifulSoup(full_text, 'lxml')
+                            full_text = retriever._extract_text_from_pmc_xml(soup)
+                        except Exception as e:
+                            print(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
+                    elif isinstance(full_text, list):
+                        full_text = '\n'.join(str(x) for x in full_text)
+                    elif full_text is None:
+                        full_text = ""
+                    else:
+                        full_text = str(full_text)
+                except Exception as e:
+                    print(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
+                    full_text = ""
+                
+                # Analyze paper using enhanced analysis with the 6 essential fields
+                enhanced_prompt = f"""
+                You are a specialized AI assistant for BugSigDB curation. Your task is to carefully analyze this scientific paper and extract specific information about 6 essential fields required for microbial signature curation.
+
+                PAPER INFORMATION:
+                Title: {metadata.get('title', '')}
+                Abstract: {metadata.get('abstract', '')}
+                Full Text: {full_text[:3000] if full_text else 'Not available'}
+
+                REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
+
+                1. HOST SPECIES:
+                   - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
+                   - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
+                   - Check: Abstract, methods section, study population descriptions, mesh terms
+                   - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+
+                2. BODY SITE:
+                   - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
+                   - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
+                   - Check: Sample collection methods, study location descriptions, abstract
+                   - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+
+                3. CONDITION:
+                   - Look for: Disease names, experimental conditions, comparative studies, environmental factors
+                   - Check: Study objectives, hypothesis, experimental design, disease associations
+                   - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+
+                4. SEQUENCING TYPE:
+                   - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
+                   - Check: Methods section, molecular techniques, sequencing protocols
+                   - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+
+                5. TAXA LEVEL:
+                   - Look for: Taxonomic levels and specific names
+                   - Check: Results section, microbial community descriptions, diversity analysis
+                   - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+
+                6. SAMPLE SIZE:
+                   - Look for: Numbers, sample counts, participant numbers, collection descriptions
+                   - Check: Methods section, study design, sample collection details
+                   - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+
+                ANALYSIS INSTRUCTIONS:
+                - Read the text THOROUGHLY for each field
+                - If information is clearly stated, mark as "PRESENT" with confidence 0.8-1.0
+                - If information is partially stated or implied, mark as "PARTIALLY_PRESENT" with confidence 0.4-0.7
+                - If information is completely missing, mark as "ABSENT" with confidence 0.0
+                - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
+                - Pay attention to context clues and implicit information
+
+                CRITICAL: This paper contains microbial analysis. Look carefully for:
+                - Any mention of bacteria, microbiome, microbial communities
+                - Sequencing methods and molecular techniques
+                - Sample collection and study design details
+                - Comparative analyses or experimental conditions
+
+                RESPONSE FORMAT - Return ONLY this JSON structure:
+                {{
+                    "host_species": {{
+                        "primary": "extracted_species_name",
+                        "confidence": 0.0-1.0,
+                        "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                        "reason_if_missing": "explanation if absent",
+                        "suggestions_for_curation": "what additional info is needed"
+                    }},
+                    "body_site": {{
+                        "site": "extracted_site_name",
+                        "confidence": 0.0-1.0,
+                        "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                        "reason_if_missing": "explanation if absent",
+                        "suggestions_for_curation": "what additional info is needed"
+                    }},
+                    "condition": {{
+                        "description": "extracted_condition_description",
+                        "confidence": 0.0-1.0,
+                        "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                        "reason_if_missing": "explanation if absent",
+                        "suggestions_for_curation": "what additional info is needed"
+                    }},
+                    "sequencing_type": {{
+                        "method": "extracted_sequencing_method",
+                        "confidence": 0.0-1.0,
+                        "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                        "reason_if_missing": "explanation if absent",
+                        "suggestions_for_curation": "what additional info is needed"
+                    }},
+                    "taxa_level": {{
+                        "level": "extracted_taxonomic_level",
+                        "confidence": 0.0-1.0,
+                        "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                        "reason_if_missing": "explanation if absent",
+                        "suggestions_for_curation": "what additional info is needed"
+                    }},
+                    "sample_size": {{
+                        "size": "extracted_sample_size",
+                        "confidence": 0.0-1.0,
+                        "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                        "reason_if_missing": "explanation if absent",
+                        "suggestions_for_curation": "what additional info is needed"
+                    }},
+                    "curation_ready": true/false,
+                    "missing_fields": ["field1", "field2", ...],
+                    "curation_preparation_summary": "Overall assessment of what's needed for curation"
+                }}
+
+                FINAL INSTRUCTIONS:
+                - Focus ONLY on the 6 fields above
+                - Be thorough and careful in your analysis
+                - Extract actual information from the text, don't guess
+                - Return ONLY the JSON structure above
+                - Determine curation readiness: true if ALL 6 fields have status "PRESENT"
+                """
+                
+                analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
+                
+                # Parse the JSON response from Gemini
+                try:
+                    parsed_analysis = json.loads(analysis.get("key_findings", "{}"))
+                    
+                    # Validate that we have exactly the 6 required fields
+                    required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                    missing_fields = []
+                    
+                    for field in required_fields:
+                        if field not in parsed_analysis or not parsed_analysis[field]:
+                            missing_fields.append(field)
+                            # Ensure the field exists with default structure
+                            if field == "host_species":
+                                parsed_analysis[field] = {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for host species information"}
+                            elif field == "body_site":
+                                parsed_analysis[field] = {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for body site information"}
+                            elif field == "condition":
+                                parsed_analysis[field] = {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for condition information"}
+                            elif field == "sequencing_type":
+                                parsed_analysis[field] = {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sequencing method information"}
+                            elif field == "taxa_level":
+                                parsed_analysis[field] = {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for taxonomic level information"}
+                            elif field == "sample_size":
+                                parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
+                
+                    # Determine curation readiness based on having all 6 fields with status "PRESENT"
+                    curation_ready = len(missing_fields) == 0 and all(
+                        parsed_analysis.get(field, {}).get("status") == "PRESENT" 
+                        for field in required_fields
+                    )
+                    
+                    # Update the parsed analysis with curation readiness
+                    parsed_analysis["curation_ready"] = curation_ready
+                    parsed_analysis["missing_fields"] = missing_fields
+                    
+                except json.JSONDecodeError:
+                    # Fallback if JSON parsing fails - ensure we have exactly the 6 fields
+                    parsed_analysis = {
+                        "host_species": {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                        "body_site": {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                        "condition": {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                        "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                        "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                        "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                        "curation_ready": False,
+                        "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
+                        "curation_preparation_summary": "Analysis failed - re-run required"
+                    }
+                
+                # Store analysis results in cache
+                cache_manager.store_analysis_result(
+                    pmid, 
+                    parsed_analysis, 
+                    metadata, 
+                    "gemini_enhanced", 
+                    analysis.get("confidence", 0.0), 
+                    curation_ready
+                )
+                
+                results.append({
+                    "pmid": pmid,
+                    "title": metadata.get("title", ""),
+                    "enhanced_analysis": parsed_analysis,
+                    "curation_ready": curation_ready
+                })
+                
+            except Exception as e:
+                print(f"Error processing PMID {pmid}: {str(e)}")
+                results.append({
+                    "pmid": pmid,
+                    "title": "Error processing",
+                    "authors": "N/A",
+                    "journal": "N/A",
+                    "date": "N/A",
+                    "enhanced_analysis": {
+                        "host_species": {"status": "ABSENT", "reason": f"Processing error: {str(e)}", "suggestion": "Try again later"},
+                        "body_site": {"status": "ABSENT", "reason": f"Processing error: {str(e)}", "suggestion": "Try again later"},
+                        "condition": {"status": "ABSENT", "reason": f"Processing error: {str(e)}", "suggestion": "Try again later"},
+                        "sequencing_type": {"status": "ABSENT", "reason": f"Processing error: {str(e)}", "suggestion": "Try again later"},
+                        "taxa_level": {"status": "ABSENT", "reason": f"Processing error: {str(e)}", "suggestion": "Try again later"},
+                        "sample_size": {"status": "ABSENT", "reason": f"Processing error: {str(e)}", "suggestion": "Try again later"}
+                    }
+                })
+        
+        return {"results": results, "total_processed": len(results)}
+        
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Error processing uploaded file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+        print(f"Error processing CSV file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing CSV file: {str(e)}")
 
-@app.get("/fetch_by_doi")
-async def fetch_by_doi(doi: str, request: Request):
-    """Fetch paper by DOI for curation"""
-    try:
-        # Extract username from request cookies or query params
-        username = None
-        if "username" in request.cookies:
-            username = request.cookies["username"]
-        elif "username" in request.query_params:
-            username = request.query_params["username"]
-        
-        # Use PubMed retriever to get paper by DOI
-        metadata = retriever.get_paper_by_doi(doi)
-        if not metadata:
-            raise HTTPException(status_code=404, detail=f"Paper with DOI {doi} not found")
-        
-        # Get PMID from metadata
-        pmid = metadata.get("pmid")
-        if not pmid:
-            raise HTTPException(status_code=404, detail=f"PMID not found for DOI {doi}")
-        
-        # Use the analyze_paper function to get full analysis
-        return await analyze_paper(pmid, request)
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error fetching paper by DOI: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error fetching paper: {str(e)}")
-
-@app.post("/submit_curation")
+@app.post("/submit_curation", tags=["Curation Statistics"])
 async def submit_curation(request: Request):
-    """Submit paper curation to BugSigDB"""
+    """
+    **Submit paper curation to BugSigDB.**
+    
+    This endpoint allows users to submit curation data for papers that have been analyzed.
+    Currently logs the submission (placeholder for future BugSigDB API integration).
+    
+    **Required Fields:**
+    - **pmid**: PubMed ID of the paper
+    - **title**: Paper title
+    - **host**: Host species
+    - **body_site**: Body site location
+    - **condition**: Condition studied
+    - **sequencing_type**: Sequencing method used
+    
+    **Returns:**
+    - **status**: Success/failure status
+    - **message**: Confirmation message
+    
+    **Note:** This is a placeholder endpoint for future BugSigDB integration.
+    """
     try:
         # Parse request body
         data = await request.json()
@@ -370,331 +717,668 @@ def extract_taxa(text):
     
     return found_taxa
 
-@app.get("/model_status")
-async def get_model_status():
-    """Get the status of available AI models."""
-    try:
-        status = {
-            "available_models": AVAILABLE_MODELS,
-            "default_model": DEFAULT_MODEL,
-            "gemini_available": bool(GEMINI_API_KEY),
-            "gemini_key_present": bool(GEMINI_API_KEY)
-        }
-        return status
-    except Exception as e:
-        print(f"Error getting model status: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
-
-@app.get("/analyze_by_title")
-async def analyze_by_title(title: str, request: Request):
-    """Analyze a paper by its title"""
-    try:
-        # Search PubMed for the paper by title
-        search_results = retriever.search_by_title(title)
-        if not search_results:
-            raise HTTPException(status_code=404, detail=f"No paper found with title: {title}")
-        
-        # Get the first result's PMID
-        pmid = search_results[0].get('pmid')
-        if not pmid:
-            raise HTTPException(status_code=404, detail="No PMID found for the paper")
-        
-        # Use the existing analyze_paper endpoint
-        return await analyze_paper(pmid, request)
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error analyzing paper by title: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
-
-@app.get("/analyze_by_url")
-async def analyze_by_url(url: str, request: Request):
-    """Analyze a paper by its URL (DOI or PubMed URL)"""
-    try:
-        # Extract DOI or PMID from URL
-        doi = None
-        pmid = None
-        
-        # Check if it's a DOI URL
-        if "doi.org" in url:
-            doi = url.split("doi.org/")[-1]
-        # Check if it's a PubMed URL
-        elif "pubmed.ncbi.nlm.nih.gov" in url:
-            pmid = url.split("/")[-1]
-        else:
-            raise HTTPException(status_code=400, detail="Invalid URL format. Please provide a DOI or PubMed URL")
-        
-        if doi:
-            # Use the existing fetch_by_doi endpoint
-            return await fetch_by_doi(doi, request)
-        elif pmid:
-            # Use the existing analyze_paper endpoint
-            return await analyze_paper(pmid, request)
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error analyzing paper by URL: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
-
-@app.get("/")
+@app.get("/", tags=["System"])
 async def root():
+    """Redirect to the frontend application."""
     return RedirectResponse(url="/static/index.html")
 
-@app.get("/analyze/{pmid}")
+@app.get("/analyze/{pmid}", tags=["Paper Analysis"])
 async def analyze_paper(pmid: str):
-    warning = None
-    error = None
+    """
+    **Analyze a single paper for BugSigDB curation readiness.**
+    
+    This endpoint analyzes a scientific paper using AI to determine if it's ready for BugSigDB curation.
+    It focuses on extracting and validating 6 essential fields required for curation.
+    
+    **Parameters:**
+    - `pmid`: PubMed ID of the paper to analyze
+    
+    **Returns:**
+    - **enhanced_analysis**: Detailed analysis of the 6 essential fields
+    - **curation_ready**: Boolean indicating if the paper is ready for curation
+    - **metadata**: Paper metadata (title, abstract, authors, etc.)
+    
+    **6 Essential Fields Analyzed:**
+    1. **host_species**: Host organism being studied
+    2. **body_site**: Microbiome sample collection location
+    3. **condition**: Disease/treatment/exposure studied
+    4. **sequencing_type**: Molecular method used
+    5. **taxa_level**: Taxonomic level analyzed
+    6. **sample_size**: Number of samples analyzed
+    
+    **Field Status Values:**
+    - **PRESENT**: Information is complete and clear
+    - **PARTIALLY_PRESENT**: Some information available but incomplete
+    - **ABSENT**: Information is missing with reasons and suggestions
+    
+    **Curation Readiness:**
+    A paper is considered ready for curation when ALL 6 fields have status "PRESENT".
+    """
     try:
         logger.info(f"=== Starting analysis for PMID: {pmid} ===")
+        
+        # Check cache first for analysis results
+        cached_result = cache_manager.get_analysis_result(pmid)
+        if cached_result and cache_manager.is_cache_valid(cached_result["timestamp"]):
+            logger.info(f"Returning cached analysis for PMID: {pmid}")
+            return {
+                "pmid": pmid,
+                "metadata": cached_result["metadata"],
+                "enhanced_analysis": cached_result["analysis_data"],
+                "curation_ready": cached_result["curation_ready"],
+                "timestamp": cached_result["timestamp"],
+                "source": cached_result["source"],
+                "cached": True
+            }
+        
+        # Get paper metadata
         metadata = retriever.get_paper_metadata(pmid)
-        # Try to supplement metadata with CSV fields if available
         csv_metadata = get_paper_metadata_from_csv(pmid)
-        found_in_csv = False
+        
         if csv_metadata:
             metadata.update(csv_metadata)
-            found_in_csv = True
+        
         if not metadata:
-            # Fallback: fetch from NCBI if not found in CSV
-            try:
-                metadata = retriever.get_paper_metadata(pmid)
-            except Exception as e:
-                logger.error(f"NCBI fallback failed for PMID {pmid}: {str(e)}")
-                return JSONResponse(content={"error": f"Paper not found in CSV or NCBI: {str(e)}"}, status_code=200)
-        logger.info(f"Successfully retrieved metadata: {metadata.get('title', 'No title')}")
-        # Try to get full text (optional)
+            raise HTTPException(status_code=404, detail=f"Paper not found: {pmid}")
+        
+        # Store metadata in cache
+        cache_manager.store_metadata(pmid, metadata, "pubmed")
+        
+        # Get full text if available
+        full_text = ""
         try:
-            logger.info(f"Attempting to fetch full text for PMID: {pmid}")
             full_text = retriever.get_pmc_fulltext(pmid)
-            # Robustly handle different types
             if isinstance(full_text, str):
                 try:
                     soup = BeautifulSoup(full_text, 'lxml')
                     full_text = retriever._extract_text_from_pmc_xml(soup)
                 except Exception as e:
                     logger.warning(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
-            elif isinstance(full_text, list):
-                logger.warning(f"PMC full text result is a list for PMID {pmid}, joining as string.")
-                full_text = '\n'.join(str(x) for x in full_text)
-            elif full_text is None:
-                logger.warning(f"PMC full text result is None for PMID {pmid}.")
-            else:
-                logger.warning(f"PMC full text result is not a string or list: {type(full_text)}")
-                full_text = str(full_text)
+            
+            # Store full text in cache
+            if full_text:
+                cache_manager.store_fulltext(pmid, full_text, "pmc")
+                
         except Exception as e:
             logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
-            full_text = None
-        paper_content = {
-            "title": metadata.get("title", ""),
-            "abstract": metadata.get("abstract", ""),
-            "full_text": full_text or ""
-        }
-        # Run analysis using the QA system
+            full_text = ""
+        
+        # Create enhanced prompt for specific analysis - same as enhanced endpoints
+        enhanced_prompt = f"""
+        You are a specialized AI assistant for BugSigDB curation. Your task is to carefully analyze this scientific paper and extract specific information about 6 essential fields required for microbial signature curation.
+
+        PAPER INFORMATION:
+        Title: {metadata.get('title', '')}
+        Abstract: {metadata.get('abstract', '')}
+        Full Text: {full_text[:3000] if full_text else 'Not available'}
+
+        REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
+
+        1. HOST SPECIES:
+           - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
+           - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
+           - Check: Abstract, methods section, study population descriptions, mesh terms
+           - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+           - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+
+        2. BODY SITE:
+           - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
+           - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
+           - Check: Sample collection methods, study location descriptions, abstract
+           - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+           - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+
+        3. CONDITION:
+           - Look for: Disease names, experimental conditions, comparative studies, environmental factors
+           - Check: Study objectives, hypothesis, experimental design, disease associations
+           - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+           - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+
+        4. SEQUENCING TYPE:
+           - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
+           - Check: Methods section, molecular techniques, sequencing protocols
+           - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+           - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+
+        5. TAXA LEVEL:
+           - Look for: Taxonomic levels and specific names
+           - Check: Results section, microbial community descriptions, diversity analysis
+           - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+           - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+
+        6. SAMPLE SIZE:
+           - Look for: Numbers, sample counts, participant numbers, collection descriptions
+           - Check: Methods section, study design, sample collection details
+           - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+           - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+
+        ANALYSIS INSTRUCTIONS:
+        - Read the text THOROUGHLY for each field
+        - If information is clearly stated, mark as "PRESENT" with confidence 0.8-1.0
+        - If information is partially stated or implied, mark as "PARTIALLY_PRESENT" with confidence 0.4-0.7
+        - If information is completely missing, mark as "ABSENT" with confidence 0.0
+        - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
+        - Pay attention to context clues and implicit information
+        - Extract actual information from the text, don't guess or infer
+
+        CRITICAL: This paper contains microbial analysis. Look carefully for:
+        - Any mention of bacteria, microbiome, microbial communities
+        - Sequencing methods and molecular techniques
+        - Sample collection and study design details
+        - Comparative analyses or experimental conditions
+
+        RESPONSE FORMAT - Return ONLY this JSON structure:
+        {{
+            "host_species": {{
+                "primary": "extracted_species_name",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "body_site": {{
+                "site": "extracted_site_name",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "condition": {{
+                "description": "extracted_condition_description",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "sequencing_type": {{
+                "method": "extracted_sequencing_method",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "taxa_level": {{
+                "level": "extracted_taxonomic_level",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "sample_size": {{
+                "size": "extracted_sample_size",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }}
+        }}
+
+        FINAL INSTRUCTIONS:
+        - Focus ONLY on the 6 fields above
+        - Be thorough and careful in your analysis
+        - Extract actual information from the text, don't guess
+        - Return ONLY the JSON structure above
+        - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
+        - Use proper JSON syntax with double quotes for strings
+        - Include all required sub-fields for each main field
+        """
+        
+        # Run enhanced analysis using Gemini
         try:
-            analysis = await qa_system.analyze_paper(paper_content)
-            if analysis.get("error"):
-                warning = (
-                    "The Gemini API key has IP address restrictions. "
-                    "Your current IP address is not authorized to use this API key. "
-                    "Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
-                )
-                analysis["warning"] = warning
-        except Exception as e:
-            logger.error(f"Error during analysis: {str(e)}")
-            warning = (
-                "The Gemini API key has IP address restrictions. "
-                "Your current IP address is not authorized to use this API key. "
-                "Please update the API key in your .env file to one without IP restrictions or add your current IP to the allowed list."
-            )
-            analysis = {
-                "has_signatures": False,
-                "confidence": 0.0,
-                "key_findings": [],
-                "suggested_topics": [],
-                "category_scores": {
-                    "microbiome": 0,
-                    "methods": 0,
-                    "analysis": 0,
-                    "body_sites": 0,
-                    "diseases": 0
-                },
-                "found_terms": {
-                    "microbiome": [],
-                    "methods": [],
-                    "analysis": [],
-                    "body_sites": [],
-                    "diseases": []
-                },
-                "is_complete": False,
-                "num_tokens": 0,
-                "status": "error",
-                "warning": warning,
-                "error": str(e)
-            }
-            error = str(e)
-
-        # --- Curation status logic (CSV is source of truth, LLM for methods analysis) ---
-        in_bugsigdb = False
-        curated = False
-        curation_status_message = ""
-        required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
-        missing_fields = [f for f in required_fields if not metadata.get(f)]
-        
-        # Check LLM analysis for curation readiness
-        curation_analysis = analysis.get('curation_analysis', {})
-        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
-        
-        if found_in_csv:
-            in_bugsigdb = True
-            curated = True
-            curation_status_message = "This paper is in BugSigDB and already curated."
-        else:
-            in_bugsigdb = False
-            curated = False
+            analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
             
-            # Use LLM analysis as primary indicator, fallback to field completeness
-            if llm_readiness == "READY":
-                curation_status_message = "This paper is ready for curation based on methods analysis but not yet in BugSigDB."
-            elif llm_readiness == "NOT_READY":
-                curation_status_message = "This paper is not ready for curation based on methods analysis."
-            elif not missing_fields:
-                curation_status_message = "This paper is ready for curation but not yet in BugSigDB."
-            else:
-                curation_status_message = "This paper is not in BugSigDB and is not ready for curation. Missing required fields."
-        # Compose the response for the frontend
-        response = {
-            "pmid": pmid,
-            "metadata": metadata,
-            "analysis": analysis,
-            "error": error,
-            "warning": warning,
-            "full_text_type": str(type(full_text)),
-            "in_bugsigdb": in_bugsigdb,
-            "curated": curated,
-            "curation_status_message": curation_status_message,
-            "missing_curation_fields": missing_fields,
-        }
-        # Ensure all expected fields are present
-        expected_fields = [
-            'pmid', 'title', 'authors', 'journal', 'year', 'host', 'body_site', 'condition',
-            'sequencing_type', 'in_bugsigdb', 'sample_size', 'taxa_level', 'statistical_method',
-            'doi', 'publication_date', 'signature_probability'
-        ]
-        for field in expected_fields:
-            if field not in metadata:
-                metadata[field] = ''
-        return JSONResponse(content=response)
+            # Parse the JSON response from Gemini
+            try:
+                parsed_analysis = json.loads(analysis.get("key_findings", "{}"))
+                
+                # Enhanced field validation and normalization using the field enhancer
+                required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                
+                # Use the field enhancer to validate and improve extraction accuracy
+                enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                
+                # Ensure all required fields exist with proper structure
+                missing_fields = []
+                for field in required_fields:
+                    if field not in enhanced_analysis:
+                        missing_fields.append(field)
+                        enhanced_analysis[field] = create_default_field_structure(field)
+                    else:
+                        # Validate existing field structure
+                        field_data = enhanced_analysis[field]
+                        if not isinstance(field_data, dict):
+                            missing_fields.append(field)
+                            enhanced_analysis[field] = create_default_field_structure(field)
+                        else:
+                            # Ensure all required sub-fields exist
+                            if not validate_field_structure(field_data, field):
+                                missing_fields.append(field)
+                                enhanced_analysis[field] = create_default_field_structure(field)
+                
+                # Determine curation readiness based on enhanced validation
+                curation_ready = enhanced_analysis.get("curation_ready", False)
+                
+                # Update missing fields from enhanced analysis
+                missing_fields = enhanced_analysis.get("missing_fields", missing_fields)
+                
+                # Ensure we have the final structure
+                enhanced_analysis["missing_fields"] = missing_fields
+                enhanced_analysis["curation_ready"] = curation_ready
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing failed for PMID {pmid}: {str(e)}")
+                logger.error(f"Raw analysis response: {analysis.get('key_findings', '{}')[:500]}...")
+                
+                # Create comprehensive fallback structure
+                enhanced_analysis = create_comprehensive_fallback_analysis()
+                missing_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                curation_ready = False
+            
+            # Store analysis results in cache
+            cache_manager.store_analysis_result(
+                pmid, 
+                enhanced_analysis, 
+                metadata, 
+                "gemini_enhanced", 
+                analysis.get("confidence", 0.0), 
+                curation_ready
+            )
+            
+            # Compose the enhanced response
+            response = {
+                "pmid": pmid,
+                "title": metadata.get("title", ""),
+                "enhanced_analysis": enhanced_analysis,
+                "curation_ready": curation_ready,
+                "timestamp": datetime.now().isoformat(),
+                "source": "gemini_enhanced_analysis",
+                "cached": False
+            }
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error during enhanced analysis: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+            
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        logger.error(f"Error analyzing paper {pmid}: {str(e)}")
-        return JSONResponse(content={"error": str(e)}, status_code=200)
+        logger.error(f"Error in analyze_paper endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@app.post("/analyze_batch")
+# Helper functions for field structure creation and validation
+def create_default_field_structure(field_name: str) -> Dict:
+    """Create a default structure for a missing field."""
+    field_structures = {
+        "host_species": {
+            "primary": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for host species information"
+        },
+        "body_site": {
+            "site": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for body site information"
+        },
+        "condition": {
+            "description": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for condition information"
+        },
+        "sequencing_type": {
+            "method": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for sequencing method information"
+        },
+        "taxa_level": {
+            "level": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for taxonomic level information"
+        },
+        "sample_size": {
+            "size": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Field not found in analysis",
+            "suggestions_for_curation": "Review paper for sample size information"
+        }
+    }
+    return field_structures.get(field_name, field_structures["host_species"]).copy()
+
+def validate_field_structure(field_data: Dict, field_name: str) -> bool:
+    """Validate that a field has the correct structure."""
+    required_keys = {
+        "host_species": ["primary", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "body_site": ["site", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "condition": ["description", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "sequencing_type": ["method", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "taxa_level": ["level", "confidence", "status", "reason_if_missing", "suggestions_for_curation"],
+        "sample_size": ["size", "confidence", "status", "reason_if_missing", "suggestions_for_curation"]
+    }
+    
+    required_keys_for_field = required_keys.get(field_name, [])
+    return all(key in field_data for key in required_keys_for_field)
+
+def create_comprehensive_fallback_analysis() -> Dict:
+    """Create a comprehensive fallback analysis when parsing completely fails."""
+    return {
+        "host_species": {
+            "primary": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "body_site": {
+            "site": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "condition": {
+            "description": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "sequencing_type": {
+            "method": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "taxa_level": {
+            "level": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "sample_size": {
+            "size": "Unknown",
+            "confidence": 0.0,
+            "status": "ABSENT",
+            "reason_if_missing": "Analysis failed - re-run required",
+            "suggestions_for_curation": "Re-run analysis with corrected prompt"
+        },
+        "curation_ready": False,
+        "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
+        "curation_preparation_summary": "Analysis failed - re-run required"
+    }
+
+def generate_curation_summary(parsed_analysis: Dict, missing_fields: List[str]) -> str:
+    """Generate a summary of what's needed for curation."""
+    if not missing_fields:
+        return "All required fields are present. Paper is ready for curation."
+    
+    if len(missing_fields) == 1:
+        return f"Missing 1 field: {missing_fields[0]}. Review paper for this information."
+    elif len(missing_fields) <= 3:
+        return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper needs additional review."
+    else:
+        return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper requires significant review before curation."
+
+@app.post("/analyze_batch", tags=["Batch Processing"])
 async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size: int = Query(20)):
+    """
+    **Batch analysis endpoint for multiple papers.**
+    
+    This endpoint analyzes multiple papers at once for BugSigDB curation readiness.
+    It processes papers in batches and returns analysis results for the 6 essential fields.
+    
+    **Parameters:**
+    - `pmids`: List of PubMed IDs to analyze
+    - `page`: Page number for pagination (default: 1)
+    - `page_size`: Number of papers per page (default: 20)
+    
+    **Returns:**
+    - List of analysis results, each containing:
+        - **enhanced_analysis**: 6-field analysis results
+        - **curation_ready**: Boolean indicating curation readiness
+        - **metadata**: Paper metadata
+        - **status**: Success/error status
+    
+    **Performance:** Results are cached to avoid re-analysis of previously processed papers.
+    """
     start = (page - 1) * page_size
     end = start + page_size
     pmids_batch = pmids[start:end]
     results = []
+    
     for pmid in pmids_batch:
-        # 1. Try CSV, else PubMed
-        csv_metadata = get_paper_metadata_from_csv(pmid)
-        if csv_metadata:
-            metadata = csv_metadata
-            found_in_csv = True
-        else:
-            metadata = retriever.get_paper_metadata(pmid)
-            found_in_csv = False
-        if not metadata:
-            continue
-        # 2. Analyze
-        paper_content = {
-            "title": metadata.get("title", ""),
-            "abstract": metadata.get("abstract", ""),
-            "full_text": ""
-        }
         try:
-            analysis = await qa_system.analyze_paper(paper_content)
-        except Exception as e:
-            analysis = {"has_signatures": False, "key_findings": [], "confidence": 0.0}
-        # 3. Enhanced curation criteria - focus on methods and LLM analysis
-        has_signature = analysis.get('has_signatures', False)
-        has_citation = all(metadata.get(f) for f in ['title', 'authors', 'journal', 'year', 'doi'])
-        
-        # Check LLM analysis for curation readiness
-        curation_analysis = analysis.get('curation_analysis', {})
-        llm_readiness = curation_analysis.get('readiness', 'UNKNOWN')
-        
-        # More comprehensive microbiome keyword detection for methods
-        abstract = metadata.get('abstract', '').lower()
-        methods_keywords = [
-            # Sequencing and molecular methods
-            'microbiome', 'microbiota', 'microbial', 'bacteria', 'bacterial',
-            'dysbiosis', 'abundance', 'taxonomic', 'community', 'sequencing',
-            '16s', 'metagenomic', 'shotgun', 'amplicon', 'differential abundance',
-            'community composition', 'microbial signature',
+            # Check cache first for analysis results
+            cached_result = cache_manager.get_analysis_result(pmid)
+            if cached_result and cache_manager.is_cache_valid(cached_result["timestamp"]):
+                results.append({
+                    "pmid": pmid,
+                    "metadata": cached_result["metadata"],
+                    "enhanced_analysis": cached_result["analysis_data"],
+                    "curation_ready": cached_result["curation_ready"],
+                    "timestamp": cached_result["timestamp"],
+                    "source": cached_result["source"],
+                    "cached": True,
+                    "status": "success"
+                })
+                continue
             
-            # Advanced sequencing methods
-            'metatranscriptomic', 'metaproteomic', 'metabolomic', 'single-cell',
-            'long-read', 'pacbio', 'oxford nanopore', 'illumina', 'ion torrent',
-            'pcr', 'rt-pcr', 'quantitative pcr', 'digital pcr',
+            # Get metadata
+            metadata = retriever.get_paper_metadata(pmid)
+            csv_metadata = get_paper_metadata_from_csv(pmid)
             
-            # Analytical methods
-            'alpha diversity', 'beta diversity', 'shannon', 'simpson', 'chao1',
-            'pcoa', 'nmds', 'pca', 'ordination', 'permanova', 'anosim',
-            'lefse', 'metastats', 'deseq2', 'edgeR', 'maaslin',
+            if csv_metadata:
+                metadata.update(csv_metadata)
             
-            # Statistical methods
-            'wilcoxon', 'mann-whitney', 'kruskal-wallis', 'anova', 't-test',
-            'correlation', 'regression', 'logistic regression', 'random forest',
-            'machine learning', 'clustering', 'hierarchical clustering',
+            if not metadata:
+                results.append({
+                    "pmid": pmid,
+                    "status": "error",
+                    "error": "Paper not found"
+                    })
+            continue
             
-            # Sample processing methods
-            'dna extraction', 'rna extraction', 'pcr amplification',
-            'library preparation', 'adapter ligation', 'size selection',
-            'quality control', 'quality filtering', 'chimera removal',
+            # Store metadata in cache
+            cache_manager.store_metadata(pmid, metadata, "pubmed")
             
-            # Bioinformatics methods
-            'qiime', 'mothur', 'usearch', 'vsearch', 'dada2', 'deblur',
-            'bwa', 'bowtie', 'bwa-mem', 'star', 'kallisto', 'salmon',
-            'kraken', 'metaphlan', 'humann', 'picrust', 'bugbase',
+            # Get full text if available
+            full_text = ""
+            try:
+                full_text = retriever.get_pmc_fulltext(pmid)
+                if isinstance(full_text, str):
+                    try:
+                        soup = BeautifulSoup(full_text, 'lxml')
+                        full_text = retriever._extract_text_from_pmc_xml(soup)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
+                
+                if full_text:
+                    cache_manager.store_fulltext(pmid, full_text, "pmc")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
             
-            # Experimental design methods
-            'randomized', 'controlled trial', 'case-control', 'cohort study',
-            'longitudinal', 'cross-sectional', 'intervention', 'treatment',
-            'placebo', 'blinded', 'double-blind', 'single-blind',
+            # Run enhanced analysis with the same improved prompt
+            enhanced_prompt = f"""
+            Analyze this scientific paper for BugSigDB curation. Focus ONLY on these 6 essential fields:
+
+            PAPER INFORMATION:
+            Title: {metadata.get('title', '')}
+            Abstract: {metadata.get('abstract', '')}
+            Full Text: {full_text[:3000] if full_text else 'Not available'}
+
+            REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
+            1. HOST SPECIES: What is the host species being studied? Look for terms like "Human", "Mouse", "Rat", "Drosophila", etc. If it's an environmental study, the "host" might be the environment itself.
+
+            2. BODY SITE: Where was the microbiome sample collected from? Look for terms like "Gut", "Oral", "Skin", "Indoor", "Restroom", "Environmental", "Soil", "Water", etc.
+
+            3. CONDITION: What condition, treatment, exposure, or comparison is being studied? Look for disease names, experimental conditions, comparative studies, environmental factors, etc.
+
+            4. SEQUENCING TYPE: What molecular method was used? Look for terms like "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", etc.
+
+            5. TAXA LEVEL: What taxonomic level was analyzed? Look for terms like "phylum", "genus", "species", "family", "order", or specific taxonomic names like "Proteobacteria", "Bacteroidetes", etc.
+
+            6. SAMPLE SIZE: What is the number of samples analyzed? Look for numbers, sample counts, or descriptions of sample collection.
+
+            IMPORTANT ANALYSIS REQUIREMENTS:
+            - For each field, determine if the information is PRESENT, PARTIALLY_PRESENT, or ABSENT
+            - If PRESENT: Extract the specific value and provide high confidence (0.8-1.0)
+            - If PARTIALLY_PRESENT: Extract what's available and provide medium confidence (0.4-0.7)
+            - If ABSENT: Provide reason why it's missing and confidence 0.0
+            - For missing fields, suggest what additional information would be needed for curation
+            - Pay attention to the context - environmental studies may have different "host" and "body site" than human/animal studies
+
+            Please provide your analysis in this exact JSON format:
+            {{
+                "host_species": {{
+                    "primary": "species_name",
+                    "confidence": 0.0-1.0,
+                    "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                    "reason_if_missing": "explanation if absent",
+                    "suggestions_for_curation": "what additional info is needed"
+                }},
+                "body_site": {{
+                    "site": "site_name",
+                    "confidence": 0.0-1.0,
+                    "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                    "reason_if_missing": "explanation if absent",
+                    "suggestions_for_curation": "what additional info is needed"
+                }},
+                "condition": {{
+                    "description": "detailed_description",
+                    "confidence": 0.0-1.0,
+                    "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                    "reason_if_missing": "explanation if absent",
+                    "suggestions_for_curation": "what additional info is needed"
+                }},
+                "sequencing_type": {{
+                    "method": "method_name",
+                    "confidence": 0.0-1.0,
+                    "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                    "reason_if_missing": "explanation if absent",
+                    "suggestions_for_curation": "what additional info is needed"
+                }},
+                "taxa_level": {{
+                    "level": "taxonomic_level",
+                    "confidence": 0.0-1.0,
+                    "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                    "reason_if_missing": "explanation if absent",
+                    "suggestions_for_curation": "what additional info is needed"
+                }},
+                "sample_size": {{
+                    "size": "sample_count",
+                    "confidence": 0.0-1.0,
+                    "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                    "reason_if_missing": "explanation if absent",
+                    "suggestions_for_curation": "what additional info is needed"
+                }},
+                "curation_ready": true/false,
+                "missing_fields": ["field1", "field2", ...],
+                "curation_preparation_summary": "Overall assessment of what's needed for curation"
+            }}
+
+            CRITICAL INSTRUCTIONS: 
+            - Focus ONLY on the 6 fields listed above
+            - Do NOT include Factor-Based Analysis, Detailed Explanation, Specific Reasons, Examples and Evidence, Key Findings, Category Scores, or Analysis Confidence
+            - For each missing field, provide specific reason and suggestions
+            - Determine curation readiness based on having all 6 fields with status "PRESENT"
+            - Return ONLY the JSON structure above
+            - Be thorough in your analysis - read the text carefully for each field
+            """
             
-            # Sample collection methods
-            'swab', 'biopsy', 'aspiration', 'lavage', 'scraping',
-            'fecal collection', 'saliva collection', 'blood collection',
-            'tissue sampling', 'environmental sampling'
-        ]
-        has_methods_keyword = any(kw in abstract for kw in methods_keywords)
-        
-        # Determine curation status based on LLM analysis and methods
-        if found_in_csv:
-            curation_status = "already_curated"
-        elif llm_readiness == "READY":
-            curation_status = "ready"
-        elif has_signature and has_citation and has_methods_keyword:
-            curation_status = "ready"
-        elif llm_readiness == "NOT_READY":
-            curation_status = "not_ready"
-        else:
-            curation_status = "not_ready"
-        # 4. Compose summary
-        results.append({
+            analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
+            
+            try:
+                parsed_analysis = json.loads(analysis.get("key_findings", "{}"))
+                
+                # Validate that we have exactly the 6 required fields
+                required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                missing_fields = []
+                
+                for field in required_fields:
+                    if field not in parsed_analysis or not parsed_analysis[field]:
+                        missing_fields.append(field)
+                        # Ensure the field exists with default structure
+                        if field == "host_species":
+                            parsed_analysis[field] = {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for host species information"}
+                        elif field == "body_site":
+                            parsed_analysis[field] = {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for body site information"}
+                        elif field == "condition":
+                            parsed_analysis[field] = {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for condition information"}
+                        elif field == "sequencing_type":
+                            parsed_analysis[field] = {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sequencing method information"}
+                        elif field == "taxa_level":
+                            parsed_analysis[field] = {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for taxonomic level information"}
+                        elif field == "sample_size":
+                            parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
+            
+                # Determine curation readiness based on having all 6 fields with status "PRESENT"
+                curation_ready = len(missing_fields) == 0 and all(
+                    parsed_analysis.get(field, {}).get("status") == "PRESENT" 
+                    for field in required_fields
+                )
+                
+                # Update the parsed analysis with curation readiness
+                parsed_analysis["curation_ready"] = curation_ready
+                parsed_analysis["missing_fields"] = missing_fields
+                
+            except json.JSONDecodeError:
+                parsed_analysis = {
+                    "host_species": {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                    "body_site": {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                    "condition": {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                    "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                    "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                    "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                    "curation_ready": False,
+                    "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
+                    "curation_preparation_summary": "Analysis failed - re-run required"
+                }
+            
+            curation_ready = parsed_analysis.get("curation_ready", False)
+            confidence = analysis.get("confidence", 0.0)
+            
+            # Store analysis results in cache
+            cache_manager.store_analysis_result(
+                pmid, 
+                parsed_analysis, 
+                metadata, 
+                "gemini_enhanced", 
+                confidence, 
+                curation_ready
+            )
+            
+            results.append({
             "pmid": pmid,
-            "title": metadata.get("title", ""),
-            "authors": metadata.get("authors", ""),
-            "journal": metadata.get("journal", ""),
-            "year": metadata.get("year", ""),
-            "doi": metadata.get("doi", ""),
-            "host": metadata.get("host", ""),
-            "body_site": metadata.get("body_site", ""),
-            "sequencing_type": metadata.get("sequencing_type", ""),
-            "curation_status": curation_status,
-            "key_findings": analysis.get("key_findings", []),
-            "has_signature": has_signature,
-            "has_microbiome_keyword": has_methods_keyword
-        })
+                "metadata": cached_result["metadata"],
+                "enhanced_analysis": parsed_analysis,
+                "curation_ready": curation_ready,
+                "timestamp": datetime.now().isoformat(),
+                "source": "gemini_enhanced_analysis",
+                "cached": False,
+                "status": "success"
+            })
+            
+        except Exception as e:
+            logger.error(f"Error processing PMID {pmid}: {str(e)}")
+            results.append({
+                "pmid": pmid,
+                "status": "error",
+                "error": str(e)
+            })
+    
     return results
 
 def get_paper_metadata_from_csv(pmid, csv_path='data/full_dump.csv'):
@@ -735,8 +1419,19 @@ def get_paper_metadata_from_csv(pmid, csv_path='data/full_dump.csv'):
                 }
     return None
 
-@app.get("/list_pmids")
+@app.get("/list_pmids", tags=["Batch Processing"])
 def list_pmids():
+    """
+    **Get list of all available PMIDs from the CSV database.**
+    
+    This endpoint retrieves all PubMed IDs available in the local CSV database.
+    Useful for batch processing and data exploration.
+    
+    **Returns:**
+    - List of PMIDs as strings
+    
+    **Note:** This endpoint reads from the local CSV file and may take time for large datasets.
+    """
     pmids = []
     try:
         with open('data/full_dump.csv', newline='', encoding='utf-8') as csvfile:
@@ -759,17 +1454,17 @@ def list_pmids():
         return {"error": str(e)}
     return pmids
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 async def health_check():
     """Health check endpoint for Docker and load balancers"""
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "service": "BugSigDB Analyzer",
-        "version": "1.0.0"
+        "service": "BioAnalyzer - BugSigDB Curation Analysis",
+        "version": "2.0.0"
     }
 
-@app.get("/metrics")
+@app.get("/metrics", tags=["System"])
 async def metrics():
     """Basic metrics endpoint for monitoring"""
     return {
@@ -779,6 +1474,685 @@ async def metrics():
         "memory_usage": "N/A",    # TODO: Implement memory monitoring
         "cpu_usage": "N/A"        # TODO: Implement CPU monitoring
     }
+
+@app.get("/enhanced_analysis/{pmid}", tags=["Paper Analysis"])
+async def enhanced_analysis(pmid: str):
+    """
+    **Enhanced analysis endpoint for BugSigDB curation requirements.**
+    
+    This endpoint provides the same 6-field analysis as the main analyze endpoint but with additional
+    caching and performance optimizations. It's the recommended endpoint for production use.
+    
+    **Parameters:**
+    - `pmid`: PubMed ID of the paper to analyze
+    
+    **Returns:**
+    - **enhanced_analysis**: Detailed analysis of the 6 essential fields
+    - **curation_ready**: Boolean indicating if the paper is ready for curation
+    - **metadata**: Paper metadata (title, abstract, authors, etc.)
+    - **cached**: Boolean indicating if result was retrieved from cache
+    
+    **6 Essential Fields Analyzed:**
+    1. **host_species**: Host organism being studied
+    2. **body_site**: Microbiome sample collection location
+    3. **condition**: Disease/treatment/exposure studied
+    4. **sequencing_type**: Molecular method used
+    5. **taxa_level**: Taxonomic level analyzed
+    6. **sample_size**: Number of samples analyzed
+    
+    **Note:** This endpoint is functionally identical to `/analyze/{pmid}` but includes caching.
+    """
+    try:
+        logger.info(f"=== Starting enhanced analysis for PMID: {pmid} ===")
+        
+        # Check cache first for analysis results
+        cached_result = cache_manager.get_analysis_result(pmid)
+        if cached_result and cache_manager.is_cache_valid(cached_result["timestamp"]):
+            logger.info(f"Returning cached analysis for PMID: {pmid}")
+            return {
+                "pmid": pmid,
+                "metadata": cached_result["metadata"],
+                "enhanced_analysis": cached_result["analysis_data"],
+                "curation_ready": cached_result["curation_ready"],
+                "timestamp": cached_result["timestamp"],
+                "source": cached_result["source"],
+                "cached": True
+            }
+        
+        # Get paper metadata
+        metadata = retriever.get_paper_metadata(pmid)
+        csv_metadata = get_paper_metadata_from_csv(pmid)
+        
+        if csv_metadata:
+            metadata.update(csv_metadata)
+        
+        if not metadata:
+            raise HTTPException(status_code=404, detail=f"Paper not found: {pmid}")
+        
+        # Store metadata in cache
+        cache_manager.store_metadata(pmid, metadata, "pubmed")
+        
+        # Get full text if available
+        full_text = ""
+        try:
+            full_text = retriever.get_pmc_fulltext(pmid)
+            if isinstance(full_text, str):
+                try:
+                    soup = BeautifulSoup(full_text, 'lxml')
+                    full_text = retriever._extract_text_from_pmc_xml(soup)
+                except Exception as e:
+                    logger.warning(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
+            
+            # Store full text in cache
+            if full_text:
+                cache_manager.store_fulltext(pmid, full_text, "pmc")
+                
+        except Exception as e:
+            logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
+            full_text = ""
+        
+        # Create enhanced prompt for specific analysis - same as enhanced endpoints
+        enhanced_prompt = f"""
+        You are a specialized AI assistant for BugSigDB curation. Your task is to carefully analyze this scientific paper and extract specific information about 6 essential fields required for microbial signature curation.
+
+        PAPER INFORMATION:
+        Title: {metadata.get('title', '')}
+        Abstract: {metadata.get('abstract', '')}
+        Full Text: {full_text[:3000] if full_text else 'Not available'}
+
+        REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
+
+        1. HOST SPECIES:
+           - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
+           - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
+           - Check: Abstract, methods section, study population descriptions, mesh terms
+           - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+           - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+
+        2. BODY SITE:
+           - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
+           - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
+           - Check: Sample collection methods, study location descriptions, abstract
+           - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+           - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+
+        3. CONDITION:
+           - Look for: Disease names, experimental conditions, comparative studies, environmental factors
+           - Check: Study objectives, hypothesis, experimental design, disease associations
+           - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+           - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+
+        4. SEQUENCING TYPE:
+           - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
+           - Check: Methods section, molecular techniques, sequencing protocols
+           - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+           - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+
+        5. TAXA LEVEL:
+           - Look for: Taxonomic levels and specific names
+           - Check: Results section, microbial community descriptions, diversity analysis
+           - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+           - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+
+        6. SAMPLE SIZE:
+           - Look for: Numbers, sample counts, participant numbers, collection descriptions
+           - Check: Methods section, study design, sample collection details
+           - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+           - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+
+        ANALYSIS INSTRUCTIONS:
+        - Read the text THOROUGHLY for each field
+        - If information is clearly stated, mark as "PRESENT" with confidence 0.8-1.0
+        - If information is partially stated or implied, mark as "PARTIALLY_PRESENT" with confidence 0.4-0.7
+        - If information is completely missing, mark as "ABSENT" with confidence 0.0
+        - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
+        - Pay attention to context clues and implicit information
+        - Extract actual information from the text, don't guess or infer
+
+        CRITICAL: This paper contains microbial analysis. Look carefully for:
+        - Any mention of bacteria, microbiome, microbial communities
+        - Sequencing methods and molecular techniques
+        - Sample collection and study design details
+        - Comparative analyses or experimental conditions
+
+        RESPONSE FORMAT - Return ONLY this JSON structure:
+        {{
+            "host_species": {{
+                "primary": "extracted_species_name",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "body_site": {{
+                "site": "extracted_site_name",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "condition": {{
+                "description": "extracted_condition_description",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "sequencing_type": {{
+                "method": "extracted_sequencing_method",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "taxa_level": {{
+                "level": "extracted_taxonomic_level",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }},
+            "sample_size": {{
+                "size": "extracted_sample_size",
+                "confidence": 0.0-1.0,
+                "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                "reason_if_missing": "explanation if absent",
+                "suggestions_for_curation": "what additional info is needed"
+            }}
+        }}
+
+        FINAL INSTRUCTIONS:
+        - Focus ONLY on the 6 fields above
+        - Be thorough and careful in your analysis
+        - Extract actual information from the text, don't guess or infer
+        - Return ONLY the JSON structure above
+        - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
+        - Use proper JSON syntax with double quotes for strings
+        - Include all required sub-fields for each main field
+        """
+        
+        # Run enhanced analysis using Gemini
+        try:
+            analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
+            
+            # Parse the JSON response from Gemini
+            try:
+                parsed_analysis = json.loads(analysis.get("key_findings", "{}"))
+                
+                # Enhanced field validation and normalization using the field enhancer
+                required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                
+                # Use the field enhancer to validate and improve extraction accuracy
+                enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                
+                # Ensure all required fields exist with proper structure
+                missing_fields = []
+                for field in required_fields:
+                    if field not in enhanced_analysis:
+                        missing_fields.append(field)
+                        enhanced_analysis[field] = create_default_field_structure(field)
+                    else:
+                        # Validate existing field structure
+                        field_data = enhanced_analysis[field]
+                        if not isinstance(field_data, dict):
+                            missing_fields.append(field)
+                            enhanced_analysis[field] = create_default_field_structure(field)
+                        else:
+                            # Ensure all required sub-fields exist
+                            if not validate_field_structure(field_data, field):
+                                missing_fields.append(field)
+                                enhanced_analysis[field] = create_default_field_structure(field)
+                
+                # Determine curation readiness based on enhanced validation
+                curation_ready = enhanced_analysis.get("curation_ready", False)
+                
+                # Update missing fields from enhanced analysis
+                missing_fields = enhanced_analysis.get("missing_fields", missing_fields)
+                
+                # Ensure we have the final structure
+                enhanced_analysis["missing_fields"] = missing_fields
+                enhanced_analysis["curation_ready"] = curation_ready
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing failed for PMID {pmid}: {str(e)}")
+                logger.error(f"Raw analysis response: {analysis.get('key_findings', '{}')[:500]}...")
+                
+                # Create comprehensive fallback structure
+                enhanced_analysis = create_comprehensive_fallback_analysis()
+                missing_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                curation_ready = False
+            
+            # Store analysis results in cache
+            cache_manager.store_analysis_result(
+                pmid, 
+                enhanced_analysis, 
+                metadata, 
+                "gemini_enhanced", 
+                analysis.get("confidence", 0.0), 
+                curation_ready
+            )
+            
+            # Compose the enhanced response
+            response = {
+                "pmid": pmid,
+                "title": metadata.get("title", ""),
+                "enhanced_analysis": enhanced_analysis,
+                "curation_ready": curation_ready,
+                "timestamp": datetime.now().isoformat(),
+                "source": "gemini_enhanced_analysis",
+                "cached": False
+            }
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error during enhanced analysis: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+            
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in enhanced analysis endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post("/enhanced_analysis_batch", tags=["Batch Processing"])
+async def enhanced_analysis_batch(pmids: List[str] = Body(...), max_concurrent: int = Query(5)):
+    """
+    **Enhanced batch analysis endpoint for multiple papers.**
+    
+    This endpoint provides the same 6-field analysis as the regular batch endpoint but with
+    additional performance optimizations and caching. It's the recommended endpoint for batch processing.
+    
+    **Parameters:**
+    - `pmids`: List of PubMed IDs to analyze (max 50)
+    - `max_concurrent`: Maximum concurrent processing (default: 5)
+    
+    **Returns:**
+    - **batch_results**: List of analysis results for each PMID
+    - **summary**: Processing statistics including:
+        - Total PMIDs processed
+        - Success/error counts
+        - Cache hit rates
+        - Processing timestamps
+    
+    **Performance Features:**
+    - Intelligent caching to avoid re-analysis
+    - Concurrent processing for better throughput
+    - Detailed performance metrics
+    """
+    try:
+        if not pmids:
+            raise HTTPException(status_code=400, detail="No PMIDs provided")
+        
+        if len(pmids) > 50:
+            raise HTTPException(status_code=400, detail="Maximum 50 PMIDs allowed per batch")
+        
+        results = []
+        cached_count = 0
+        new_analysis_count = 0
+        
+        # Process PMIDs with caching
+        for pmid in pmids:
+            try:
+                # Check cache first
+                cached_result = cache_manager.get_analysis_result(pmid)
+                if cached_result and cache_manager.is_cache_valid(cached_result["timestamp"]):
+                    results.append({
+                        "pmid": pmid,
+                        "metadata": cached_result["metadata"],
+                        "enhanced_analysis": cached_result["analysis_data"],
+                        "curation_ready": cached_result["curation_ready"],
+                        "timestamp": cached_result["timestamp"],
+                        "source": cached_result["source"],
+                        "cached": True,
+                        "status": "success"
+                    })
+                    cached_count += 1
+                else:
+                    # Get metadata and run analysis
+                    metadata = retriever.get_paper_metadata(pmid)
+                    csv_metadata = get_paper_metadata_from_csv(pmid)
+                    
+                    if csv_metadata:
+                        metadata.update(csv_metadata)
+                    
+                    if not metadata:
+                        results.append({
+                            "pmid": pmid,
+                            "status": "error",
+                            "error": "Paper not found"
+                        })
+                        continue
+                    
+                    # Store metadata in cache
+                    cache_manager.store_metadata(pmid, metadata, "pubmed")
+                    
+                    # Get full text if available
+                    full_text = ""
+                    try:
+                        full_text = retriever.get_pmc_fulltext(pmid)
+                        if isinstance(full_text, str):
+                            try:
+                                soup = BeautifulSoup(full_text, 'lxml')
+                                full_text = retriever._extract_text_from_pmc_xml(soup)
+                            except Exception as e:
+                                logger.warning(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
+                        
+                        if full_text:
+                            cache_manager.store_fulltext(pmid, full_text, "pmc")
+                    except Exception as e:
+                        logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
+                    
+                    # Run enhanced analysis with the same improved prompt
+                    enhanced_prompt = f"""
+                    Analyze this scientific paper for BugSigDB curation. Focus ONLY on these 6 essential fields:
+
+                    PAPER INFORMATION:
+                    Title: {metadata.get('title', '')}
+                    Abstract: {metadata.get('abstract', '')}
+                    Full Text: {full_text[:3000] if full_text else 'Not available'}
+
+                    REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
+                    1. HOST SPECIES: What is the host species being studied? Look for terms like "Human", "Mouse", "Rat", "Drosophila", etc. If it's an environmental study, the "host" might be the environment itself.
+
+                    2. BODY SITE: Where was the microbiome sample collected from? Look for terms like "Gut", "Oral", "Skin", "Indoor", "Restroom", "Environmental", "Soil", "Water", etc.
+
+                    3. CONDITION: What condition, treatment, exposure, or comparison is being studied? Look for disease names, experimental conditions, comparative studies, environmental factors, etc.
+
+                    4. SEQUENCING TYPE: What molecular method was used? Look for terms like "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", etc.
+
+                    5. TAXA LEVEL: What taxonomic level was analyzed? Look for terms like "phylum", "genus", "species", "family", "order", or specific taxonomic names like "Proteobacteria", "Bacteroidetes", etc.
+
+                    6. SAMPLE SIZE: What is the number of samples analyzed? Look for numbers, sample counts, or descriptions of sample collection.
+
+                    IMPORTANT ANALYSIS REQUIREMENTS:
+                    - For each field, determine if the information is PRESENT, PARTIALLY_PRESENT, or ABSENT
+                    - If PRESENT: Extract the specific value and provide high confidence (0.8-1.0)
+                    - If PARTIALLY_PRESENT: Extract what's available and provide medium confidence (0.4-0.7)
+                    - If ABSENT: Provide reason why it's missing and confidence 0.0
+                    - For missing fields, suggest what additional information would be needed for curation
+                    - Pay attention to the context - environmental studies may have different "host" and "body site" than human/animal studies
+
+                    Please provide your analysis in this exact JSON format:
+                    {{
+                        "host_species": {{
+                            "primary": "species_name",
+                            "confidence": 0.0-1.0,
+                            "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                            "reason_if_missing": "explanation if absent",
+                            "suggestions_for_curation": "what additional info is needed"
+                        }},
+                        "body_site": {{
+                            "site": "site_name",
+                            "confidence": 0.0-1.0,
+                            "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                            "reason_if_missing": "explanation if absent",
+                            "suggestions_for_curation": "what additional info is needed"
+                        }},
+                        "condition": {{
+                            "description": "detailed_description",
+                            "confidence": 0.0-1.0,
+                            "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                            "reason_if_missing": "explanation if absent",
+                            "suggestions_for_curation": "what additional info is needed"
+                        }},
+                        "sequencing_type": {{
+                            "method": "method_name",
+                            "confidence": 0.0-1.0,
+                            "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                            "reason_if_missing": "explanation if absent",
+                            "suggestions_for_curation": "what additional info is needed"
+                        }},
+                        "taxa_level": {{
+                            "level": "taxonomic_level",
+                            "confidence": 0.0-1.0,
+                            "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                            "reason_if_missing": "explanation if absent",
+                            "suggestions_for_curation": "what additional info is needed"
+                        }},
+                        "sample_size": {{
+                            "size": "sample_count",
+                            "confidence": 0.0-1.0,
+                            "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
+                            "reason_if_missing": "explanation if absent",
+                            "suggestions_for_curation": "what additional info is needed"
+                        }},
+                        "curation_ready": true/false,
+                        "missing_fields": ["field1", "field2", ...],
+                        "curation_preparation_summary": "Overall assessment of what's needed for curation"
+                    }}
+
+                    CRITICAL INSTRUCTIONS: 
+                    - Focus ONLY on the 6 fields listed above
+                    - Do NOT include Factor-Based Analysis, Detailed Explanation, Specific Reasons, Examples and Evidence, Key Findings, Category Scores, or Analysis Confidence
+                    - For each missing field, provide specific reason and suggestions
+                    - Determine curation readiness based on having all 6 fields with status "PRESENT"
+                    - Return ONLY the JSON structure above
+                    - Be thorough in your analysis - read the text carefully for each field
+                    """
+                    
+                    analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
+                    
+                    try:
+                        parsed_analysis = json.loads(analysis.get("key_findings", "{}"))
+                        
+                        # Validate that we have exactly the 6 required fields
+                        required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
+                        missing_fields = []
+                        
+                        for field in required_fields:
+                            if field not in parsed_analysis or not parsed_analysis[field]:
+                                missing_fields.append(field)
+                                # Ensure the field exists with default structure
+                                if field == "host_species":
+                                    parsed_analysis[field] = {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for host species information"}
+                                elif field == "body_site":
+                                    parsed_analysis[field] = {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for body site information"}
+                                elif field == "condition":
+                                    parsed_analysis[field] = {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for condition information"}
+                                elif field == "sequencing_type":
+                                    parsed_analysis[field] = {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sequencing method information"}
+                                elif field == "taxa_level":
+                                    parsed_analysis[field] = {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for taxonomic level information"}
+                                elif field == "sample_size":
+                                    parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
+                        
+                        # Determine curation readiness based on having all 6 fields with status "PRESENT"
+                        curation_ready = len(missing_fields) == 0 and all(
+                            parsed_analysis.get(field, {}).get("status") == "PRESENT" 
+                            for field in required_fields
+                        )
+                        
+                        # Update the parsed analysis with curation readiness
+                        parsed_analysis["curation_ready"] = curation_ready
+                        parsed_analysis["missing_fields"] = missing_fields
+                        
+                    except json.JSONDecodeError:
+                        parsed_analysis = {
+                            "host_species": {"primary": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                            "body_site": {"site": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                            "condition": {"description": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                            "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                            "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                            "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+                            "curation_ready": False,
+                            "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
+                            "curation_preparation_summary": "Analysis failed - re-run required"
+                        }
+                    
+                    curation_ready = parsed_analysis.get("curation_ready", False)
+                    confidence = analysis.get("confidence", 0.0)
+                    
+                    # Store analysis results in cache
+                    cache_manager.store_analysis_result(
+                        pmid, 
+                        parsed_analysis, 
+                        metadata, 
+                        "gemini_enhanced", 
+                        confidence, 
+                        curation_ready
+                    )
+                    
+                    results.append({
+                        "pmid": pmid,
+                        "metadata": cached_result["metadata"],
+                        "enhanced_analysis": parsed_analysis,
+                        "curation_ready": curation_ready,
+                        "timestamp": datetime.now().isoformat(),
+                        "source": "gemini_enhanced_analysis",
+                        "cached": False,
+                        "status": "success"
+                    })
+                    new_analysis_count += 1
+                    
+            except Exception as e:
+                logger.error(f"Error processing PMID {pmid}: {str(e)}")
+                results.append({
+                    "pmid": pmid,
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        return {
+            "batch_results": results,
+            "summary": {
+                "total_pmids": len(pmids),
+                "successful": len([r for r in results if r.get("status") == "success"]),
+                "errors": len([r for r in results if r.get("status") == "error"]),
+                "cached_results": cached_count,
+                "new_analysis": new_analysis_count,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in batch enhanced analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Batch analysis failed: {str(e)}")
+
+@app.get("/cache/stats", tags=["Cache Management"])
+async def get_cache_stats():
+    """Get cache statistics and information."""
+    try:
+        stats = cache_manager.get_cache_stats()
+        return {
+            "cache_stats": stats,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get cache stats: {str(e)}")
+
+@app.post("/cache/clear", tags=["Cache Management"])
+async def clear_old_cache(max_age_hours: int = 168):
+    """Clear old cache entries. Default: clear entries older than 1 week."""
+    try:
+        cleared_count = cache_manager.clear_old_cache(max_age_hours)
+        return {
+            "message": f"Cleared {cleared_count} old cache entries",
+            "cleared_count": cleared_count,
+            "max_age_hours": max_age_hours,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error clearing cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+@app.get("/cache/search", tags=["Cache Management"])
+async def search_cache(query: str, search_type: str = "all"):
+    """Search cache for papers matching the query."""
+    try:
+        results = cache_manager.search_cache(query, search_type)
+        return {
+            "query": query,
+            "search_type": search_type,
+            "results": results,
+            "result_count": len(results),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error searching cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to search cache: {str(e)}")
+
+@app.get("/curation/statistics", tags=["Curation Statistics"])
+async def get_curation_statistics():
+    """
+    **Get statistics about curation readiness for the 6 essential fields.**
+    
+    This endpoint provides comprehensive metrics about how well the AI analysis is performing
+    in identifying the 6 essential BugSigDB curation fields across all analyzed papers.
+    
+    **Returns:**
+    - **overall_statistics**: 
+        - Total papers analyzed
+        - Papers ready for curation
+        - Overall readiness rate
+    - **field_statistics**: Performance metrics for each of the 6 fields:
+        - **host_species**: Readiness rate and confidence scores
+        - **body_site**: Readiness rate and confidence scores
+        - **condition**: Readiness rate and confidence scores
+        - **sequencing_type**: Readiness rate and confidence scores
+        - **taxa_level**: Readiness rate and confidence scores
+        - **sample_size**: Readiness rate and confidence scores
+    
+    **Use Cases:**
+    - Monitor AI analysis performance
+    - Identify which fields are most challenging
+    - Track curation readiness trends
+    - Quality assurance and improvement
+    """
+    try:
+        # Get all cached analysis results
+        stats = cache_manager.get_cache_stats()
+        
+        # Analyze the 6 essential fields across all cached results
+        field_stats = {
+            "host_species": {"ready": 0, "total": 0, "avg_confidence": 0.0},
+            "body_site": {"ready": 0, "total": 0, "avg_confidence": 0.0},
+            "condition": {"ready": 0, "total": 0, "avg_confidence": 0.0},
+            "sequencing_type": {"ready": 0, "total": 0, "avg_confidence": 0.0},
+            "taxa_level": {"ready": 0, "total": 0, "avg_confidence": 0.0},
+            "sample_size": {"ready": 0, "total": 0, "avg_confidence": 0.0}
+        }
+        
+        # Get all analysis results from cache
+        all_results = cache_manager.get_all_analysis_results()
+        
+        for result in all_results:
+            analysis = result.get("analysis_data", {})
+            for field_name in field_stats.keys():
+                field_data = analysis.get(field_name, {})
+                if field_data and field_data.get("confidence", 0.0) > 0.0:
+                    field_stats[field_name]["ready"] += 1
+                    field_stats[field_name]["avg_confidence"] += field_data.get("confidence", 0.0)
+                field_stats[field_name]["total"] += 1
+        
+        # Calculate averages
+        for field_name in field_stats.keys():
+            if field_stats[field_name]["total"] > 0:
+                field_stats[field_name]["avg_confidence"] /= field_stats[field_name]["total"]
+                field_stats[field_name]["readiness_rate"] = (
+                    field_stats[field_name]["ready"] / field_stats[field_name]["total"]
+                )
+            else:
+                field_stats[field_name]["readiness_rate"] = 0.0
+        
+        # Overall curation readiness
+        total_papers = len(all_results)
+        ready_papers = len([r for r in all_results if r.get("curation_ready", False)])
+        
+        return {
+            "overall_statistics": {
+                "total_papers_analyzed": total_papers,
+                "papers_ready_for_curation": ready_papers,
+                "overall_readiness_rate": ready_papers / total_papers if total_papers > 0 else 0.0
+            },
+            "field_statistics": field_stats,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting curation statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get curation statistics: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

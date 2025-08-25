@@ -1,89 +1,71 @@
 #!/bin/bash
 
-# BugSigDB Analyzer Docker Startup Script
-# This script builds and starts the entire application stack
+# BioAnalyzer Startup Script
+# This script sets up the environment and starts the application
 
-set -e  # Exit on any error
+echo "🚀 Starting BioAnalyzer..."
 
-echo "🚀 BugSigDB Analyzer Docker Startup"
-echo "===================================="
+# Create necessary directories
+mkdir -p logs
+mkdir -p cache
+mkdir -p results
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Set up log rotation (if logrotate is available)
+if command -v logrotate &> /dev/null; then
+    echo "📝 Setting up log rotation..."
+    cat > /tmp/bioanalyzer-logs << EOF
+$PWD/logs/*.log {
+    daily
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 644 $USER $USER
 }
+EOF
+    sudo mv /tmp/bioanalyzer-logs /etc/logrotate.d/bioanalyzer-logs 2>/dev/null || echo "⚠️  Could not set up system log rotation (requires sudo)"
+fi
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+# Set performance environment variables (can be overridden)
+export API_TIMEOUT=${API_TIMEOUT:-30}
+export ANALYSIS_TIMEOUT=${ANALYSIS_TIMEOUT:-45}
+export GEMINI_TIMEOUT=${GEMINI_TIMEOUT:-30}
+export FRONTEND_TIMEOUT=${FRONTEND_TIMEOUT:-60}
+export CACHE_VALIDITY_HOURS=${CACHE_VALIDITY_HOURS:-24}
+export MAX_CACHE_SIZE=${MAX_CACHE_SIZE:-1000}
+export NCBI_RATE_LIMIT_DELAY=${NCBI_RATE_LIMIT_DELAY:-0.34}
+export MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-3}
+export LOG_LEVEL=${LOG_LEVEL:-INFO}
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+echo "📁 Created necessary directories"
+echo "⚙️  Performance settings:"
+echo "   API Timeout: ${API_TIMEOUT}s"
+echo "   Analysis Timeout: ${ANALYSIS_TIMEOUT}s"
+echo "   Gemini Timeout: ${GEMINI_TIMEOUT}s"
+echo "   Cache Validity: ${CACHE_VALIDITY_HOURS}h"
 
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if Docker is running
-print_status "Checking Docker..."
-if ! docker info > /dev/null 2>&1; then
-    print_error "Docker is not running. Please start Docker first."
+# Check if Python is available
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python 3 is not installed or not in PATH"
     exit 1
 fi
-print_success "Docker is running"
 
-# Check if .env file exists
-if [ ! -f ".env" ]; then
-    print_warning ".env file not found. Creating default .env file..."
-    cat > .env << EOF
-# API Keys - Replace with your actual keys
-NCBI_API_KEY=your_ncbi_api_key_here
-GEMINI_API_KEY=your_gemini_api_key_here
-EMAIL=your_email@example.com
-
-# Model Configuration
-DEFAULT_MODEL=gemini
-
-# Application Configuration
-DEBUG=true
-LOG_LEVEL=INFO
-EOF
-    print_warning "Please edit .env file with your actual API keys before running the application"
+# Check if required packages are installed
+echo "🔍 Checking dependencies..."
+python3 -c "import fastapi, uvicorn" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "📦 Installing required packages..."
+    pip3 install -r config/requirements.txt
 fi
 
-# Build and start the application
-print_status "Building and starting BugSigDB Analyzer..."
-docker compose up --build -d
+# Start the application
+echo "🌐 Starting BioAnalyzer server..."
+echo "📚 API documentation will be available at: http://127.0.0.1:8000/docs"
+echo "🔍 Health check at: http://127.0.0.1:8000/health"
+echo "📊 Metrics at: http://127.0.0.1:8000/metrics"
+echo ""
+echo "Press Ctrl+C to stop the server"
+echo ""
 
-# Wait for services to be healthy
-print_status "Waiting for services to be healthy..."
-sleep 10
-
-# Check service status
-print_status "Checking service status..."
-docker compose ps
-
-# Show access information
-echo ""
-print_success "🎉 BugSigDB Analyzer is now running!"
-echo ""
-echo "📱 Access your application:"
-echo "   • Main App: http://localhost:8000"
-echo "   • Nginx: http://localhost:80"
-echo "   • Redis: localhost:6379"
-echo ""
-echo "📚 Useful commands:"
-echo "   • View logs: docker compose logs -f analyzer"
-echo "   • Stop services: docker compose down"
-echo "   • Restart: docker compose restart"
-echo "   • Health check: curl http://localhost:8000/health"
-echo ""
-echo "🔑 Don't forget to update your .env file with real API keys!" 
+python3 main.py 

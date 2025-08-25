@@ -117,22 +117,98 @@ async function handleFileUpload(file) {
 
 // Handle single PMID
 async function handleSinglePmid(pmid) {
-    const response = await fetch(`/enhanced_analysis/${pmid}`);
-    
-            if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+        // Show progress indicator
+        showProgress('Retrieving paper metadata...', 25);
+        
+        // Create AbortController for timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+        
+        const response = await fetch(`/enhanced_analysis/${pmid}`, {
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            if (response.status === 408) {
+                throw new Error('Request timed out. The analysis is taking longer than expected. Please try again.');
+            } else if (response.status === 404) {
+                throw new Error('Paper not found. Please verify the PMID is correct.');
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
+        }
+        
+        showProgress('Analyzing paper content...', 75);
+        
+        const data = await response.json();
+        if (data.error) {
+            // Enhanced error handling for Gemini API issues
+            if (data.error_type && data.debug_info) {
+                throw new Error(formatDetailedError(data.error, data.error_type, data.debug_info));
+            } else {
+                throw new Error(data.error);
+            }
+        }
+        
+        showProgress('Analysis complete!', 100);
+        
+        return [{
+            pmid: pmid,
+            title: data.title || 'N/A',
+            enhanced_analysis: data.enhanced_analysis || {}
+        }];
+        
+    } catch (error) {
+        console.error('Error in handleSinglePmid:', error);
+        if (error.name === 'AbortError') {
+            throw new Error('Request timed out after 60 seconds. Please try again.');
+        }
+        throw error;
+    }
+}
+
+// Format detailed error messages for better user understanding
+function formatDetailedError(error, errorType, debugInfo) {
+    let formattedError = `🚨 ${error}\n\n`;
     
-            const data = await response.json();
-    if (data.error) {
-        throw new Error(data.error);
+    // Add error type information
+    if (errorType) {
+        formattedError += `📋 Error Type: ${errorType}\n`;
     }
     
-    return [{
-        pmid: pmid,
-        title: data.title || 'N/A',
-        enhanced_analysis: data.enhanced_analysis || {}
-    }];
+    // Add debug information
+    if (debugInfo) {
+        if (debugInfo.issue) {
+            formattedError += `🔍 Issue: ${debugInfo.issue}\n`;
+        }
+        if (debugInfo.solution) {
+            formattedError += `💡 Solution: ${debugInfo.solution}\n`;
+        }
+        if (debugInfo.suggestions && Array.isArray(debugInfo.suggestions)) {
+            formattedError += `💡 Suggestions:\n`;
+            debugInfo.suggestions.forEach(suggestion => {
+                formattedError += `   • ${suggestion}\n`;
+            });
+        }
+        if (debugInfo.timestamp) {
+            formattedError += `⏰ Timestamp: ${debugInfo.timestamp}\n`;
+        }
+    }
+    
+    // Add common troubleshooting steps for Gemini API issues
+    if (errorType && (errorType.includes('API') || errorType.includes('Gemini'))) {
+        formattedError += `\n🔧 Common Troubleshooting Steps:\n`;
+        formattedError += `   1. Check your Gemini API key in environment variables\n`;
+        formattedError += `   2. Verify your IP address is not restricted\n`;
+        formattedError += `   3. Check your API quota usage\n`;
+        formattedError += `   4. Ensure your API key has proper permissions\n`;
+        formattedError += `   5. Check network connectivity\n`;
+    }
+    
+    return formattedError;
 }
 
 // Handle batch PMIDs
@@ -192,13 +268,49 @@ async function handleBatchPmids(pmidsText) {
     }
 }
 
+// Show progress indicator
+function showProgress(message, percentage) {
+    const loadingElement = document.getElementById('loading');
+    if (loadingElement) {
+        loadingElement.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div class="progress mb-3" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: ${percentage}%" 
+                         aria-valuenow="${percentage}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                        ${percentage}%
+                    </div>
+                </div>
+                <p class="text-muted">${message}</p>
+            </div>
+        `;
+        loadingElement.style.display = 'block';
+    }
+}
+
 // Show loading state
 function showLoading() {
     const loadingElement = document.getElementById('loading');
     const emptyStateElement = document.getElementById('empty-state');
     const resultsContentElement = document.getElementById('results-content');
     
-    if (loadingElement) loadingElement.style.display = 'block';
+    if (loadingElement) {
+        loadingElement.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="text-muted">Initializing analysis...</p>
+            </div>
+        `;
+        loadingElement.style.display = 'block';
+    }
     if (emptyStateElement) emptyStateElement.style.display = 'none';
     if (resultsContentElement) resultsContentElement.style.display = 'none';
 }
@@ -213,10 +325,15 @@ function hideLoading() {
 function showError(message) {
     const resultsContent = document.getElementById('results-content');
     if (resultsContent) {
+        // Format multi-line error messages
+        const formattedMessage = message.replace(/\n/g, '<br>');
+        
         resultsContent.innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                ${message}
+                <div style="white-space: pre-line; font-family: monospace; font-size: 0.9em;">
+                    ${formattedMessage}
+                </div>
             </div>
         `;
         resultsContent.style.display = 'block';
@@ -352,6 +469,24 @@ function displayResults(results) {
                             <h6><i class="fas fa-exclamation-triangle me-2"></i>Missing Fields</h6>
                             <p class="mb-1"><strong>Fields to review:</strong> ${analysis.missing_fields.join(', ')}</p>
                             <p class="mb-0"><strong>Summary:</strong> ${analysis.curation_preparation_summary || 'Review required'}</p>
+                        </div>
+                    ` : ''}
+                    
+                    ${analysis.error ? `
+                        <div class="alert alert-danger mt-3">
+                            <h6><i class="fas fa-exclamation-circle me-2"></i>Analysis Error</h6>
+                            <p class="mb-1"><strong>Error Type:</strong> ${analysis.error_type || 'Unknown'}</p>
+                            <p class="mb-1"><strong>Error:</strong> ${analysis.error}</p>
+                            ${analysis.debug_info ? `
+                                <details class="mt-2">
+                                    <summary><strong>Debug Information</strong></summary>
+                                    <div class="mt-2 p-2 bg-light rounded" style="font-family: monospace; font-size: 0.8em;">
+                                        ${Object.entries(analysis.debug_info).map(([key, value]) => 
+                                            `<div><strong>${key}:</strong> ${value}</div>`
+                                        ).join('')}
+                                    </div>
+                                </details>
+                            ` : ''}
                         </div>
                     ` : ''}
                 </div>

@@ -4,6 +4,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import logging
+import asyncio
+import concurrent.futures
+import time
+from app.utils.performance_logger import perf_logger
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +22,23 @@ class CacheManager:
         
         # Initialize database
         self._init_database()
+        
+        # Add connection pool for better performance
+        self._connection_pool = []
+        self._max_connections = 5
+        
+    def _get_connection(self):
+        """Get a database connection from the pool."""
+        if self._connection_pool:
+            return self._connection_pool.pop()
+        return sqlite3.connect(self.db_path)
+        
+    def _return_connection(self, conn):
+        """Return a connection to the pool."""
+        if len(self._connection_pool) < self._max_connections:
+            self._connection_pool.append(conn)
+        else:
+            conn.close()
     
     def _init_database(self):
         """Initialize the SQLite database for caching analysis results."""
@@ -72,8 +93,10 @@ class CacheManager:
                             source: str = "gemini", confidence: float = 0.0, 
                             curation_ready: bool = False) -> bool:
         """Store analysis results in the cache database."""
+        start_time = time.time()
+        conn = None
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -91,18 +114,25 @@ class CacheManager:
             ))
             
             conn.commit()
-            conn.close()
+            duration = time.time() - start_time
+            perf_logger.log_cache_operation("STORE", pmid, "analysis", duration, True)
             logger.info(f"Stored analysis result for PMID {pmid}")
             return True
             
         except Exception as e:
+            duration = time.time() - start_time
+            perf_logger.log_cache_operation("STORE", pmid, "analysis", duration, False)
             logger.error(f"Failed to store analysis result for PMID {pmid}: {str(e)}")
             return False
+        finally:
+            if conn:
+                self._return_connection(conn)
     
     def get_analysis_result(self, pmid: str) -> Optional[Dict]:
         """Retrieve analysis results from cache."""
+        conn = None
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -112,7 +142,6 @@ class CacheManager:
             ''', (pmid,))
             
             result = cursor.fetchone()
-            conn.close()
             
             if result:
                 analysis_data, metadata, timestamp, source, confidence, curation_ready = result
@@ -131,6 +160,31 @@ class CacheManager:
         except Exception as e:
             logger.error(f"Failed to retrieve analysis result for PMID {pmid}: {str(e)}")
             return None
+        finally:
+            if conn:
+                self._return_connection(conn)
+    
+    async def get_analysis_result_async(self, pmid: str) -> Optional[Dict]:
+        """Async version of get_analysis_result for better performance."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.get_analysis_result, pmid)
+    
+    async def store_analysis_result_async(self, pmid: str, analysis_data: Dict, metadata: Dict, 
+                                        source: str = "gemini", confidence: float = 0.0, 
+                                        curation_ready: bool = False) -> bool:
+        """Async version of store_analysis_result for better performance."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.store_analysis_result, pmid, analysis_data, metadata, source, confidence, curation_ready)
+    
+    async def store_metadata_async(self, pmid: str, metadata: Dict, source: str = "pubmed") -> bool:
+        """Async version of store_metadata for better performance."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.store_metadata, pmid, metadata, source)
+    
+    async def store_fulltext_async(self, pmid: str, fulltext: str, source: str = "pmc") -> bool:
+        """Async version of store_fulltext for better performance."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.store_fulltext, pmid, fulltext, source)
     
     def store_metadata(self, pmid: str, metadata: Dict, source: str = "pubmed") -> bool:
         """Store paper metadata in cache."""
@@ -304,41 +358,7 @@ class CacheManager:
             logger.error(f"Failed to get cache stats: {str(e)}")
             return {}
 
-    def get_all_analysis_results(self) -> List[Dict[str, Any]]:
-        """Get all analysis results from the cache for statistics."""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT pmid, analysis_data, metadata, timestamp, source, confidence, curation_ready
-                FROM analysis_cache
-                ORDER BY timestamp DESC
-            ''')
-            
-            results = []
-            for row in cursor.fetchall():
-                pmid, analysis_data, metadata, timestamp, source, confidence, curation_ready = row
-                try:
-                    results.append({
-                        "pmid": pmid,
-                        "analysis_data": json.loads(analysis_data) if analysis_data else {},
-                        "metadata": json.loads(metadata) if metadata else {},
-                        "timestamp": timestamp,
-                        "source": source,
-                        "confidence": confidence,
-                        "curation_ready": bool(curation_ready)
-                    })
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse cached data for PMID {pmid}")
-                    continue
-            
-            conn.close()
-            return results
-            
-        except Exception as e:
-            logger.error(f"Failed to get all analysis results: {str(e)}")
-            return []
+
     
     def _get_cache_size_mb(self) -> float:
         """Get the size of the cache database in MB."""

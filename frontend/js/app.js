@@ -321,24 +321,35 @@ function hideLoading() {
     if (loadingElement) loadingElement.style.display = 'none';
 }
 
+// Escape HTML meta-characters in a string
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\//g, '&#x2F;');
+}
+
 // Show error message
 function showError(message) {
     const resultsContent = document.getElementById('results-content');
     if (resultsContent) {
-        // Format multi-line error messages
-        const formattedMessage = message.replace(/\n/g, '<br>');
-        
+        // Escape and format multi-line error messages
+        const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
+
         resultsContent.innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 <div style="white-space: pre-line; font-family: monospace; font-size: 0.9em;">
-                    ${formattedMessage}
+                    ${safeMessage}
                 </div>
             </div>
         `;
         resultsContent.style.display = 'block';
     }
-    
+
     const emptyState = document.getElementById('empty-state');
     if (emptyState) emptyState.style.display = 'none';
 }

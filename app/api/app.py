@@ -1578,12 +1578,11 @@ async def gemini_health_check():
         }
             
     except Exception as e:
-        logger.error(f"Gemini health check failed: {str(e)}")
+        logger.exception("Gemini health check failed")  # Log full traceback
         return {
             "status": "unhealthy",
             "timestamp": datetime.now().isoformat(),
-            "error": str(e),
-            "error_type": type(e).__name__,
+            "error": "Gemini health check failed due to an internal server error.",
             "suggestions": [
                 "Check your Gemini API key",
                 "Verify IP address is not restricted",

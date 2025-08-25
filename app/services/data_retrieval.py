@@ -1,11 +1,14 @@
 import time
 import logging
+import asyncio
 from typing import Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import requests
 from Bio import Entrez
 from bs4 import BeautifulSoup
 from app.utils.utils import config, create_cache_key, save_json, load_json
+from app.utils.performance_logger import perf_logger
+import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +21,12 @@ class PubMedRetriever:
         self.api_key = api_key or config.NCBI_API_KEY
         Entrez.api_key = self.api_key
         self.cache_dir = config.CACHE_DIR
+        # Add timeout configuration
+        self.timeout = 30  # 30 seconds timeout
+        self.max_workers = 3  # Limit concurrent API calls
         
     def _handle_api_call(self, func, *args, **kwargs) -> Dict:
-        """Handle API calls with retries and rate limiting.
+        """Handle API calls with retries, rate limiting, and timeout.
         
         Args:
             func: Entrez function to call
@@ -36,8 +42,18 @@ class PubMedRetriever:
             
         for attempt in range(config.MAX_RETRIES):
             try:
-                handle = func(*args, **kwargs)
+                # Use ThreadPoolExecutor to handle timeouts
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(func, *args, **kwargs)
+                    handle = future.result(timeout=self.timeout)
+                    
                 return Entrez.read(handle, validate=False)
+            except concurrent.futures.TimeoutError:
+                logger.warning(f"Attempt {attempt + 1} timed out after {self.timeout}s")
+                if attempt < config.MAX_RETRIES - 1:
+                    time.sleep(config.RETRY_DELAY * (attempt + 1))
+                else:
+                    raise TimeoutError(f"API call timed out after {self.timeout}s")
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
                 if attempt < config.MAX_RETRIES - 1:
@@ -45,6 +61,16 @@ class PubMedRetriever:
                 else:
                     raise
                     
+    async def get_paper_metadata_async(self, pmid: str) -> Dict:
+        """Async version of get_paper_metadata for better performance."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.get_paper_metadata, pmid)
+        
+    async def get_pmc_fulltext_async(self, pmid: str) -> Optional[str]:
+        """Async version of get_pmc_fulltext for better performance."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.get_pmc_fulltext, pmid)
+        
     def get_paper_metadata(self, pmid: str) -> Dict:
         """Retrieve metadata for a paper from PubMed.
         
@@ -54,6 +80,8 @@ class PubMedRetriever:
         Returns:
             Dictionary containing paper metadata
         """
+        start_time = time.time()
+        
         cache_key = create_cache_key("metadata", pmid)
         cache_file = self.cache_dir / f"{cache_key}.json"
         
@@ -61,15 +89,28 @@ class PubMedRetriever:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         if cache_file.exists():
+            duration = time.time() - start_time
+            perf_logger.log_cache_operation("GET", pmid, "metadata", duration, True)
             return load_json(cache_file)
             
-        result = self._handle_api_call(
-            Entrez.efetch,
-            db="pubmed",
-            id=pmid,
-            rettype="medline",
-            retmode="xml"
-        )
+        try:
+            result = self._handle_api_call(
+                Entrez.efetch,
+                db="pubmed",
+                id=pmid,
+                rettype="medline",
+                retmode="xml"
+            )
+            
+            duration = time.time() - start_time
+            perf_logger.log_api_call("PubMed", "efetch", pmid, duration, True)
+            
+            return result
+            
+        except Exception as e:
+            duration = time.time() - start_time
+            perf_logger.log_api_call("PubMed", "efetch", pmid, duration, False, str(e))
+            raise
         
         if not result or "PubmedArticle" not in result:
             raise ValueError(f"No metadata found for PMID: {pmid}")
@@ -172,23 +213,39 @@ class PubMedRetriever:
         Returns:
             Full text string if available, None otherwise
         """
+        start_time = time.time()
+        
         cache_key = create_cache_key("fulltext", pmid)
         cache_file = self.cache_dir / f"{cache_key}.txt"
         
         if cache_file.exists():
             with open(cache_file, 'r', encoding='utf-8') as f:
+                duration = time.time() - start_time
+                perf_logger.log_cache_operation("GET", pmid, "fulltext", duration, True)
                 return f.read()
                 
-        # First, get the PMCID
-        result = self._handle_api_call(
-            Entrez.elink,
-            dbfrom="pubmed",
-            db="pmc",
-            id=pmid
-        )
-        
-        if not result or not result[0]["LinkSetDb"]:
-            logger.info(f"No PMC full text available for PMID: {pmid}")
+        try:
+            # First, get the PMCID
+            link_start = time.time()
+            result = self._handle_api_call(
+                Entrez.elink,
+                dbfrom="pubmed",
+                db="pmc",
+                id=pmid
+            )
+            
+            link_duration = time.time() - link_start
+            perf_logger.log_api_call("PubMed", "elink", pmid, link_duration, True)
+            
+            # Check if we got a valid result
+            if not result or not result[0]["LinkSetDb"]:
+                logger.info(f"No PMC full text available for PMID: {pmid}")
+                return None
+                
+        except Exception as e:
+            link_duration = time.time() - link_start if 'link_start' in locals() else 0
+            perf_logger.log_api_call("PubMed", "elink", pmid, link_duration, False, str(e))
+            logger.warning(f"Failed to get PMCID for PMID {pmid}: {str(e)}")
             return None
             
         pmcid = result[0]["LinkSetDb"][0]["Link"][0]["Id"]
@@ -207,12 +264,20 @@ class PubMedRetriever:
             soup = BeautifulSoup(result, 'lxml')
             full_text = self._extract_text_from_pmc_xml(soup)
             
+            # Store full text in cache
             with open(cache_file, 'w', encoding='utf-8') as f:
                 f.write(full_text)
-                
+            
+            # Log successful completion
+            total_duration = time.time() - start_time
+            perf_logger.log_cache_operation("STORE", pmid, "fulltext", 0.001, True)
+            
             return full_text
             
         except Exception as e:
+            # Log error
+            total_duration = time.time() - start_time
+            perf_logger.log_api_call("PMC", "efetch", pmid, total_duration, False, str(e))
             logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
             return None
             

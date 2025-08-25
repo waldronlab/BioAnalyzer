@@ -506,11 +506,21 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
         """
         try:
             if not self.api_key:
+                logger.error("No Gemini API key provided")
                 return {
-                    "error": "No Gemini API key available",
+                    "error": "No Gemini API key available. Please set the GEMINI_API_KEY environment variable.",
+                    "error_type": "MissingAPIKey",
                     "key_findings": "{}",
-                    "confidence": 0.0
+                    "confidence": 0.0,
+                    "status": "error",
+                    "debug_info": {
+                        "issue": "Missing API key",
+                        "solution": "Set GEMINI_API_KEY environment variable",
+                        "timestamp": datetime.now().isoformat()
+                    }
                 }
+            
+
             
             # Configure the model for structured output
             model = genai.GenerativeModel('gemini-1.5-pro-latest')
@@ -576,14 +586,40 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             Focus on accuracy and provide confidence scores based on how clearly the information is stated in the text.
             """
             
-            # Generate response with enhanced prompt
-            response = model.generate_content(enhanced_structured_prompt)
-            
-            if not response or not response.text:
+            # Generate response with enhanced prompt and timeout
+            try:
+                # Use asyncio.wait_for to add timeout to the API call
+                loop = asyncio.get_event_loop()
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(None, model.generate_content, enhanced_structured_prompt),
+                    timeout=30.0  # 30 second timeout for Gemini API
+                )
+                
+                if not response or not response.text:
+                    return {
+                        "error": "No response generated",
+                        "key_findings": "{}",
+                        "confidence": 0.0
+                    }
+                    
+            except asyncio.TimeoutError:
+                logger.error("Gemini API call timed out after 30 seconds")
                 return {
-                    "error": "No response generated",
+                    "error": "Gemini API request timed out after 30 seconds. This may indicate: 1) API service is slow, 2) Network connectivity issues, 3) API quota limits, or 4) IP restrictions.",
+                    "error_type": "TimeoutError",
                     "key_findings": "{}",
-                    "confidence": 0.0
+                    "confidence": 0.0,
+                    "status": "timeout",
+                    "debug_info": {
+                        "timeout_duration": "30 seconds",
+                        "timestamp": datetime.now().isoformat(),
+                        "suggestions": [
+                            "Check your internet connection",
+                            "Verify Gemini API key is valid",
+                            "Check if your IP is whitelisted",
+                            "Monitor API quota usage"
+                        ]
+                    }
                 }
             
             # Clean the response text to extract just the JSON
@@ -630,12 +666,46 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                 }
                 
         except Exception as e:
-            logger.error(f"Error in enhanced analysis: {str(e)}")
+            # Enhanced error logging with specific error detection
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Detect specific error types
+            if "quota" in error_msg.lower() or "quota exceeded" in error_msg.lower():
+                error_detail = "Gemini API quota exceeded. Please check your API usage limits."
+                logger.error(f"Gemini API quota exceeded: {error_msg}")
+            elif "permission" in error_msg.lower() or "access" in error_msg.lower():
+                error_detail = "Gemini API access denied. Check API key permissions and IP restrictions."
+                logger.error(f"Gemini API access denied: {error_msg}")
+            elif "authentication" in error_msg.lower() or "invalid" in error_msg.lower():
+                error_detail = "Gemini API authentication failed. Check your API key."
+                logger.error(f"Gemini API authentication failed: {error_msg}")
+            elif "network" in error_msg.lower() or "connection" in error_msg.lower():
+                error_detail = "Network connectivity issue. Check your internet connection."
+                logger.error(f"Network connectivity issue: {error_msg}")
+            elif "timeout" in error_msg.lower():
+                error_detail = "Gemini API request timed out. The service may be slow or unavailable."
+                logger.error(f"Gemini API timeout: {error_msg}")
+            else:
+                error_detail = f"Unexpected error: {error_msg}"
+                logger.error(f"Unexpected error in Gemini API: {error_msg}")
+            
+            # Log detailed error information
+            logger.error(f"Error type: {error_type}")
+            logger.error(f"Error details: {error_detail}")
+            logger.error(f"Full error: {error_msg}")
+            
             return {
-                "error": str(e),
+                "error": error_detail,
+                "error_type": error_type,
                 "key_findings": "{}",
                 "confidence": 0.0,
-                "status": "error"
+                "status": "error",
+                "debug_info": {
+                    "original_error": error_msg,
+                    "error_type": error_type,
+                    "timestamp": datetime.now().isoformat()
+                }
             }
     
     def _validate_and_normalize_json(self, parsed_json: Dict) -> Dict:

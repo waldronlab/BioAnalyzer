@@ -22,6 +22,7 @@ from app.utils.config import (
 )
 from app.utils.methods_scorer import MethodsScorer
 from app.utils.field_validator import FieldExtractionEnhancer
+from app.utils.performance_logger import perf_logger
 import re
 import asyncio
 import logging
@@ -71,7 +72,7 @@ app = FastAPI(
     
     - **Paper Analysis**: Single and batch analysis of papers by PMID
     - **CSV Upload**: Batch processing of multiple PMIDs from CSV files
-    - **Curation Statistics**: Performance metrics and field analysis statistics
+
     - **Cache Management**: Efficient storage and retrieval of analysis results
     """,
     version="2.0.0",
@@ -92,10 +93,7 @@ app = FastAPI(
             "name": "Batch Processing",
             "description": "Endpoints for processing multiple papers at once, including CSV uploads."
         },
-        {
-            "name": "Curation Statistics",
-            "description": "Endpoints for monitoring analysis performance and curation readiness metrics."
-        },
+
         {
             "name": "Cache Management",
             "description": "Endpoints for managing cached analysis results and improving performance."
@@ -723,49 +721,7 @@ async def upload_csv(file: UploadFile = File(...)):
         print(f"Error processing CSV file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing CSV file: {str(e)}")
 
-@app.post("/submit_curation", tags=["Curation Statistics"])
-async def submit_curation(request: Request):
-    """
-    **Submit paper curation to BugSigDB.**
-    
-    This endpoint allows users to submit curation data for papers that have been analyzed.
-    Currently logs the submission (placeholder for future BugSigDB API integration).
-    
-    **Required Fields:**
-    - **pmid**: PubMed ID of the paper
-    - **title**: Paper title
-    - **host**: Host species
-    - **body_site**: Body site location
-    - **condition**: Condition studied
-    - **sequencing_type**: Sequencing method used
-    
-    **Returns:**
-    - **status**: Success/failure status
-    - **message**: Confirmation message
-    
-    **Note:** This is a placeholder endpoint for future BugSigDB integration.
-    """
-    try:
-        # Parse request body
-        data = await request.json()
-        
-        # Validate required fields
-        required_fields = ["pmid", "title", "host", "body_site", "condition", "sequencing_type"]
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing_fields)}")
-        
-        # In a real implementation, this would submit to BugSigDB API
-        # For now, just log the submission
-        print(f"Curation submitted: {data}")
-        
-        # Return success response
-        return {"status": "success", "message": "Curation submitted successfully"}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error submitting curation: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error submitting curation: {str(e)}")
+
 
 def extract_taxa(text):
     """Extract potential taxa from text"""
@@ -792,7 +748,7 @@ async def root():
     return RedirectResponse(url="/static/index.html")
 
 @app.get("/analyze/{pmid}", tags=["Paper Analysis"])
-async def analyze_paper(pmid: str):
+async def analyze_paper(pmid: str, request: Request):
     """
     **Analyze a single paper for BugSigDB curation readiness.**
     
@@ -823,12 +779,27 @@ async def analyze_paper(pmid: str):
     **Curation Readiness:**
     A paper is considered ready for curation when ALL 6 fields have status "PRESENT".
     """
+    import time
+    start_time = time.time()
+    
+    # Log query start with client information
+    client_ip = request.client.host if request.client else "Unknown"
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    perf_logger.log_pmid_query_start(pmid, user_agent, client_ip)
+    logger.info(f"=== Starting analysis for PMID: {pmid} ===")
+    
     try:
-        logger.info(f"=== Starting analysis for PMID: {pmid} ===")
-        
         # Check cache first for analysis results
-        cached_result = cache_manager.get_analysis_result(pmid)
+        cache_start = time.time()
+        cached_result = await cache_manager.get_analysis_result_async(pmid)
+        cache_duration = time.time() - cache_start
+        
         if cached_result and cache_manager.is_cache_valid(cached_result["timestamp"]):
+            total_duration = time.time() - start_time
+            perf_logger.log_pmid_query_end(pmid, total_duration, True, cached=True)
+            perf_logger.log_cache_operation("GET", pmid, "analysis", cache_duration, True)
+            
             logger.info(f"Returning cached analysis for PMID: {pmid}")
             return {
                 "pmid": pmid,
@@ -840,37 +811,67 @@ async def analyze_paper(pmid: str):
                 "cached": True
             }
         
-        # Get paper metadata
-        metadata = retriever.get_paper_metadata(pmid)
-        csv_metadata = get_paper_metadata_from_csv(pmid)
-        
-        if csv_metadata:
-            metadata.update(csv_metadata)
-        
-        if not metadata:
-            raise HTTPException(status_code=404, detail=f"Paper not found: {pmid}")
-        
-        # Store metadata in cache
-        cache_manager.store_metadata(pmid, metadata, "pubmed")
-        
-        # Get full text if available
-        full_text = ""
+        # Get paper metadata and full text concurrently for better performance
         try:
-            full_text = retriever.get_pmc_fulltext(pmid)
+            # Log data retrieval start
+            data_retrieval_start = time.time()
+            
+            # Use asyncio.gather to run operations concurrently
+            metadata_task = retriever.get_paper_metadata_async(pmid)
+            full_text_task = retriever.get_pmc_fulltext_async(pmid)
+            
+            # Wait for both operations with timeout
+            metadata, full_text = await asyncio.wait_for(
+                asyncio.gather(metadata_task, full_text_task, return_exceptions=True),
+                timeout=45.0  # 45 second timeout for the entire operation
+            )
+            
+            # Log data retrieval completion
+            data_retrieval_duration = time.time() - data_retrieval_start
+            perf_logger.log_analysis_step(pmid, "data_retrieval", data_retrieval_duration, {
+                "metadata_success": not isinstance(metadata, Exception),
+                "fulltext_success": not isinstance(full_text, Exception)
+            })
+            
+            # Handle exceptions from concurrent operations
+            if isinstance(metadata, Exception):
+                logger.error(f"Metadata retrieval failed for PMID {pmid}: {str(metadata)}")
+                raise HTTPException(status_code=500, detail=f"Metadata retrieval failed: {str(metadata)}")
+            
+            if isinstance(full_text, Exception):
+                logger.warning(f"Full text retrieval failed for PMID {pmid}: {str(full_text)}")
+                full_text = ""
+            
+            # Get CSV metadata if available
+            csv_metadata = get_paper_metadata_from_csv(pmid)
+            if csv_metadata:
+                metadata.update(csv_metadata)
+            
+            if not metadata:
+                raise HTTPException(status_code=404, detail=f"Paper not found: {pmid}")
+            
+            # Store metadata in cache
+            await cache_manager.store_metadata_async(pmid, metadata, "pubmed")
+            
+            # Process full text if available
             if isinstance(full_text, str):
                 try:
                     soup = BeautifulSoup(full_text, 'lxml')
                     full_text = retriever._extract_text_from_pmc_xml(soup)
                 except Exception as e:
                     logger.warning(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
+                    full_text = ""
             
             # Store full text in cache
             if full_text:
-                cache_manager.store_fulltext(pmid, full_text, "pmc")
+                await cache_manager.store_fulltext_async(pmid, full_text, "pmc")
                 
+        except asyncio.TimeoutError:
+            logger.error(f"Analysis timeout for PMID {pmid} after 45 seconds")
+            raise HTTPException(status_code=408, detail="Analysis request timed out. Please try again.")
         except Exception as e:
-            logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
-            full_text = ""
+            logger.error(f"Error retrieving data for PMID {pmid}: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Data retrieval failed: {str(e)}")
         
         # Create enhanced prompt for specific analysis - same as enhanced endpoints
         enhanced_prompt = f"""
@@ -1071,8 +1072,14 @@ async def analyze_paper(pmid: str):
             raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
             
     except HTTPException as he:
+        # Log error completion
+        total_duration = time.time() - start_time
+        perf_logger.log_pmid_query_end(pmid, total_duration, False, error=str(he.detail))
         raise he
     except Exception as e:
+        # Log error completion
+        total_duration = time.time() - start_time
+        perf_logger.log_pmid_query_end(pmid, total_duration, False, error=str(e))
         logger.error(f"Error in analyze_paper endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -1523,21 +1530,88 @@ def list_pmids():
         return {"error": str(e)}
     return pmids
 
-@app.get("/health", tags=["Health Check"])
+@app.get("/health", tags=["System"])
 async def health_check():
-    """Simple health check endpoint."""
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    """Health check endpoint to monitor system status."""
+    try:
+        # Check cache status
+        cache_stats = cache_manager.get_cache_stats()
+        
+        # Check if services are responsive
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "cache": cache_stats,
+            "services": {
+                "cache_manager": "operational",
+                "data_retrieval": "operational",
+                "qa_system": "operational" if qa_system else "not_configured"
+            }
+        }
+        
+        return health_status
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e)
+        }
+
+@app.get("/health/gemini", tags=["System"])
+async def gemini_health_check():
+    """Specific health check for Gemini API connectivity."""
+    try:
+        if not qa_system:
+            return {
+                "status": "not_configured",
+                "timestamp": datetime.now().isoformat(),
+                "error": "QA system not configured"
+            }
+        
+        # Basic health check
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "message": "System is operational"
+        }
+            
+    except Exception as e:
+        logger.exception("Gemini health check failed")  # Log full traceback
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "error": "Gemini health check failed due to an internal server error.",
+            "suggestions": [
+                "Check your Gemini API key",
+                "Verify IP address is not restricted",
+                "Check API quota usage",
+                "Ensure API key has proper permissions"
+            ]
+        }
 
 @app.get("/metrics", tags=["System"])
-async def metrics():
-    """Basic metrics endpoint for monitoring"""
-    return {
-        "uptime": "running",
-        "requests_processed": 0,  # TODO: Implement request counting
-        "active_connections": 0,  # TODO: Implement connection tracking
-        "memory_usage": "N/A",    # TODO: Implement memory monitoring
-        "cpu_usage": "N/A"        # TODO: Implement CPU monitoring
-    }
+async def get_metrics():
+    """Get system performance metrics."""
+    try:
+        cache_stats = cache_manager.get_cache_stats()
+        
+        metrics = {
+            "timestamp": datetime.now().isoformat(),
+            "cache": cache_stats,
+            "performance": {
+                "cache_hit_rate": cache_stats.get("curation_readiness_rate", 0.0),
+                "total_analyzed": cache_stats.get("total_curation_analyzed", 0),
+                "recent_activity": cache_stats.get("recent_analysis_24h", 0)
+            }
+        }
+        
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Metrics collection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Metrics collection failed: {str(e)}")
 
 @app.get("/enhanced_analysis/{pmid}", tags=["Paper Analysis"])
 async def enhanced_analysis(pmid: str):
@@ -2137,100 +2211,9 @@ async def search_cache(query: str, search_type: str = "all"):
         logger.error(f"Error searching cache: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to search cache: {str(e)}")
 
-@app.get("/curation/statistics", tags=["Curation Statistics"])
-async def get_curation_statistics():
-    """
-    **Get statistics about curation readiness for the 6 essential fields.**
-    
-    This endpoint provides comprehensive metrics about how well the AI analysis is performing
-    in identifying the 6 essential BugSigDB curation fields across all analyzed papers.
-    
-    **Returns:**
-    - **overall_statistics**: 
-        - Total papers analyzed
-        - Papers ready for curation
-        - Overall readiness rate
-    - **field_statistics**: Performance metrics for each of the 6 fields:
-        - **host_species**: Readiness rate and confidence scores
-        - **body_site**: Readiness rate and confidence scores
-        - **condition**: Readiness rate and confidence scores
-        - **sequencing_type**: Readiness rate and confidence scores
-        - **taxa_level**: Readiness rate and confidence scores
-        - **sample_size**: Readiness rate and confidence scores
-    
-    **Use Cases:**
-    - Monitor AI analysis performance
-    - Identify which fields are most challenging
-    - Track curation readiness trends
-    - Quality assurance and improvement
-    """
-    try:
-        # Get all cached analysis results
-        stats = cache_manager.get_cache_stats()
-        
-        # Analyze the 6 essential fields across all cached results
-        field_stats = {
-            "host_species": {"ready": 0, "total": 0, "avg_confidence": 0.0},
-            "body_site": {"ready": 0, "total": 0, "avg_confidence": 0.0},
-            "condition": {"ready": 0, "total": 0, "avg_confidence": 0.0},
-            "sequencing_type": {"ready": 0, "total": 0, "avg_confidence": 0.0},
-            "taxa_level": {"ready": 0, "total": 0, "avg_confidence": 0.0},
-            "sample_size": {"ready": 0, "total": 0, "avg_confidence": 0.0}
-        }
-        
-        # Get all analysis results from cache
-        all_results = cache_manager.get_all_analysis_results()
-        
-        for result in all_results:
-            analysis = result.get("analysis_data", {})
-            for field_name in field_stats.keys():
-                field_data = analysis.get(field_name, {})
-                if field_data and field_data.get("confidence", 0.0) > 0.0:
-                    field_stats[field_name]["ready"] += 1
-                    field_stats[field_name]["avg_confidence"] += field_data.get("confidence", 0.0)
-                field_stats[field_name]["total"] += 1
-        
-        # Calculate averages
-        for field_name in field_stats.keys():
-            if field_stats[field_name]["total"] > 0:
-                field_stats[field_name]["avg_confidence"] /= field_stats[field_name]["total"]
-                field_stats[field_name]["readiness_rate"] = (
-                    field_stats[field_name]["ready"] / field_stats[field_name]["total"]
-                )
-            else:
-                field_stats[field_name]["readiness_rate"] = 0.0
-        
-        # Overall curation readiness
-        total_papers = len(all_results)
-        ready_papers = len([r for r in all_results if r.get("curation_ready", False)])
-        
-        return {
-            "overall_statistics": {
-                "total_papers_analyzed": total_papers,
-                "papers_ready_for_curation": ready_papers,
-                "overall_readiness_rate": ready_papers / total_papers if total_papers > 0 else 0.0
-            },
-            "field_statistics": field_stats,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting curation statistics: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get curation statistics: {str(e)}")
 
-@app.post("/test_upload", tags=["Testing"])
-async def test_upload(file: UploadFile = File(...)):
-    """Test endpoint for debugging file upload issues."""
-    try:
-        return {
-            "filename": file.filename,
-            "size": file.size,
-            "content_type": file.content_type,
-            "status": "received"
-        }
-    except Exception as e:
-        logger.error(f"Error in test_upload: {str(e)}")
-        return {"error": "An internal error occurred while processing the upload."}
+
+
 
 if __name__ == "__main__":
     import uvicorn

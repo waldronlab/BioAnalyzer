@@ -355,15 +355,19 @@ async def ask_question(pmid: str, question: Question):
 @app.post("/upload_csv", tags=["Batch Processing"])
 async def upload_csv(file: UploadFile = File(...)):
     """
-    **Upload CSV file with PMIDs for batch processing.**
+    **Upload CSV or Excel file with PMIDs for batch processing.**
     
-    This endpoint processes a CSV file containing PubMed IDs and analyzes each paper
+    This endpoint processes a CSV or Excel file containing PubMed IDs and analyzes each paper
     for BugSigDB curation readiness using the 6 essential fields.
     
     **Parameters:**
-    - `file`: CSV file with PMIDs (first column should contain PMIDs)
+    - `file`: CSV or Excel file with PMIDs (first column should contain PMIDs)
     
-    **CSV Format:**
+    **Supported Formats:**
+    - CSV files (.csv)
+    - Excel files (.xls, .xlsx)
+    
+    **CSV/Excel Format:**
     - First column: PubMed IDs (numeric)
     - Additional columns: Optional metadata (not required)
     
@@ -373,42 +377,107 @@ async def upload_csv(file: UploadFile = File(...)):
     
     **Limitations:**
     - Maximum 10 PMIDs processed per upload (for performance)
-    - Only CSV files supported
+    - CSV files: max 5MB, Excel files: max 10MB
     - PMIDs must be numeric
     
     **Analysis Results:**
     Each result contains the 6 essential fields analysis with curation readiness status.
     """
     try:
+        # Debug logging
+        print(f"Upload request received for file: {file.filename}")
+        print(f"File size: {file.size} bytes")
+        print(f"Content type: {file.content_type}")
+        
         # Check file type
-        if not file.filename.endswith('.csv'):
-            raise HTTPException(status_code=400, detail="Only CSV files are supported")
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
+        
+        file_extension = file.filename.lower()
+        if not (file_extension.endswith('.csv') or file_extension.endswith('.xls') or file_extension.endswith('.xlsx')):
+            raise HTTPException(status_code=400, detail="Only CSV (.csv) and Excel (.xls, .xlsx) files are supported")
+        
+        # Check file size based on file type
+        max_size = 5 * 1024 * 1024 if file_extension.endswith('.csv') else 10 * 1024 * 1024
+        if file.size > max_size:
+            max_size_mb = max_size / (1024 * 1024)
+            raise HTTPException(status_code=400, detail=f"File size must be less than {max_size_mb}MB")
         
         # Read file content
         content = await file.read()
-        csv_text = content.decode("utf-8")
+        print(f"File content length: {len(content)} bytes")
         
-        # Parse CSV to extract PMIDs (assuming first column contains PMIDs)
-        import csv
-        from io import StringIO
-        
-        csv_reader = csv.reader(StringIO(csv_text))
+        # Parse file content based on file type
         pmids = []
         
-        for row in csv_reader:
-            if row and row[0].strip().isdigit():  # Check if first column is a numeric PMID
-                pmids.append(row[0].strip())
+        if file_extension.endswith('.csv'):
+            # Handle CSV files
+            try:
+                csv_text = content.decode("utf-8")
+            except UnicodeDecodeError:
+                try:
+                    csv_text = content.decode("latin-1")
+                except UnicodeDecodeError:
+                    print("Failed to decode CSV file content")
+                    raise HTTPException(status_code=400, detail="Unable to read CSV file content. Please ensure it's a valid CSV file.")
+            
+            print(f"CSV text length: {len(csv_text)} characters")
+            print(f"First 200 characters: {csv_text[:200]}")
+            
+            # Parse CSV to extract PMIDs (assuming first column contains PMIDs)
+            import csv
+            from io import StringIO
+            
+            csv_reader = csv.reader(StringIO(csv_text))
+            for i, row in enumerate(csv_reader):
+                if row and len(row) > 0:
+                    first_col = row[0].strip()
+                    print(f"Row {i}: '{first_col}' (is_digit: {first_col.isdigit()})")
+                    if first_col.isdigit():  # Check if first column is a numeric PMID
+                        pmids.append(first_col)
+        
+        else:
+            # Handle Excel files
+            try:
+                import pandas as pd
+                from io import BytesIO
+                
+                # Read Excel file using pandas
+                excel_data = pd.read_excel(BytesIO(content), engine='openpyxl' if file_extension.endswith('.xlsx') else 'xlrd')
+                print(f"Excel file loaded with {len(excel_data)} rows and columns: {list(excel_data.columns)}")
+                
+                # Extract PMIDs from first column
+                first_column = excel_data.iloc[:, 0]  # Get first column
+                for i, value in enumerate(first_column):
+                    if pd.notna(value):  # Check if value is not NaN
+                        value_str = str(value).strip()
+                        print(f"Row {i}: '{value_str}' (is_digit: {value_str.isdigit()})")
+                        if value_str.isdigit():  # Check if first column is a numeric PMID
+                            pmids.append(value_str)
+                
+            except ImportError:
+                raise HTTPException(status_code=500, detail="Excel file processing requires pandas and openpyxl/xlrd packages. Please install them.")
+            except Exception as e:
+                print(f"Error processing Excel file: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Error processing Excel file: {str(e)}")
+        
+        print(f"Extracted PMIDs: {pmids}")
         
         if not pmids:
-            raise HTTPException(status_code=400, detail="No valid PMIDs found in CSV file")
+            print("No valid PMIDs found in file")
+            raise HTTPException(status_code=400, detail="No valid PMIDs found in file. Please ensure the first column contains numeric PubMed IDs.")
+        
+        print(f"Processing {len(pmids)} PMIDs...")
         
         # Process each PMID using the enhanced analysis
         results = []
         for pmid in pmids[:10]:  # Limit to first 10 PMIDs for performance
             try:
+                print(f"Processing PMID: {pmid}")
                 # Get paper metadata
                 metadata = retriever.get_paper_metadata(pmid)
                 if not metadata:
+                    print(f"No metadata found for PMID {pmid}")
                     results.append({
                         "pmid": pmid,
                         "title": "Not found",
@@ -586,7 +655,7 @@ async def upload_csv(file: UploadFile = File(...)):
                                 parsed_analysis[field] = {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for taxonomic level information"}
                             elif field == "sample_size":
                                 parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
-                
+                    
                     # Determine curation readiness based on having all 6 fields with status "PRESENT"
                     curation_ready = len(missing_fields) == 0 and all(
                         parsed_analysis.get(field, {}).get("status") == "PRESENT" 
@@ -1454,15 +1523,10 @@ def list_pmids():
         return {"error": str(e)}
     return pmids
 
-@app.get("/health", tags=["System"])
+@app.get("/health", tags=["Health Check"])
 async def health_check():
-    """Health check endpoint for Docker and load balancers"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "service": "BioAnalyzer - BugSigDB Curation Analysis",
-        "version": "2.0.0"
-    }
+    """Simple health check endpoint."""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/metrics", tags=["System"])
 async def metrics():
@@ -2153,6 +2217,19 @@ async def get_curation_statistics():
     except Exception as e:
         logger.error(f"Error getting curation statistics: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get curation statistics: {str(e)}")
+
+@app.post("/test_upload", tags=["Testing"])
+async def test_upload(file: UploadFile = File(...)):
+    """Test endpoint for debugging file upload issues."""
+    try:
+        return {
+            "filename": file.filename,
+            "size": file.size,
+            "content_type": file.content_type,
+            "status": "received"
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

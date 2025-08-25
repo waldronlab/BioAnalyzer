@@ -48,35 +48,82 @@ window.analyzeForCuration = async function() {
 
 // Handle file upload
 async function handleFileUpload(file) {
+    // Validate file before upload
+    if (!file) {
+        throw new Error('No file selected');
+    }
+    
+    // Check file type - support CSV and Excel files
+    const allowedExtensions = ['.csv', '.xls', '.xlsx'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    if (!allowedExtensions.includes(fileExtension)) {
+        throw new Error('Please select a CSV or Excel file (.csv, .xls, .xlsx)');
+    }
+    
+    // Check file size (max 10MB for Excel files)
+    const maxSize = fileExtension === '.csv' ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+        const maxSizeMB = maxSize / (1024 * 1024);
+        throw new Error(`File size must be less than ${maxSizeMB}MB`);
+    }
+    
+    console.log('Uploading file:', file.name, 'Size:', file.size, 'bytes', 'Type:', file.type, 'Extension:', fileExtension);
+    
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await fetch('/upload_csv', {
-        method: 'POST',
-        body: formData
-    });
-    
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+        const response = await fetch('/upload_csv', {
+            method: 'POST',
+            body: formData
+        });
+        
+        console.log('Upload response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Upload failed:', response.status, errorText);
+            
+            // Try to parse error details
+            let errorMessage = `Upload failed (${response.status})`;
+            try {
+                const errorData = JSON.parse(errorText);
+                if (errorData.detail) {
+                    errorMessage = errorData.detail;
+                }
+            } catch (e) {
+                if (errorText) {
+                    errorMessage += `: ${errorText}`;
+                }
+            }
+            
+            throw new Error(errorMessage);
+        }
+        
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        console.log('Upload successful, results:', data);
+        return data.results || [];
+        
+    } catch (error) {
+        console.error('File upload error:', error);
+        throw error;
     }
-    
-    const data = await response.json();
-    if (data.error) {
-        throw new Error(data.error);
-    }
-    
-    return data.results || [];
 }
 
 // Handle single PMID
 async function handleSinglePmid(pmid) {
     const response = await fetch(`/enhanced_analysis/${pmid}`);
     
-    if (!response.ok) {
+            if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
-    }
+            }
     
-    const data = await response.json();
+            const data = await response.json();
     if (data.error) {
         throw new Error(data.error);
     }
@@ -105,14 +152,14 @@ async function handleBatchPmids(pmidsText) {
     // Try the enhanced endpoint first
     try {
         const response = await fetch('/enhanced_analysis_batch', {
-            method: 'POST',
+                method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(pmids)  // Send the list directly, not wrapped in an object
         });
         
-        if (!response.ok) {
+            if (!response.ok) {
             const errorText = await response.text();
             
             // If enhanced fails, try the regular batch endpoint
@@ -139,8 +186,8 @@ async function handleBatchPmids(pmidsText) {
         }
         
         return data.batch_results || [];
-        
-    } catch (error) {
+            
+        } catch (error) {
         throw error;
     }
 }
@@ -184,15 +231,15 @@ function displayResults(results) {
     
     if (!results || results.length === 0) {
         showError('No results to display');
-        return;
-    }
-    
+            return;
+        }
+        
     const resultsContent = document.getElementById('results-content');
     if (!resultsContent) {
         console.error('Results content element not found');
-        return;
-    }
-    
+            return;
+        }
+        
     // Create results HTML
     let resultsHTML = `
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -207,7 +254,7 @@ function displayResults(results) {
                     <i class="fas fa-trash me-2"></i>Clear
                 </button>
             </div>
-        </div>
+            </div>
         
         <div class="row">
             <div class="col-md-6">
@@ -215,20 +262,20 @@ function displayResults(results) {
                     <div class="card-body text-center">
                         <h5 class="card-title">Papers Analyzed</h5>
                         <h2 class="text-primary">${results.length}</h2>
-                    </div>
                 </div>
-            </div>
+                    </div>
+                    </div>
             <div class="col-md-6">
                 <div class="card bg-light">
                     <div class="card-body text-center">
                         <h5 class="card-title">Ready for Curation</h5>
                         <h2 class="text-success">${results.filter(r => r.enhanced_analysis?.curation_ready).length}</h2>
-                    </div>
+            </div>
+            </div>
                 </div>
             </div>
-        </div>
-    `;
-    
+        `;
+        
     // Add individual paper results
     results.forEach((result, index) => {
         const analysis = result.enhanced_analysis || {};
@@ -252,16 +299,16 @@ function displayResults(results) {
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.host_species?.primary || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.host_species?.status?.toLowerCase() || 'absent'}">${analysis.host_species?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.host_species?.confidence || 0).toFixed(2)}</p>
-                            </div>
-                        </div>
+                </div>
+                </div>
                         <div class="col-md-6">
                             <div class="field-card">
                                 <h6><i class="fas fa-map-marker-alt me-2"></i>Body Site</h6>
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.body_site?.site || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.body_site?.status?.toLowerCase() || 'absent'}">${analysis.body_site?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.body_site?.confidence || 0).toFixed(2)}</p>
-                            </div>
-                        </div>
+            </div>
+                </div>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -270,15 +317,15 @@ function displayResults(results) {
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.condition?.description || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.condition?.status?.toLowerCase() || 'absent'}">${analysis.condition?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.condition?.confidence || 0).toFixed(2)}</p>
-                            </div>
-                        </div>
+                </div>
+                    </div>
                         <div class="col-md-6">
                             <div class="field-card">
                                 <h6><i class="fas fa-microscope me-2"></i>Sequencing Type</h6>
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.sequencing_type?.method || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.condition?.status?.toLowerCase() || 'absent'}">${analysis.sequencing_type?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.sequencing_type?.confidence || 0).toFixed(2)}</p>
-                            </div>
+                </div>
                         </div>
                     </div>
                     <div class="row">
@@ -296,10 +343,10 @@ function displayResults(results) {
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.sample_size?.size || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.sample_size?.status?.toLowerCase() || 'absent'}">${analysis.sample_size?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.sample_size?.confidence || 0).toFixed(2)}</p>
-                            </div>
-                        </div>
                     </div>
-                    
+                </div>
+            </div>
+            
                     ${analysis.missing_fields && analysis.missing_fields.length > 0 ? `
                         <div class="alert alert-warning mt-3">
                             <h6><i class="fas fa-exclamation-triangle me-2"></i>Missing Fields</h6>
@@ -341,46 +388,46 @@ window.clearResults = function() {
 window.analyzeSinglePaper = window.analyzeForCuration;
 window.analyzeBatchPapers = window.analyzeForCuration;
 
-// Chat helper functions
-function handleChatKeyPress(event) {
-    if (event.key === 'Enter') {
-        sendMessage();
+    // Chat helper functions
+    function handleChatKeyPress(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
     }
-}
 
-function sendMessage() {
-    const messageInput = document.getElementById('chat-input');
-    if (!messageInput) return;
-    
-    const message = messageInput.value.trim();
-    if (!message) return;
-    
-    // For now, just display the message (WebSocket functionality can be added later)
-    displayChatMessage(message, 'user');
-    messageInput.value = '';
-    
-    // Simulate a response (replace with actual AI chat later)
-    setTimeout(() => {
-        displayChatMessage('Thank you for your message. The chat assistant is currently being configured.', 'assistant');
-    }, 1000);
-}
+    function sendMessage() {
+        const messageInput = document.getElementById('chat-input');
+        if (!messageInput) return;
+        
+        const message = messageInput.value.trim();
+        if (!message) return;
+        
+        // For now, just display the message (WebSocket functionality can be added later)
+        displayChatMessage(message, 'user');
+        messageInput.value = '';
+        
+        // Simulate a response (replace with actual AI chat later)
+        setTimeout(() => {
+            displayChatMessage('Thank you for your message. The chat assistant is currently being configured.', 'assistant');
+        }, 1000);
+    }
 
-function displayChatMessage(message, role) {
-    const chatMessages = document.getElementById('chat-messages');
-    if (!chatMessages) return;
-    
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `mb-3 ${role === 'user' ? 'text-end' : 'text-start'}`;
-    
-    const messageBubble = document.createElement('div');
-    messageBubble.className = `d-inline-block p-2 rounded ${role === 'user' ? 'bg-primary text-white' : 'bg-light'}`;
-    messageBubble.style.maxWidth = '70%';
-    messageBubble.textContent = message;
-    
-    messageDiv.appendChild(messageBubble);
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
+    function displayChatMessage(message, role) {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `mb-3 ${role === 'user' ? 'text-end' : 'text-start'}`;
+        
+        const messageBubble = document.createElement('div');
+        messageBubble.className = `d-inline-block p-2 rounded ${role === 'user' ? 'bg-primary text-white' : 'bg-light'}`;
+        messageBubble.style.maxWidth = '70%';
+        messageBubble.textContent = message;
+        
+        messageDiv.appendChild(messageBubble);
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -436,3 +483,9 @@ window.addEventListener('beforeunload', function() {
     }
     
 });
+
+// Also define functions in global scope for compatibility
+window.showLoading = showLoading;
+window.hideLoading = hideLoading;
+window.showError = showError;
+window.displayResults = displayResults;

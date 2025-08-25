@@ -637,7 +637,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                 "confidence": 0.0,
                 "status": "error"
             }
-
+    
     def _validate_and_normalize_json(self, parsed_json: Dict) -> Dict:
         """
         Validate and normalize the JSON structure to ensure all required fields are present.
@@ -803,7 +803,6 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                         confidence_scores.append(min(1.0, field_confidence + 0.1))
                     else:
                         confidence_scores.append(field_confidence)
-                        
                 elif status == "PARTIALLY_PRESENT":
                     confidence_scores.append(field_confidence)
                 else:  # ABSENT

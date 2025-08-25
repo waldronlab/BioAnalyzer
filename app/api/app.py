@@ -2229,7 +2229,8 @@ async def test_upload(file: UploadFile = File(...)):
             "status": "received"
         }
     except Exception as e:
-        return {"error": str(e)}
+        logger.error(f"Error in test_upload: {str(e)}")
+        return {"error": "An internal error occurred while processing the upload."}
 
 if __name__ == "__main__":
     import uvicorn

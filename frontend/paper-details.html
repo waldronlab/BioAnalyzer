@@ -582,7 +582,7 @@
                     </button>
                 </div>
                 <h1><i class="fas fa-file-medical me-3"></i>Paper Details</h1>
-                <div class="subtitle">Comprehensive analysis and curation assessment</div>
+                <div class="subtitle">Comprehensive analysis and assessment</div>
             </div>
         </div>
 
@@ -617,19 +617,19 @@
                     <p id="abstract-content"></p>
                 </div>
 
-                <!-- Curation Status Section -->
+                <!-- Analysis Status Section -->
                 <div class="content-section">
-                    <h2><i class="fas fa-clipboard-check"></i>Curation Status</h2>
-                    <div id="curation-status-content">
-                        <!-- Curation status will be populated here -->
+                    <h2><i class="fas fa-clipboard-check"></i>Analysis Status</h2>
+                    <div id="analysis-status-content">
+                        <!-- Analysis status will be populated here -->
                     </div>
                 </div>
 
-                <!-- Enhanced Curation Analysis Section -->
-                <div id="curation-analysis-section" class="content-section" style="display: none;">
-                    <h2><i class="fas fa-microscope"></i>Enhanced Curation Analysis</h2>
-                    <div id="curation-analysis-content">
-                        <!-- Enhanced curation analysis will be populated here -->
+                <!-- Enhanced Analysis Section -->
+                <div id="enhanced-analysis-section" class="content-section" style="display: none;">
+                    <h2><i class="fas fa-microscope"></i>Enhanced Analysis</h2>
+                    <div id="enhanced-analysis-content">
+                        <!-- Enhanced analysis will be populated here -->
                     </div>
                 </div>
 
@@ -752,9 +752,9 @@
             `).join('');
         }
 
-        // Populate curation status
-        function populateCurationStatus(data) {
-            const statusContent = document.getElementById('curation-status-content');
+        // Populate analysis status
+        function populateAnalysisStatus(data) {
+            const statusContent = document.getElementById('analysis-status-content');
             const metadata = data.metadata || {};
 
             const statusBadgeClass = getStatusBadgeClass(data.curation_status_message);
@@ -771,9 +771,9 @@
             `;
         }
 
-        // Populate enhanced curation analysis
-        function populateCurationAnalysis(curation) {
-            const analysisContent = document.getElementById('curation-analysis-content');
+        // Populate enhanced analysis
+        function populateEnhancedAnalysis(curation) {
+            const analysisContent = document.getElementById('enhanced-analysis-content');
             
             // Determine readiness based on the detailed analysis content
             let readiness = 'Unknown';
@@ -1246,10 +1246,10 @@
             // If we have LLM analysis, use it to determine status
             if (curation && curation.readiness) {
                 if (curation.readiness === 'READY') {
-                    statusMessage = "This paper is ready for curation but not yet in BugSigDB.";
+                    statusMessage = "This paper has been analyzed and meets BugSigDB requirements.";
                     statusClass = 'status-ready';
                 } else if (curation.readiness === 'NOT_READY') {
-                    statusMessage = "This paper is not ready for curation. Missing required elements.";
+                    statusMessage = "This paper has been analyzed but requires additional review.";
                     statusClass = 'status-not-ready';
                 }
             } else {

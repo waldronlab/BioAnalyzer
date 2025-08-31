@@ -4,7 +4,7 @@ window.ws = null;
 window.isConnected = false;
 
 // Immediately define the function globally
-window.analyzeForCuration = async function() {
+window.analyzePapers = async function() {
     
     const fileInput = document.getElementById('fileInput');
     const singlePmid = document.getElementById('singlePmid').value.trim();
@@ -371,32 +371,23 @@ function displayResults(results) {
                     <i class="fas fa-trash me-2"></i>Clear
                 </button>
             </div>
-            </div>
+        </div>
         
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-12">
                 <div class="card bg-light">
                     <div class="card-body text-center">
                         <h5 class="card-title">Papers Analyzed</h5>
                         <h2 class="text-primary">${results.length}</h2>
-                </div>
                     </div>
-                    </div>
-            <div class="col-md-6">
-                <div class="card bg-light">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Ready for Curation</h5>
-                        <h2 class="text-success">${results.filter(r => r.enhanced_analysis?.curation_ready).length}</h2>
-            </div>
-            </div>
                 </div>
             </div>
+        </div>
         `;
         
     // Add individual paper results
     results.forEach((result, index) => {
         const analysis = result.enhanced_analysis || {};
-        const curationReady = analysis.curation_ready ? 'Yes' : 'No';
         
         resultsHTML += `
             <div class="card mt-3">
@@ -404,9 +395,6 @@ function displayResults(results) {
                     <h6 class="mb-0">
                         <strong>PMID ${result.pmid}</strong> - ${result.title || 'N/A'}
                     </h6>
-                    <span class="badge ${analysis.curation_ready ? 'bg-success' : 'bg-warning'}">
-                        Curation Ready: ${curationReady}
-                    </span>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -416,16 +404,16 @@ function displayResults(results) {
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.host_species?.primary || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.host_species?.status?.toLowerCase() || 'absent'}">${analysis.host_species?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.host_species?.confidence || 0).toFixed(2)}</p>
-                </div>
-                </div>
+                            </div>
+                        </div>
                         <div class="col-md-6">
                             <div class="field-card">
                                 <h6><i class="fas fa-map-marker-alt me-2"></i>Body Site</h6>
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.body_site?.site || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.body_site?.status?.toLowerCase() || 'absent'}">${analysis.body_site?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.body_site?.confidence || 0).toFixed(2)}</p>
-            </div>
-                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -434,15 +422,15 @@ function displayResults(results) {
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.condition?.description || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.condition?.status?.toLowerCase() || 'absent'}">${analysis.condition?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.condition?.confidence || 0).toFixed(2)}</p>
-                </div>
-                    </div>
+                            </div>
+                        </div>
                         <div class="col-md-6">
                             <div class="field-card">
                                 <h6><i class="fas fa-microscope me-2"></i>Sequencing Type</h6>
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.sequencing_type?.method || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.condition?.status?.toLowerCase() || 'absent'}">${analysis.sequencing_type?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.sequencing_type?.confidence || 0).toFixed(2)}</p>
-                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="row">
@@ -460,8 +448,8 @@ function displayResults(results) {
                                 <p class="mb-1"><strong>Value:</strong> ${analysis.sample_size?.size || 'Unknown'}</p>
                                 <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.sample_size?.status?.toLowerCase() || 'absent'}">${analysis.sample_size?.status || 'ABSENT'}</span></p>
                                 <p class="mb-1"><strong>Confidence:</strong> ${(analysis.sample_size?.confidence || 0).toFixed(2)}</p>
-                    </div>
-                </div>
+                            </div>
+                        </div>
             </div>
             
                     ${analysis.missing_fields && analysis.missing_fields.length > 0 ? `
@@ -520,8 +508,8 @@ window.clearResults = function() {
 };
 
 // Legacy functions for backward compatibility (can be removed later)
-window.analyzeSinglePaper = window.analyzeForCuration;
-window.analyzeBatchPapers = window.analyzeForCuration;
+window.analyzeSinglePaper = window.analyzePapers;
+window.analyzeBatchPapers = window.analyzePapers;
 
     // Chat helper functions
     function handleChatKeyPress(event) {

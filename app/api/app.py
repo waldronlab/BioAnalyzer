@@ -614,7 +614,7 @@ async def upload_csv(file: UploadFile = File(...)):
                         "reason_if_missing": "explanation if absent",
                         "suggestions_for_curation": "what additional info is needed"
                     }},
-                    "curation_ready": true/false,
+
                     "missing_fields": ["field1", "field2", ...],
                     "curation_preparation_summary": "Overall assessment of what's needed for curation"
                 }}
@@ -654,14 +654,7 @@ async def upload_csv(file: UploadFile = File(...)):
                             elif field == "sample_size":
                                 parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
                     
-                    # Determine curation readiness based on having all 6 fields with status "PRESENT"
-                    curation_ready = len(missing_fields) == 0 and all(
-                        parsed_analysis.get(field, {}).get("status") == "PRESENT" 
-                        for field in required_fields
-                    )
-                    
-                    # Update the parsed analysis with curation readiness
-                    parsed_analysis["curation_ready"] = curation_ready
+                    # Update the parsed analysis with missing fields
                     parsed_analysis["missing_fields"] = missing_fields
                     
                 except json.JSONDecodeError:
@@ -673,7 +666,6 @@ async def upload_csv(file: UploadFile = File(...)):
                         "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                         "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                         "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                        "curation_ready": False,
                         "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
                         "curation_preparation_summary": "Analysis failed - re-run required"
                     }
@@ -685,14 +677,13 @@ async def upload_csv(file: UploadFile = File(...)):
                     metadata, 
                     "gemini_enhanced", 
                     analysis.get("confidence", 0.0), 
-                    curation_ready
+                    False
                 )
                 
                 results.append({
                     "pmid": pmid,
                     "title": metadata.get("title", ""),
-                    "enhanced_analysis": parsed_analysis,
-                    "curation_ready": curation_ready
+                    "enhanced_analysis": parsed_analysis
                 })
                 
             except Exception as e:
@@ -760,7 +751,7 @@ async def analyze_paper(pmid: str, request: Request):
     
     **Returns:**
     - **enhanced_analysis**: Detailed analysis of the 6 essential fields
-    - **curation_ready**: Boolean indicating if the paper is ready for curation
+    
     - **metadata**: Paper metadata (title, abstract, authors, etc.)
     
     **6 Essential Fields Analyzed:**
@@ -805,7 +796,7 @@ async def analyze_paper(pmid: str, request: Request):
                 "pmid": pmid,
                 "metadata": cached_result["metadata"],
                 "enhanced_analysis": cached_result["analysis_data"],
-                "curation_ready": cached_result["curation_ready"],
+
                 "timestamp": cached_result["timestamp"],
                 "source": cached_result["source"],
                 "cached": True
@@ -1224,7 +1215,7 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
     **Returns:**
     - List of analysis results, each containing:
         - **enhanced_analysis**: 6-field analysis results
-        - **curation_ready**: Boolean indicating curation readiness
+        
         - **metadata**: Paper metadata
         - **status**: Success/error status
     
@@ -1244,7 +1235,6 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
                     "pmid": pmid,
                     "metadata": cached_result["metadata"],
                     "enhanced_analysis": cached_result["analysis_data"],
-                    "curation_ready": cached_result["curation_ready"],
                     "timestamp": cached_result["timestamp"],
                     "source": cached_result["source"],
                     "cached": True,
@@ -1360,7 +1350,6 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
                     "reason_if_missing": "explanation if absent",
                     "suggestions_for_curation": "what additional info is needed"
                 }},
-                "curation_ready": true/false,
                 "missing_fields": ["field1", "field2", ...],
                 "curation_preparation_summary": "Overall assessment of what's needed for curation"
             }}
@@ -1627,7 +1616,6 @@ async def enhanced_analysis(pmid: str):
     
     **Returns:**
     - **enhanced_analysis**: Detailed analysis of the 6 essential fields
-    - **curation_ready**: Boolean indicating if the paper is ready for curation
     - **metadata**: Paper metadata (title, abstract, authors, etc.)
     - **cached**: Boolean indicating if result was retrieved from cache
     
@@ -1652,7 +1640,6 @@ async def enhanced_analysis(pmid: str):
                 "pmid": pmid,
                 "metadata": cached_result["metadata"],
                 "enhanced_analysis": cached_result["analysis_data"],
-                "curation_ready": cached_result["curation_ready"],
                 "timestamp": cached_result["timestamp"],
                 "source": cached_result["source"],
                 "cached": True
@@ -1940,7 +1927,6 @@ async def enhanced_analysis_batch(pmids: List[str] = Body(...), max_concurrent: 
                         "pmid": pmid,
                         "metadata": cached_result["metadata"],
                         "enhanced_analysis": cached_result["analysis_data"],
-                        "curation_ready": cached_result["curation_ready"],
                         "timestamp": cached_result["timestamp"],
                         "source": cached_result["source"],
                         "cached": True,
@@ -2056,7 +2042,7 @@ async def enhanced_analysis_batch(pmids: List[str] = Body(...), max_concurrent: 
                             "reason_if_missing": "explanation if absent",
                             "suggestions_for_curation": "what additional info is needed"
                         }},
-                        "curation_ready": true/false,
+        
                         "missing_fields": ["field1", "field2", ...],
                         "curation_preparation_summary": "Overall assessment of what's needed for curation"
                     }}

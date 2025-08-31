@@ -772,33 +772,33 @@
         }
 
         // Populate enhanced analysis
-        function populateEnhancedAnalysis(curation) {
+        function populateEnhancedAnalysis(analysis) {
             const analysisContent = document.getElementById('enhanced-analysis-content');
             
-            // Determine readiness based on the detailed analysis content
-            let readiness = 'Unknown';
-            let readinessClass = 'info';
+            // Determine status based on the detailed analysis content
+            let status = 'Unknown';
+            let statusClass = 'info';
             
-            // Check if the readiness assessment is consistent with the explanation
-            if (curation.readiness) {
-                readiness = curation.readiness;
+            // Check if the status assessment is consistent with the explanation
+            if (analysis.status) {
+                status = analysis.status;
                 
-                // Additional check: if explanation mentions "review article" or "not suitable", override readiness
-                if (curation.explanation && (
-                    curation.explanation.toLowerCase().includes('review article') ||
-                    curation.explanation.toLowerCase().includes('not suitable') ||
-                    curation.explanation.toLowerCase().includes('lacks specific') ||
-                    curation.explanation.toLowerCase().includes('no original research')
+                // Additional check: if explanation mentions "review article" or "not suitable", override status
+                if (analysis.explanation && (
+                    analysis.explanation.toLowerCase().includes('review article') ||
+                    analysis.explanation.toLowerCase().includes('not suitable') ||
+                    analysis.explanation.toLowerCase().includes('lacks specific') ||
+                    analysis.explanation.toLowerCase().includes('no original research')
                 )) {
-                    readiness = 'NOT_READY';
+                    status = 'REVIEW_REQUIRED';
                 }
                 
-                if (readiness === 'READY') {
-                    readinessClass = 'success';
-                } else if (readiness === 'NOT_READY') {
-                    readinessClass = 'warning';
-                } else if (readiness === 'ERROR') {
-                    readinessClass = 'danger';
+                if (status === 'COMPLETE') {
+                    statusClass = 'success';
+                } else if (status === 'REVIEW_REQUIRED') {
+                    statusClass = 'warning';
+                } else if (status === 'ERROR') {
+                    statusClass = 'danger';
                 }
             }
             
@@ -811,16 +811,16 @@
                                 ${readiness}
                             </span>
                         </p>
-                        <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
-                        <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
-                        <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
-                        <p><strong>Data Completeness:</strong> ${curation.data_completeness || 'Unknown'}</p>
+                        <p><strong>Microbial Signatures:</strong> ${analysis.microbial_signatures || 'Unknown'}</p>
+                        <p><strong>Data Quality:</strong> ${analysis.data_quality || 'Unknown'}</p>
+                        <p><strong>Statistical Significance:</strong> ${analysis.statistical_significance || 'Unknown'}</p>
+                        <p><strong>Data Completeness:</strong> ${analysis.data_completeness || 'Unknown'}</p>
                     </div>
                     <div class="col-md-6">
                         <h3><i class="fas fa-chart-line"></i>Factor-Based Analysis</h3>
                         <div class="factor-analysis">
                             <p><strong>Factor-Based Score:</strong> 
-                                <span class="badge bg-primary">${Math.round((curation.factor_based_score || 0) * 100)}%</span>
+                                <span class="badge bg-primary">${Math.round((analysis.factor_based_score || 0) * 100)}%</span>
                             </p>
                             
                             <!-- General Factors -->
@@ -1187,7 +1187,7 @@
         function generateReportContent(data, pmid) {
             const metadata = data.metadata || {};
             const analysis = data.analysis || {};
-            const curation = analysis.curation_analysis || {};
+            const enhancedAnalysis = analysis.enhanced_analysis || {};
             
             if (!metadata.title) throw new Error('Paper title is missing from metadata');
             
@@ -1238,95 +1238,95 @@
                 </div>`;
             }
             
-            // Add Curation Status
-            // Use LLM readiness as primary source of truth for consistency
-            let statusMessage = data.curation_status_message || 'Unknown';
+            // Add Analysis Status
+            // Use LLM status as primary source of truth for consistency
+            let statusMessage = data.analysis_status_message || 'Unknown';
             let statusClass = 'status-unknown';
             
             // If we have LLM analysis, use it to determine status
-            if (curation && curation.readiness) {
-                if (curation.readiness === 'READY') {
+            if (analysis && analysis.status) {
+                if (analysis.status === 'COMPLETE') {
                     statusMessage = "This paper has been analyzed and meets BugSigDB requirements.";
-                    statusClass = 'status-ready';
-                } else if (curation.readiness === 'NOT_READY') {
+                    statusClass = 'status-complete';
+                } else if (analysis.status === 'REVIEW_REQUIRED') {
                     statusMessage = "This paper has been analyzed but requires additional review.";
-                    statusClass = 'status-not-ready';
+                    statusClass = 'status-review';
                 }
             } else {
                 // Fallback to the original logic
-                statusClass = data.curation_status_message?.toLowerCase().includes('ready') ? 'status-ready' : 
-                             data.curation_status_message?.toLowerCase().includes('not ready') ? 'status-not-ready' : 
-                             data.curation_status_message?.toLowerCase().includes('curated') ? 'status-curated' : 'status-unknown';
+                statusClass = data.analysis_status_message?.toLowerCase().includes('complete') ? 'status-complete' : 
+                             data.analysis_status_message?.toLowerCase().includes('review') ? 'status-review' : 
+                             data.analysis_status_message?.toLowerCase().includes('analyzed') ? 'status-analyzed' : 'status-unknown';
             }
             
             content += `<div class="highlight-box">
-                <h2>📋 Curation Status</h2>
+                <h2>📋 Analysis Status</h2>
                 <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${statusMessage}</span></p>
                 <p><strong>Host:</strong> ${metadata.host || 'Not specified'}</p>
                 <p><strong>Body Site:</strong> ${metadata.body_site || 'Not specified'}</p>
                 <p><strong>Sequencing Type:</strong> ${metadata.sequencing_type || 'Not specified'}</p>
             </div>`;
             
-            // Add Enhanced Curation Analysis
-            if (curation && Object.keys(curation).length > 0) {
-                const readinessClass = curation.readiness === 'READY' ? 'status-ready' : 
-                                     curation.readiness === 'NOT_READY' ? 'status-not-ready' : 'status-unknown';
+            // Add Enhanced Analysis
+            if (analysis && Object.keys(analysis).length > 0) {
+                const statusClass = analysis.status === 'COMPLETE' ? 'status-complete' : 
+                                  analysis.status === 'REVIEW_REQUIRED' ? 'status-review' : 'status-unknown';
                 
                 content += `<div class="section">
-                    <h2>🔬 Enhanced Curation Analysis</h2>
+                    <h2>🔬 Enhanced Analysis</h2>
                     <div class="highlight-box">
-                        <p><strong>Readiness:</strong> <span class="status-badge ${readinessClass}">${curation.readiness || 'Unknown'}</span></p>
-                        <p><strong>Microbial Signatures:</strong> ${curation.microbial_signatures || 'Unknown'}</p>
-                        <p><strong>Data Quality:</strong> ${curation.data_quality || 'Unknown'}</p>
-                        <p><strong>Statistical Significance:</strong> ${curation.statistical_significance || 'Unknown'}</p>
-                        <p><strong>Data Completeness:</strong> ${curation.data_completeness || 'Unknown'}</p>
+                        <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${analysis.status || 'Unknown'}</span></p>
+                        <p><strong>Microbial Signatures:</strong> ${analysis.microbial_signatures || 'Unknown'}</p>
+                        <p><strong>Data Quality:</strong> ${analysis.data_quality || 'Unknown'}</p>
+                        <p><strong>Statistical Significance:</strong> ${analysis.statistical_significance || 'Unknown'}</p>
+                        <p><strong>Data Completeness:</strong> ${analysis.data_completeness || 'Unknown'}</p>
                     </div>`;
                 
                 // Add Factor-Based Analysis
-                if (curation.factor_based_score !== undefined) {
-                    const factorScore = Math.round((curation.factor_based_score || 0) * 100);
+                if (analysis.factor_based_score !== undefined) {
+                    const factorScore = Math.round((analysis.factor_based_score || 0) * 100);
                     content += `<div class="highlight-box">
                         <h3>Factor-Based Analysis</h3>
                         <p><strong>Factor-Based Score:</strong> ${factorScore}%</p>
                         
-                        <h4>General Factors (${(curation.general_factors_present || []).length}/6)</h4>
-                        <p>${(curation.general_factors_present || []).length > 0 ? 
-                            curation.general_factors_present.join(', ') : 'No general factors identified'}</p>
+                        <h4>General Factors (${(analysis.general_factors_present || []).length}/6)</h4>
+                        <p>${(analysis.general_factors_present || []).length > 0 ? 
+                            analysis.general_factors_present.join(', ') : 'No general factors identified'}</p>
                         
-                        <h4>Human/Animal Factors (${(curation.human_animal_factors_present || []).length}/5)</h4>
-                        <p>${(curation.human_animal_factors_present || []).length > 0 ? 
-                            curation.human_animal_factors_present.join(', ') : 'No human/animal factors identified'}</p>
+                        <h4>Human/Animal Factors (${(analysis.human_animal_factors_present || []).length}/5)</h4>
+                        <p>${(analysis.human_animal_factors_present || []).length > 0 ? 
+                            analysis.human_animal_factors_present.join(', ') : 'No human/animal factors identified'}</p>
                         
-                        <h4>Environmental Factors (${(curation.environmental_factors_present || []).length}/5)</h4>
-                        <p>${(curation.environmental_factors_present || []).length > 0 ? 
-                            curation.environmental_factors_present.join(', ') : 'No environmental factors identified'}</p>
+                        <h4>Environmental Factors (${(analysis.environmental_factors_present || []).length}/5)</h4>
+                        <p>${(analysis.environmental_factors_present || []).length > 0 ? 
+                            analysis.environmental_factors_present.join(', ') : 'No environmental factors identified'}</p>
                         
                         <h4>Missing Critical Factors</h4>
-                        <p>${(curation.missing_critical_factors || []).length > 0 ? 
-                            curation.missing_critical_factors.join(', ') : 'No critical factors missing'}</p>
+                        <p>${(analysis.missing_critical_factors || []).length > 0 ? 
+                            analysis.missing_critical_factors.join(', ') : 'No critical factors missing'}</p>
                     </div>`;
                 }
                 
                 // Add Signature Types
-                if (curation.signature_types && curation.signature_types.length > 0) {
+                if (analysis.signature_types && analysis.signature_types.length > 0) {
                     content += `<div class="highlight-box">
                         <h3>Signature Types</h3>
-                        <p>${curation.signature_types.join(', ')}</p>
+                        <p>${analysis.signature_types.join(', ')}</p>
                     </div>`;
                 }
                 
-                if (curation.explanation) {
+                if (analysis.explanation) {
                     content += `<div class="highlight-box">
                         <h3>Detailed Explanation</h3>
-                        <p>${curation.explanation}</p>
+                        <p>${analysis.explanation}</p>
                     </div>`;
                 }
                 
-                if (curation.specific_reasons && curation.specific_reasons.length > 0) {
+                if (analysis.specific_reasons && analysis.specific_reasons.length > 0) {
                     content += `<div class="highlight-box">
                         <h3>Specific Reasons</h3>
                         <ul>`;
-                    curation.specific_reasons.forEach(reason => {
+                    analysis.specific_reasons.forEach(reason => {
                         content += `<li>${reason}</li>`;
                     });
                     content += `</ul></div>`;
@@ -1424,7 +1424,7 @@
             
             content += `<div class="footer">
                 <p>Generated by BugSigDB Analyzer - Advanced AI-powered paper analysis</p>
-                <p>Report includes comprehensive curation assessment, key findings, and research recommendations</p>
+                                        <p>Report includes comprehensive analysis assessment, key findings, and research recommendations</p>
             </div>`;
             
             return content;
@@ -1628,7 +1628,7 @@
     
     <div class="header">
         <h1>BugSigDB Analyzer Report</h1>
-        <div class="subtitle">Advanced AI-powered paper analysis and curation assessment</div>
+                        <div class="subtitle">Advanced AI-powered paper analysis and assessment</div>
         <div class="subtitle">Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</div>
     </div>
     

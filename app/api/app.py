@@ -741,10 +741,10 @@ async def root():
 @app.get("/analyze/{pmid}", tags=["Paper Analysis"])
 async def analyze_paper(pmid: str, request: Request):
     """
-    **Analyze a single paper for BugSigDB curation readiness.**
+    **Analyze a single paper for BugSigDB analysis.**
     
-    This endpoint analyzes a scientific paper using AI to determine if it's ready for BugSigDB curation.
-    It focuses on extracting and validating 6 essential fields required for curation.
+    This endpoint analyzes a scientific paper using AI to extract and validate 6 essential fields.
+    It focuses on extracting and validating 6 essential fields required for analysis.
     
     **Parameters:**
     - `pmid`: PubMed ID of the paper to analyze
@@ -767,8 +767,8 @@ async def analyze_paper(pmid: str, request: Request):
     - **PARTIALLY_PRESENT**: Some information available but incomplete
     - **ABSENT**: Information is missing with reasons and suggestions
     
-    **Curation Readiness:**
-    A paper is considered ready for curation when ALL 6 fields have status "PRESENT".
+    **Analysis Status:**
+    A paper is considered complete when ALL 6 fields have status "PRESENT".
     """
     import time
     start_time = time.time()
@@ -1016,15 +1016,11 @@ async def analyze_paper(pmid: str, request: Request):
                                 missing_fields.append(field)
                                 enhanced_analysis[field] = create_default_field_structure(field)
                 
-                # Determine curation readiness based on enhanced validation
-                curation_ready = enhanced_analysis.get("curation_ready", False)
-                
                 # Update missing fields from enhanced analysis
                 missing_fields = enhanced_analysis.get("missing_fields", missing_fields)
                 
                 # Ensure we have the final structure
                 enhanced_analysis["missing_fields"] = missing_fields
-                enhanced_analysis["curation_ready"] = curation_ready
                 
             except json.JSONDecodeError as e:
                 logger.error(f"JSON parsing failed for PMID {pmid}: {str(e)}")
@@ -1033,7 +1029,6 @@ async def analyze_paper(pmid: str, request: Request):
                 # Create comprehensive fallback structure
                 enhanced_analysis = create_comprehensive_fallback_analysis()
                 missing_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
-                curation_ready = False
             
             # Store analysis results in cache
             cache_manager.store_analysis_result(
@@ -1041,8 +1036,7 @@ async def analyze_paper(pmid: str, request: Request):
                 enhanced_analysis, 
                 metadata, 
                 "gemini_enhanced", 
-                analysis.get("confidence", 0.0), 
-                curation_ready
+                analysis.get("confidence", 0.0)
             )
             
             # Compose the enhanced response
@@ -1050,7 +1044,6 @@ async def analyze_paper(pmid: str, request: Request):
                 "pmid": pmid,
                 "title": metadata.get("title", ""),
                 "enhanced_analysis": enhanced_analysis,
-                "curation_ready": curation_ready,
                 "timestamp": datetime.now().isoformat(),
                 "source": "gemini_enhanced_analysis",
                 "cached": False
@@ -1182,7 +1175,7 @@ def create_comprehensive_fallback_analysis() -> Dict:
             "reason_if_missing": "Analysis failed - re-run required",
             "suggestions_for_curation": "Re-run analysis with corrected prompt"
         },
-        "curation_ready": False,
+        
         "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
         "curation_preparation_summary": "Analysis failed - re-run required"
     }
@@ -1389,14 +1382,7 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
                         elif field == "sample_size":
                             parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
             
-                # Determine curation readiness based on having all 6 fields with status "PRESENT"
-                curation_ready = len(missing_fields) == 0 and all(
-                    parsed_analysis.get(field, {}).get("status") == "PRESENT" 
-                    for field in required_fields
-                )
-                
-                # Update the parsed analysis with curation readiness
-                parsed_analysis["curation_ready"] = curation_ready
+                # Update the parsed analysis with missing fields
                 parsed_analysis["missing_fields"] = missing_fields
                 
             except json.JSONDecodeError:
@@ -1407,12 +1393,10 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
                     "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                     "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                     "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                    "curation_ready": False,
                     "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
                     "curation_preparation_summary": "Analysis failed - re-run required"
                 }
             
-            curation_ready = parsed_analysis.get("curation_ready", False)
             confidence = analysis.get("confidence", 0.0)
             
             # Store analysis results in cache
@@ -1421,15 +1405,13 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
                 parsed_analysis, 
                 metadata, 
                 "gemini_enhanced", 
-                confidence, 
-                curation_ready
+                confidence
             )
             
             results.append({
             "pmid": pmid,
                 "metadata": cached_result["metadata"],
                 "enhanced_analysis": parsed_analysis,
-                "curation_ready": curation_ready,
                 "timestamp": datetime.now().isoformat(),
                 "source": "gemini_enhanced_analysis",
                 "cached": False,
@@ -1828,15 +1810,11 @@ async def enhanced_analysis(pmid: str):
                                 missing_fields.append(field)
                                 enhanced_analysis[field] = create_default_field_structure(field)
                 
-                # Determine curation readiness based on enhanced validation
-                curation_ready = enhanced_analysis.get("curation_ready", False)
-                
                 # Update missing fields from enhanced analysis
                 missing_fields = enhanced_analysis.get("missing_fields", missing_fields)
                 
                 # Ensure we have the final structure
                 enhanced_analysis["missing_fields"] = missing_fields
-                enhanced_analysis["curation_ready"] = curation_ready
                 
             except json.JSONDecodeError as e:
                 logger.error(f"JSON parsing failed for PMID {pmid}: {str(e)}")
@@ -1845,7 +1823,6 @@ async def enhanced_analysis(pmid: str):
                 # Create comprehensive fallback structure
                 enhanced_analysis = create_comprehensive_fallback_analysis()
                 missing_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
-                curation_ready = False
             
             # Store analysis results in cache
             cache_manager.store_analysis_result(
@@ -1853,8 +1830,7 @@ async def enhanced_analysis(pmid: str):
                 enhanced_analysis, 
                 metadata, 
                 "gemini_enhanced", 
-                analysis.get("confidence", 0.0), 
-                curation_ready
+                analysis.get("confidence", 0.0)
             )
             
             # Compose the enhanced response
@@ -1862,7 +1838,6 @@ async def enhanced_analysis(pmid: str):
                 "pmid": pmid,
                 "title": metadata.get("title", ""),
                 "enhanced_analysis": enhanced_analysis,
-                "curation_ready": curation_ready,
                 "timestamp": datetime.now().isoformat(),
                 "source": "gemini_enhanced_analysis",
                 "cached": False
@@ -2081,14 +2056,7 @@ async def enhanced_analysis_batch(pmids: List[str] = Body(...), max_concurrent: 
                                 elif field == "sample_size":
                                     parsed_analysis[field] = {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "Field not found in analysis", "suggestions_for_curation": "Review paper for sample size information"}
                         
-                        # Determine curation readiness based on having all 6 fields with status "PRESENT"
-                        curation_ready = len(missing_fields) == 0 and all(
-                            parsed_analysis.get(field, {}).get("status") == "PRESENT" 
-                            for field in required_fields
-                        )
                         
-                        # Update the parsed analysis with curation readiness
-                        parsed_analysis["curation_ready"] = curation_ready
                         parsed_analysis["missing_fields"] = missing_fields
                         
                     except json.JSONDecodeError:
@@ -2099,12 +2067,11 @@ async def enhanced_analysis_batch(pmids: List[str] = Body(...), max_concurrent: 
                             "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                             "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                             "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
-                            "curation_ready": False,
+                
                             "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
                             "curation_preparation_summary": "Analysis failed - re-run required"
                         }
                     
-                    curation_ready = parsed_analysis.get("curation_ready", False)
                     confidence = analysis.get("confidence", 0.0)
                     
                     # Store analysis results in cache
@@ -2113,15 +2080,13 @@ async def enhanced_analysis_batch(pmids: List[str] = Body(...), max_concurrent: 
                         parsed_analysis, 
                         metadata, 
                         "gemini_enhanced", 
-                        confidence, 
-                        curation_ready
+                        confidence
                     )
                     
                     results.append({
                         "pmid": pmid,
                         "metadata": cached_result["metadata"],
                         "enhanced_analysis": parsed_analysis,
-                        "curation_ready": curation_ready,
                         "timestamp": datetime.now().isoformat(),
                         "source": "gemini_enhanced_analysis",
                         "cached": False,

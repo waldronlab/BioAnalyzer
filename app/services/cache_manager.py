@@ -55,7 +55,7 @@ class CacheManager:
                     timestamp TEXT,
                     source TEXT,
                     confidence REAL,
-                    curation_ready BOOLEAN
+    
                 )
             ''')
             
@@ -90,8 +90,7 @@ class CacheManager:
             logger.error(f"Failed to initialize cache database: {str(e)}")
     
     def store_analysis_result(self, pmid: str, analysis_data: Dict, metadata: Dict, 
-                            source: str = "gemini", confidence: float = 0.0, 
-                            curation_ready: bool = False) -> bool:
+                            source: str = "gemini", confidence: float = 0.0) -> bool:
         """Store analysis results in the cache database."""
         start_time = time.time()
         conn = None
@@ -101,16 +100,15 @@ class CacheManager:
             
             cursor.execute('''
                 INSERT OR REPLACE INTO analysis_cache 
-                (pmid, analysis_data, metadata, timestamp, source, confidence, curation_ready)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (pmid, analysis_data, metadata, timestamp, source, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', (
                 pmid,
                 json.dumps(analysis_data, ensure_ascii=False),
                 json.dumps(metadata, ensure_ascii=False),
                 datetime.now().isoformat(),
                 source,
-                confidence,
-                curation_ready
+                confidence
             ))
             
             conn.commit()
@@ -136,7 +134,7 @@ class CacheManager:
             cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT analysis_data, metadata, timestamp, source, confidence, curation_ready
+                SELECT analysis_data, metadata, timestamp, source, confidence
                 FROM analysis_cache 
                 WHERE pmid = ?
             ''', (pmid,))
@@ -144,14 +142,13 @@ class CacheManager:
             result = cursor.fetchone()
             
             if result:
-                analysis_data, metadata, timestamp, source, confidence, curation_ready = result
+                analysis_data, metadata, timestamp, source, confidence = result
                 return {
                     "analysis_data": json.loads(analysis_data),
                     "metadata": json.loads(metadata),
                     "timestamp": timestamp,
                     "source": source,
                     "confidence": confidence,
-                    "curation_ready": curation_ready,
                     "cached": True
                 }
             
@@ -170,11 +167,10 @@ class CacheManager:
         return await loop.run_in_executor(None, self.get_analysis_result, pmid)
     
     async def store_analysis_result_async(self, pmid: str, analysis_data: Dict, metadata: Dict, 
-                                        source: str = "gemini", confidence: float = 0.0, 
-                                        curation_ready: bool = False) -> bool:
+                                        source: str = "gemini", confidence: float = 0.0) -> bool:
         """Async version of store_analysis_result for better performance."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.store_analysis_result, pmid, analysis_data, metadata, source, confidence, curation_ready)
+        return await loop.run_in_executor(None, self.store_analysis_result, pmid, analysis_data, metadata, source, confidence)
     
     async def store_metadata_async(self, pmid: str, metadata: Dict, source: str = "pubmed") -> bool:
         """Async version of store_metadata for better performance."""
@@ -335,11 +331,9 @@ class CacheManager:
             recent_analysis = cursor.fetchone()[0]
             
             # Get curation readiness stats
-            cursor.execute('SELECT COUNT(*) FROM analysis_cache WHERE curation_ready = 1')
-            ready_count = cursor.fetchone()[0]
-            
-            cursor.execute('SELECT COUNT(*) FROM analysis_cache WHERE curation_ready = 0')
-            not_ready_count = cursor.fetchone()[0]
+            # Note: curation_ready removed - all cached analyses are considered complete
+            ready_count = 0
+            not_ready_count = 0
             
             conn.close()
             
@@ -348,7 +342,7 @@ class CacheManager:
                 "metadata_cache_count": metadata_count,
                 "fulltext_cache_count": fulltext_count,
                 "recent_analysis_24h": recent_analysis,
-                "curation_ready_count": ready_count,
+                "analysis_complete_count": analysis_count,
                 "curation_not_ready_count": not_ready_count,
                 "total_curation_analyzed": ready_count + not_ready_count,
                 "curation_readiness_rate": ready_count / (ready_count + not_ready_count) if (ready_count + not_ready_count) > 0 else 0.0
@@ -408,7 +402,7 @@ class CacheManager:
             
             if search_type == "analysis":
                 cursor.execute('''
-                    SELECT pmid, analysis_data, metadata, timestamp, confidence, curation_ready
+                    SELECT pmid, analysis_data, metadata, timestamp, confidence
                     FROM analysis_cache 
                     WHERE analysis_data LIKE ? OR metadata LIKE ?
                     ORDER BY timestamp DESC

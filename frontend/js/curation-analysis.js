@@ -1,33 +1,33 @@
-// Enhanced Curation Analysis Display Functions
+// Enhanced Analysis Display Functions
 
-function displayEnhancedCurationAnalysis(curationAnalysis) {
-    if (!curationAnalysis) {
-        console.warn('No curation analysis data provided');
+function displayEnhancedAnalysis(analysisData) {
+    if (!analysisData) {
+        console.warn('No analysis data provided');
         return;
     }
 
-    // Display curation readiness status
-    displayCurationReadinessStatus(curationAnalysis.readiness, curationAnalysis.explanation);
+    // Display analysis status
+    displayAnalysisStatus(analysisData.status, analysisData.explanation);
     
-    // Display detailed explanation
-    displayCurationExplanation(curationAnalysis.explanation);
+    // Display analysis explanation
+    displayAnalysisExplanation(analysisData.explanation);
     
     // Display microbial signature analysis
-    displayMicrobialSignatureAnalysis(curationAnalysis);
+    displayMicrobialSignatureAnalysis(analysisData);
     
     // Display specific reasons
-    displaySpecificReasons(curationAnalysis.specific_reasons);
+    displaySpecificReasons(analysisData.specific_reasons);
     
     // Display examples and evidence
-    displayExamplesAndEvidence(curationAnalysis.examples);
+    displayExamplesAndEvidence(analysisData.examples);
     
     // Display missing fields if any
-    displayMissingFields(curationAnalysis.missing_fields);
+    displayMissingFields(analysisData.missing_fields);
 }
 
-function displayCurationReadinessStatus(readiness, explanation) {
-    const statusElement = document.getElementById('curation-readiness-status');
-    const textElement = document.getElementById('curation-readiness-text');
+function displayAnalysisStatus(status, explanation) {
+    const statusElement = document.getElementById('analysis-status');
+    const textElement = document.getElementById('analysis-status-text');
     
     if (!statusElement || !textElement) return;
     
@@ -37,11 +37,11 @@ function displayCurationReadinessStatus(readiness, explanation) {
     switch (readiness) {
         case 'READY':
             statusElement.classList.add('alert-success');
-            textElement.innerHTML = '<strong>READY FOR CURATION</strong> - This paper contains curatable microbial signatures and meets BugSigDB requirements.';
+            textElement.innerHTML = '<strong>ANALYSIS COMPLETE</strong> - This paper has been successfully analyzed for BugSigDB requirements.';
             break;
         case 'NOT_READY':
             statusElement.classList.add('alert-warning');
-            textElement.innerHTML = '<strong>NOT READY FOR CURATION</strong> - This paper lacks required elements for BugSigDB curation.';
+            textElement.innerHTML = '<strong>ANALYSIS COMPLETE</strong> - This paper has been analyzed but requires additional review.';
             break;
         case 'ERROR':
             statusElement.classList.add('alert-danger');
@@ -53,8 +53,8 @@ function displayCurationReadinessStatus(readiness, explanation) {
     }
 }
 
-function displayCurationExplanation(explanation) {
-    const element = document.getElementById('curation-explanation-text');
+function displayAnalysisExplanation(explanation) {
+    const element = document.getElementById('analysis-explanation-text');
     if (element) {
         element.textContent = explanation || 'No detailed explanation available.';
     }
@@ -251,11 +251,11 @@ function getCompletenessColorClass(completeness) {
     }
 }
 
-// Function to clear curation analysis display
-function clearCurationAnalysis() {
+// Function to clear analysis display
+function clearAnalysis() {
     const elements = [
-        'curation-readiness-text',
-        'curation-explanation-text',
+        'analysis-status-text',
+        'analysis-explanation-text',
         'microbial-signatures',
         'data-quality',
         'statistical-significance',
@@ -286,12 +286,12 @@ function clearCurationAnalysis() {
     }
     
     // Reset status alert
-    const statusElement = document.getElementById('curation-readiness-status');
+    const statusElement = document.getElementById('analysis-status');
     if (statusElement) {
         statusElement.className = 'alert alert-info';
     }
 }
 
 // Export functions for use in main app.js
-window.displayEnhancedCurationAnalysis = displayEnhancedCurationAnalysis;
-window.clearCurationAnalysis = clearCurationAnalysis; 
+window.displayEnhancedAnalysis = displayEnhancedAnalysis;
+window.clearAnalysis = clearAnalysis; 

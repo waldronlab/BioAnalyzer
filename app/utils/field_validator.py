@@ -247,7 +247,7 @@ class FieldExtractionEnhancer:
         
         # Add summary fields
         missing_fields = [field for field, data in enhanced_data.items() if data.get("status") != "PRESENT"]
-        enhanced_data["curation_ready"] = len(missing_fields) == 0
+    
         enhanced_data["missing_fields"] = missing_fields
         enhanced_data["curation_preparation_summary"] = self._generate_curation_summary(missing_fields)
         

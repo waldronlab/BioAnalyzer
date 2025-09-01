@@ -12,7 +12,7 @@ window.analyzePapers = async function() {
     
     // Check if any input is provided
     if (!fileInput.files.length && !singlePmid && !batchPmids) {
-        alert('Please provide input: upload a file, enter a PMID, or provide a list of PMIDs');
+        showError('Please provide input: upload a file, enter a PMID, or provide a list of PMIDs');
         return;
     }
     
@@ -24,14 +24,17 @@ window.analyzePapers = async function() {
         
         // Handle file upload
         if (fileInput.files.length > 0) {
+            showProgress('Processing file...', 10);
             results = await handleFileUpload(fileInput.files[0]);
         }
         // Handle single PMID
         else if (singlePmid) {
+            showProgress('Starting analysis...', 10);
             results = await handleSinglePmid(singlePmid);
         }
         // Handle batch PMIDs
         else if (batchPmids) {
+            showProgress('Processing batch...', 10);
             results = await handleBatchPmids(batchPmids);
         }
         
@@ -40,7 +43,20 @@ window.analyzePapers = async function() {
         
     } catch (error) {
         console.error('Error in analysis:', error);
-        showError(`Analysis failed: ${error.message}`);
+        let errorMessage = error.message;
+        
+        // Provide more user-friendly error messages
+        if (error.message.includes('timeout')) {
+            errorMessage = 'Analysis timed out. This can happen with complex papers. Please try again.';
+        } else if (error.message.includes('404')) {
+            errorMessage = 'Paper not found. Please verify the PMID is correct.';
+        } else if (error.message.includes('500')) {
+            errorMessage = 'Server error occurred. Please try again later.';
+        } else if (error.message.includes('AbortError')) {
+            errorMessage = 'Request was cancelled. Please try again.';
+        }
+        
+        showError(`Analysis failed: ${errorMessage}`);
     } finally {
         hideLoading();
     }
@@ -123,10 +139,14 @@ async function handleSinglePmid(pmid) {
         
         // Create AbortController for timeout handling
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for analysis
         
         const response = await fetch(`/enhanced_analysis/${pmid}`, {
-            signal: controller.signal
+            signal: controller.signal,
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
         });
         
         clearTimeout(timeoutId);
@@ -136,6 +156,8 @@ async function handleSinglePmid(pmid) {
                 throw new Error('Request timed out. The analysis is taking longer than expected. Please try again.');
             } else if (response.status === 404) {
                 throw new Error('Paper not found. Please verify the PMID is correct.');
+            } else if (response.status === 500) {
+                throw new Error('Server error occurred during analysis. Please try again later.');
             } else {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -164,7 +186,7 @@ async function handleSinglePmid(pmid) {
     } catch (error) {
         console.error('Error in handleSinglePmid:', error);
         if (error.name === 'AbortError') {
-            throw new Error('Request timed out after 60 seconds. Please try again.');
+            throw new Error('Request timed out after 2 minutes. The analysis is taking longer than expected. Please try again.');
         }
         throw error;
     }

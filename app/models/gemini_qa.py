@@ -773,12 +773,6 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                         if key not in field_data:
                             field_data[key] = default_value
         
-        # Add curation readiness assessment
-        curation_ready = all(
-            parsed_json.get(field, {}).get("status") == "PRESENT" 
-            for field in required_fields.keys()
-        )
-        
         # Add missing fields list
         missing_fields = [
             field for field in required_fields.keys()
@@ -786,7 +780,6 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
         ]
         
         # Add summary fields
-        parsed_json["curation_ready"] = curation_ready
         parsed_json["missing_fields"] = missing_fields
         parsed_json["curation_preparation_summary"] = self._generate_curation_summary(parsed_json, missing_fields)
         
@@ -839,7 +832,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                 "reason_if_missing": "Analysis failed - re-run required",
                 "suggestions_for_curation": "Re-run analysis with corrected prompt"
             },
-            "curation_ready": False,
+
             "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
             "curation_preparation_summary": "Analysis failed - re-run required"
         }
@@ -853,7 +846,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             
             # Check each field for quality indicators
             for field_name, field_data in validated_json.items():
-                if field_name in ["curation_ready", "missing_fields", "curation_preparation_summary"]:
+                if field_name in ["missing_fields", "curation_preparation_summary"]:
                     continue
                     
                 if not isinstance(field_data, dict):

@@ -6,6 +6,9 @@ import pytz
 import google.generativeai as genai
 import os
 import json
+from app.utils.config import GEMINI_TIMEOUT
+import asyncio
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -538,36 +541,42 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                - Check study population descriptions, methods section, and abstract
                - For environmental studies, identify: "Built environment", "Indoor air", "Soil samples", "Water samples"
                - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+               - IMPORTANT: If you see "Human participants" or "Human subjects", this is PRESENT with high confidence
 
             2. BODY SITE EXTRACTION:
                - Human/Animal: Look for "fecal", "oral swab", "skin sample", "vaginal swab", "nasal swab"
                - Environmental: Look for "indoor surface", "restroom", "hospital room", "classroom", "office"
                - Check sample collection methods and study location descriptions
                - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+               - IMPORTANT: If you see "fecal samples" or "stool samples", this is PRESENT with high confidence
 
             3. CONDITION EXTRACTION:
                - Look for disease names: "IBD", "Obesity", "Diabetes", "Cancer"
                - Check experimental conditions: "Antibiotic treatment", "Diet intervention", "Seasonal changes"
                - Identify comparative studies: "Men vs women", "Healthy vs diseased", "Before vs after"
                - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+               - IMPORTANT: If you see disease names or experimental conditions, this is PRESENT with high confidence
 
             4. SEQUENCING TYPE EXTRACTION:
                - Look for specific methods: "16S rRNA gene sequencing", "V4 region amplification"
                - Check for platforms: "Illumina MiSeq", "Next-generation sequencing"
                - Identify techniques: "Shotgun metagenomics", "Amplicon sequencing"
                - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+               - IMPORTANT: If you see "16S" or "sequencing", this is PRESENT with high confidence
 
             5. TAXA LEVEL EXTRACTION:
                - Look for taxonomic classifications: "Phylum Proteobacteria", "Genus Bacteroides"
                - Check for specific names: "E. coli", "B. fragilis", "Lactobacillus spp."
                - Identify analysis levels: "Phylum level", "Genus level", "Species level"
                - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+               - IMPORTANT: If you see taxonomic names or levels, this is PRESENT with high confidence
 
             6. SAMPLE SIZE EXTRACTION:
                - Look for numbers: "n=50 participants", "100 samples", "Three time points"
                - Check study design: "Multiple floors sampled", "Longitudinal study with 6 visits"
                - Identify sample counts: "48 fecal samples", "24 oral swabs"
                - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+               - IMPORTANT: If you see numbers or sample counts, this is PRESENT with high confidence
 
             CONFIDENCE SCORING GUIDELINES:
             - PRESENT (0.8-1.0): Information is explicitly stated and clear
@@ -581,19 +590,34 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             - Use proper JSON syntax with double quotes for strings
             - Include all required sub-fields for each main field
 
+            CRITICAL INSTRUCTIONS:
+            1. READ THE TEXT THOROUGHLY - Do not skim. Read every section carefully.
+            2. LOOK FOR EXPLICIT MENTIONS - If the text says "Human participants", that's PRESENT.
+            3. CHECK MULTIPLE SECTIONS - Title, abstract, methods, results, discussion.
+            4. USE CONTEXT CLUES - If it mentions "fecal samples from patients", that's both host (Human) and body site (Gut).
+            5. BE CONFIDENT - If you find clear information, use high confidence (0.8-1.0).
+            6. DON'T GUESS - Only mark as ABSENT if you're absolutely certain the information is missing.
+            7. EXTRACT ACTUAL INFORMATION - Don't infer or guess. Look for what's explicitly stated.
+
             IMPORTANT: You must respond with ONLY valid JSON. Do not include any explanatory text before or after the JSON. The response should be parseable by json.loads().
 
-            Focus on accuracy and provide confidence scores based on how clearly the information is stated in the text.
+            Focus on accuracy and provide confidence scores based on how clearly the information is stated in the text. If you find information, mark it as PRESENT with high confidence.
             """
             
             # Generate response with enhanced prompt and timeout
             try:
+                logger.info(f"Starting Gemini API call with {GEMINI_TIMEOUT}s timeout...")
+                start_time = time.time()
+                
                 # Use asyncio.wait_for to add timeout to the API call
                 loop = asyncio.get_event_loop()
                 response = await asyncio.wait_for(
                     loop.run_in_executor(None, model.generate_content, enhanced_structured_prompt),
-                    timeout=30.0  # 30 second timeout for Gemini API
+                    timeout=GEMINI_TIMEOUT  # Use GEMINI_TIMEOUT from config
                 )
+                
+                elapsed_time = time.time() - start_time
+                logger.info(f"Gemini API call completed in {elapsed_time:.2f}s")
                 
                 if not response or not response.text:
                     return {
@@ -603,15 +627,15 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                     }
                     
             except asyncio.TimeoutError:
-                logger.error("Gemini API call timed out after 30 seconds")
+                logger.error(f"Gemini API call timed out after {GEMINI_TIMEOUT} seconds")
                 return {
-                    "error": "Gemini API request timed out after 30 seconds. This may indicate: 1) API service is slow, 2) Network connectivity issues, 3) API quota limits, or 4) IP restrictions.",
+                    "error": f"Gemini API request timed out after {GEMINI_TIMEOUT} seconds. This may indicate: 1) API service is slow, 2) Network connectivity issues, 3) API quota limits, or 4) IP restrictions.",
                     "error_type": "TimeoutError",
                     "key_findings": "{}",
                     "confidence": 0.0,
                     "status": "timeout",
                     "debug_info": {
-                        "timeout_duration": "30 seconds",
+                        "timeout_duration": f"{GEMINI_TIMEOUT} seconds",
                         "timestamp": datetime.now().isoformat(),
                         "suggestions": [
                             "Check your internet connection",

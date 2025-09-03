@@ -54,8 +54,7 @@ class CacheManager:
                     metadata TEXT,
                     timestamp TEXT,
                     source TEXT,
-                    confidence REAL,
-    
+                    confidence REAL
                 )
             ''')
             
@@ -434,3 +433,99 @@ class CacheManager:
         except Exception as e:
             logger.error(f"Failed to search cache: {str(e)}")
             return [] 
+
+    def delete_analysis_result(self, pmid: str) -> bool:
+        """Delete cached analysis results for a specific PMID."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM analysis_cache WHERE pmid = ?', (pmid,))
+            deleted = cursor.rowcount > 0
+            
+            conn.commit()
+            conn.close()
+            
+            if deleted:
+                logger.info(f"Deleted analysis cache for PMID {pmid}")
+            else:
+                logger.info(f"No analysis cache found for PMID {pmid}")
+                
+            return deleted
+            
+        except Exception as e:
+            logger.error(f"Failed to delete analysis cache for PMID {pmid}: {str(e)}")
+            return False
+
+    def delete_metadata(self, pmid: str) -> bool:
+        """Delete cached metadata for a specific PMID."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM metadata_cache WHERE pmid = ?', (pmid,))
+            deleted = cursor.rowcount > 0
+            
+            conn.commit()
+            conn.close()
+            
+            if deleted:
+                logger.info(f"Deleted metadata cache for PMID {pmid}")
+            else:
+                logger.info(f"No metadata cache found for PMID {pmid}")
+                
+            return deleted
+            
+        except Exception as e:
+            logger.error(f"Failed to delete metadata cache for PMID {pmid}: {str(e)}")
+            return False
+
+    def delete_fulltext(self, pmid: str) -> bool:
+        """Delete cached full text for a specific PMID."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM fulltext_cache WHERE pmid = ?', (pmid,))
+            deleted = cursor.rowcount > 0
+            
+            conn.commit()
+            conn.close()
+            
+            if deleted:
+                logger.info(f"Deleted full text cache for PMID {pmid}")
+            else:
+                logger.info(f"No full text cache found for PMID {pmid}")
+                
+            return deleted
+            
+        except Exception as e:
+            logger.error(f"Failed to delete full text cache for PMID {pmid}: {str(e)}")
+            return False
+
+    def clear_all_cache(self) -> bool:
+        """Clear all cached data."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM analysis_cache')
+            analysis_deleted = cursor.rowcount
+            
+            cursor.execute('DELETE FROM metadata_cache')
+            metadata_deleted = cursor.rowcount
+            
+            cursor.execute('DELETE FROM fulltext_cache')
+            fulltext_deleted = cursor.rowcount
+            
+            conn.commit()
+            conn.close()
+            
+            total_deleted = analysis_deleted + metadata_deleted + fulltext_deleted
+            logger.info(f"Cleared all cache: {total_deleted} entries deleted")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to clear all cache: {str(e)}")
+            return False 

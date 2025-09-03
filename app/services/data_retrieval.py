@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from app.utils.utils import config, create_cache_key, save_json, load_json
 from app.utils.performance_logger import perf_logger
 import concurrent.futures
+from app.utils.config import NCBI_API_KEY, NCBI_RATE_LIMIT_DELAY, API_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class PubMedRetriever:
         Entrez.api_key = self.api_key
         self.cache_dir = config.CACHE_DIR
         # Add timeout configuration
-        self.timeout = 30  # 30 seconds timeout
+        self.timeout = API_TIMEOUT  # Use API_TIMEOUT from config
         self.max_workers = 3  # Limit concurrent API calls
         
     def _handle_api_call(self, func, *args, **kwargs) -> Dict:

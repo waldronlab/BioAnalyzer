@@ -3,6 +3,39 @@ window.chatHistory = [];
 window.ws = null;
 window.isConnected = false;
 
+// Global configuration
+let appConfig = {
+    timeouts: {
+        frontend: 180000, // Default 180 seconds in milliseconds
+        gemini: 90000,    // Default 90 seconds in milliseconds
+        analysis: 120000   // Default 120 seconds in milliseconds
+    }
+};
+
+// Fetch configuration from backend
+async function fetchConfig() {
+    try {
+        const response = await fetch('/config');
+        if (response.ok) {
+            const config = await response.json();
+            // Convert seconds to milliseconds for frontend use
+            appConfig.timeouts = {
+                frontend: (config.timeouts.frontend || 180) * 1000,
+                gemini: (config.timeouts.gemini || 90) * 1000,
+                analysis: (config.timeouts.analysis || 120) * 1000
+            };
+            console.log('Configuration loaded:', appConfig);
+        }
+    } catch (error) {
+        console.warn('Failed to load configuration, using defaults:', error);
+    }
+}
+
+// Initialize configuration when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    fetchConfig();
+});
+
 // Immediately define the function globally
 window.analyzePapers = async function() {
     
@@ -15,6 +48,9 @@ window.analyzePapers = async function() {
         showError('Please provide input: upload a file, enter a PMID, or provide a list of PMIDs');
         return;
     }
+    
+    // Ensure we have the latest configuration
+    await fetchConfig();
     
     // Show loading state
     showLoading();
@@ -134,12 +170,23 @@ async function handleFileUpload(file) {
 // Handle single PMID
 async function handleSinglePmid(pmid) {
     try {
+        // Ensure we have the latest configuration
+        await fetchConfig();
+        
         // Show progress indicator
         showProgress('Retrieving paper metadata...', 25);
         
         // Create AbortController for timeout handling
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for analysis
+        const timeoutId = setTimeout(() => controller.abort(), appConfig.timeouts.analysis); // Use appConfig.timeouts.analysis
+        
+        const startTime = Date.now();
+        
+        // Add progress updates during the request
+        const progressInterval = setInterval(() => {
+            const currentProgress = Math.min(75, 25 + (Date.now() - startTime) / (appConfig.timeouts.analysis * 0.75) * 50);
+            showProgress('Analyzing paper content...', currentProgress);
+        }, 2000); // Update every 2 seconds
         
         const response = await fetch(`/enhanced_analysis/${pmid}`, {
             signal: controller.signal,
@@ -150,6 +197,7 @@ async function handleSinglePmid(pmid) {
         });
         
         clearTimeout(timeoutId);
+        clearInterval(progressInterval);
         
         if (!response.ok) {
             if (response.status === 408) {
@@ -186,7 +234,8 @@ async function handleSinglePmid(pmid) {
     } catch (error) {
         console.error('Error in handleSinglePmid:', error);
         if (error.name === 'AbortError') {
-            throw new Error('Request timed out after 2 minutes. The analysis is taking longer than expected. Please try again.');
+            const timeoutSeconds = Math.round(appConfig.timeouts.analysis / 1000);
+            throw new Error(`Request timed out after ${timeoutSeconds} seconds. The analysis is taking longer than expected. Please try again.`);
         }
         throw error;
     }

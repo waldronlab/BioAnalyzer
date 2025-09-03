@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional
 import json
 import torch
+import asyncio
 from pathlib import Path
 from datetime import datetime
 import pytz
@@ -18,7 +19,10 @@ from app.utils.config import (
     NCBI_API_KEY, 
     GEMINI_API_KEY, 
     DEFAULT_MODEL,
-    AVAILABLE_MODELS
+    AVAILABLE_MODELS,
+    FRONTEND_TIMEOUT,
+    GEMINI_TIMEOUT,
+    ANALYSIS_TIMEOUT
 )
 from app.utils.methods_scorer import MethodsScorer
 from app.utils.field_validator import FieldExtractionEnhancer
@@ -520,55 +524,77 @@ async def upload_csv(file: UploadFile = File(...)):
                 PAPER INFORMATION:
                 Title: {metadata.get('title', '')}
                 Abstract: {metadata.get('abstract', '')}
-                Full Text: {full_text[:3000] if full_text else 'Not available'}
+                MeSH Terms: {', '.join(metadata.get('mesh_terms', []))}
+                Publication Type: {', '.join(metadata.get('publication_types', []))}
+                Journal: {metadata.get('journal', '')}
+                Year: {metadata.get('year', '')}
+                
+                PRELIMINARY EXTRACTION (from metadata):
+                - Host Species: {metadata.get('host', 'Not extracted')}
+                - Body Site: {metadata.get('body_site', 'Not extracted')}
+                - Sequencing Type: {metadata.get('sequencing_type', 'Not extracted')}
+                
+                FULL TEXT CONTENT (first 8000 characters):
+                {full_text[:8000] if full_text else 'Not available'}
 
                 REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
 
-                1. HOST SPECIES:
+                STEP 1: HOST SPECIES ANALYSIS
                    - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
                    - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
-                   - Check: Abstract, methods section, study population descriptions, mesh terms
+                - Check: Abstract, methods section, study population descriptions, mesh terms, title
                    - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+                - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+                - If you find "Human participants" or "Human subjects", mark as PRESENT
 
-                2. BODY SITE:
+                STEP 2: BODY SITE ANALYSIS
                    - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
                    - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
-                   - Check: Sample collection methods, study location descriptions, abstract
+                - Check: Sample collection methods, study location descriptions, abstract, methods section
                    - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+                - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+                - If you find "fecal samples" or "stool samples", mark as PRESENT
 
-                3. CONDITION:
+                STEP 3: CONDITION ANALYSIS
                    - Look for: Disease names, experimental conditions, comparative studies, environmental factors
-                   - Check: Study objectives, hypothesis, experimental design, disease associations
+                - Check: Study objectives, hypothesis, experimental design, disease associations, abstract
                    - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+                - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+                - If you find disease names or experimental conditions, mark as PRESENT
 
-                4. SEQUENCING TYPE:
+                STEP 4: SEQUENCING TYPE ANALYSIS
                    - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
-                   - Check: Methods section, molecular techniques, sequencing protocols
+                - Check: Methods section, molecular techniques, sequencing protocols, abstract
                    - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+                - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+                - If you find "16S" or "sequencing", mark as PRESENT
 
-                5. TAXA LEVEL:
+                STEP 5: TAXA LEVEL ANALYSIS
                    - Look for: Taxonomic levels and specific names
-                   - Check: Results section, microbial community descriptions, diversity analysis
+                - Check: Results section, microbial community descriptions, diversity analysis, abstract
                    - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+                - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+                - If you find taxonomic names or levels, mark as PRESENT
 
-                6. SAMPLE SIZE:
+                STEP 6: SAMPLE SIZE ANALYSIS
                    - Look for: Numbers, sample counts, participant numbers, collection descriptions
-                   - Check: Methods section, study design, sample collection details
+                - Check: Methods section, study design, sample collection details, abstract
                    - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+                - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+                - If you find numbers or sample counts, mark as PRESENT
 
-                ANALYSIS INSTRUCTIONS:
-                - Read the text THOROUGHLY for each field
-                - If information is clearly stated, mark as "PRESENT" with confidence 0.8-1.0
-                - If information is partially stated or implied, mark as "PARTIALLY_PRESENT" with confidence 0.4-0.7
-                - If information is completely missing, mark as "ABSENT" with confidence 0.0
-                - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
-                - Pay attention to context clues and implicit information
+                CRITICAL ANALYSIS INSTRUCTIONS:
+                1. READ THE TEXT THOROUGHLY - Do not skim. Read every section carefully.
+                2. LOOK FOR EXPLICIT MENTIONS - If the text says "Human participants", that's PRESENT.
+                3. CHECK MULTIPLE SECTIONS - Title, abstract, methods, results, discussion.
+                4. USE CONTEXT CLUES - If it mentions "fecal samples from patients", that's both host (Human) and body site (Gut).
+                5. BE CONFIDENT - If you find clear information, use high confidence (0.8-1.0).
+                6. DON'T GUESS - Only mark as PRESENT if you're confident the information exists.
 
-                CRITICAL: This paper contains microbial analysis. Look carefully for:
-                - Any mention of bacteria, microbiome, microbial communities
-                - Sequencing methods and molecular techniques
-                - Sample collection and study design details
-                - Comparative analyses or experimental conditions
+                CONFIDENCE SCORING:
+                - PRESENT (0.8-1.0): Information is explicitly stated and clear
+                - PARTIALLY_PRESENT (0.4-0.7): Information is implied or partially described
+                - ABSENT (0.0): Information is completely missing or unclear
 
                 RESPONSE FORMAT - Return ONLY this JSON structure:
                 {{
@@ -613,18 +639,19 @@ async def upload_csv(file: UploadFile = File(...)):
                         "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                         "reason_if_missing": "explanation if absent",
                         "suggestions_for_curation": "what additional info is needed"
-                    }},
-
-                    "missing_fields": ["field1", "field2", ...],
-                    "curation_preparation_summary": "Overall assessment of what's needed for curation"
+                    }}
                 }}
 
                 FINAL INSTRUCTIONS:
                 - Focus ONLY on the 6 fields above
                 - Be thorough and careful in your analysis
-                - Extract actual information from the text, don't guess
+                - Extract actual information from the text, don't guess or infer
                 - Return ONLY the JSON structure above
-                - Determine curation readiness: true if ALL 6 fields have status "PRESENT"
+                - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
+                - Use proper JSON syntax with double quotes for strings
+                - Include all required sub-fields for each main field
+                - If you find information, mark it as PRESENT with high confidence
+                - Only mark as ABSENT if you're absolutely certain the information is missing
                 """
                 
                 analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
@@ -814,7 +841,7 @@ async def analyze_paper(pmid: str, request: Request):
             # Wait for both operations with timeout
             metadata, full_text = await asyncio.wait_for(
                 asyncio.gather(metadata_task, full_text_task, return_exceptions=True),
-                timeout=45.0  # 45 second timeout for the entire operation
+                timeout=float(ANALYSIS_TIMEOUT)  # Use ANALYSIS_TIMEOUT from config
             )
             
             # Log data retrieval completion
@@ -858,8 +885,8 @@ async def analyze_paper(pmid: str, request: Request):
                 await cache_manager.store_fulltext_async(pmid, full_text, "pmc")
                 
         except asyncio.TimeoutError:
-            logger.error(f"Analysis timeout for PMID {pmid} after 45 seconds")
-            raise HTTPException(status_code=408, detail="Analysis request timed out. Please try again.")
+            logger.error(f"Analysis timeout for PMID {pmid} after {ANALYSIS_TIMEOUT} seconds")
+            raise HTTPException(status_code=408, detail=f"Analysis request timed out after {ANALYSIS_TIMEOUT} seconds. Please try again.")
         except Exception as e:
             logger.error(f"Error retrieving data for PMID {pmid}: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Data retrieval failed: {str(e)}")
@@ -871,62 +898,77 @@ async def analyze_paper(pmid: str, request: Request):
         PAPER INFORMATION:
         Title: {metadata.get('title', '')}
         Abstract: {metadata.get('abstract', '')}
-        Full Text: {full_text[:3000] if full_text else 'Not available'}
+        MeSH Terms: {', '.join(metadata.get('mesh_terms', []))}
+        Publication Type: {', '.join(metadata.get('publication_types', []))}
+        Journal: {metadata.get('journal', '')}
+        Year: {metadata.get('year', '')}
+        
+        PRELIMINARY EXTRACTION (from metadata):
+        - Host Species: {metadata.get('host', 'Not extracted')}
+        - Body Site: {metadata.get('body_site', 'Not extracted')}
+        - Sequencing Type: {metadata.get('sequencing_type', 'Not extracted')}
+        
+        FULL TEXT CONTENT (first 8000 characters):
+        {full_text[:8000] if full_text else 'Not available'}
 
         REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
 
-        1. HOST SPECIES:
+        STEP 1: HOST SPECIES ANALYSIS
            - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
            - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
-           - Check: Abstract, methods section, study population descriptions, mesh terms
+        - Check: Abstract, methods section, study population descriptions, mesh terms, title
            - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
            - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+        - If you find "Human participants" or "Human subjects", mark as PRESENT
 
-        2. BODY SITE:
+        STEP 2: BODY SITE ANALYSIS
            - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
            - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
-           - Check: Sample collection methods, study location descriptions, abstract
+        - Check: Sample collection methods, study location descriptions, abstract, methods section
            - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
            - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+        - If you find "fecal samples" or "stool samples", mark as PRESENT
 
-        3. CONDITION:
+        STEP 3: CONDITION ANALYSIS
            - Look for: Disease names, experimental conditions, comparative studies, environmental factors
-           - Check: Study objectives, hypothesis, experimental design, disease associations
+        - Check: Study objectives, hypothesis, experimental design, disease associations, abstract
            - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
            - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+        - If you find disease names or experimental conditions, mark as PRESENT
 
-        4. SEQUENCING TYPE:
+        STEP 4: SEQUENCING TYPE ANALYSIS
            - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
-           - Check: Methods section, molecular techniques, sequencing protocols
+        - Check: Methods section, molecular techniques, sequencing protocols, abstract
            - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
            - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+        - If you find "16S" or "sequencing", mark as PRESENT
 
-        5. TAXA LEVEL:
+        STEP 5: TAXA LEVEL ANALYSIS
            - Look for: Taxonomic levels and specific names
-           - Check: Results section, microbial community descriptions, diversity analysis
+        - Check: Results section, microbial community descriptions, diversity analysis, abstract
            - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
            - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+        - If you find taxonomic names or levels, mark as PRESENT
 
-        6. SAMPLE SIZE:
+        STEP 6: SAMPLE SIZE ANALYSIS
            - Look for: Numbers, sample counts, participant numbers, collection descriptions
-           - Check: Methods section, study design, sample collection details
+        - Check: Methods section, study design, sample collection details, abstract
            - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
            - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+        - If you find numbers or sample counts, mark as PRESENT
 
-        ANALYSIS INSTRUCTIONS:
-        - Read the text THOROUGHLY for each field
-        - If information is clearly stated, mark as "PRESENT" with confidence 0.8-1.0
-        - If information is partially stated or implied, mark as "PARTIALLY_PRESENT" with confidence 0.4-0.7
-        - If information is completely missing, mark as "ABSENT" with confidence 0.0
-        - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
-        - Pay attention to context clues and implicit information
-        - Extract actual information from the text, don't guess or infer
+        CRITICAL ANALYSIS INSTRUCTIONS:
+        1. READ THE TEXT THOROUGHLY - Do not skim. Read every section carefully.
+        2. LOOK FOR EXPLICIT MENTIONS - If the text says "Human participants", that's PRESENT.
+        3. CHECK MULTIPLE SECTIONS - Title, abstract, methods, results, discussion.
+        4. USE CONTEXT CLUES - If it mentions "fecal samples from patients", that's both host (Human) and body site (Gut).
+        5. BE CONFIDENT - If you find clear information, use high confidence (0.8-1.0).
+        6. DON'T GUESS - Only mark as PRESENT if you're confident the information exists.
 
-        CRITICAL: This paper contains microbial analysis. Look carefully for:
-        - Any mention of bacteria, microbiome, microbial communities
-        - Sequencing methods and molecular techniques
-        - Sample collection and study design details
-        - Comparative analyses or experimental conditions
+        CONFIDENCE SCORING:
+        - PRESENT (0.8-1.0): Information is explicitly stated and clear
+        - PARTIALLY_PRESENT (0.4-0.7): Information is implied or partially described
+        - ABSENT (0.0): Information is completely missing or unclear
 
         RESPONSE FORMAT - Return ONLY this JSON structure:
         {{
@@ -977,16 +1019,24 @@ async def analyze_paper(pmid: str, request: Request):
         FINAL INSTRUCTIONS:
         - Focus ONLY on the 6 fields above
         - Be thorough and careful in your analysis
-        - Extract actual information from the text, don't guess
+        - Extract actual information from the text, don't guess or infer
         - Return ONLY the JSON structure above
         - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
         - Use proper JSON syntax with double quotes for strings
         - Include all required sub-fields for each main field
+        - If you find information, mark it as PRESENT with high confidence
+        - Only mark as ABSENT if you're absolutely certain the information is missing
         """
         
         # Run enhanced analysis using Gemini
         try:
             analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
+            
+            # Log the LLM response for debugging
+            logger.info(f"=== LLM Response for PMID {pmid} ===")
+            logger.info(f"Response status: {analysis.get('status', 'unknown')}")
+            logger.info(f"Response confidence: {analysis.get('confidence', 'unknown')}")
+            logger.info(f"Raw key findings: {analysis.get('key_findings', '{}')[:500]}...")
             
             # Parse the JSON response from Gemini
             try:
@@ -996,7 +1046,9 @@ async def analyze_paper(pmid: str, request: Request):
                 required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
                 
                 # Use the field enhancer to validate and improve extraction accuracy
-                enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                # Temporarily bypass field enhancer to test if it's causing the issue
+                # enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                enhanced_analysis = parsed_analysis
                 
                 # Ensure all required fields exist with proper structure
                 missing_fields = []
@@ -1276,84 +1328,134 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
             PAPER INFORMATION:
             Title: {metadata.get('title', '')}
             Abstract: {metadata.get('abstract', '')}
-            Full Text: {full_text[:3000] if full_text else 'Not available'}
+            MeSH Terms: {', '.join(metadata.get('mesh_terms', []))}
+            Publication Type: {', '.join(metadata.get('publication_types', []))}
+            Journal: {metadata.get('journal', '')}
+            Year: {metadata.get('year', '')}
+            
+            PRELIMINARY EXTRACTION (from metadata):
+            - Host Species: {metadata.get('host', 'Not extracted')}
+            - Body Site: {metadata.get('body_site', 'Not extracted')}
+            - Sequencing Type: {metadata.get('sequencing_type', 'Not extracted')}
+            
+            FULL TEXT CONTENT (first 8000 characters):
+            {full_text[:8000] if full_text else 'Not available'}
 
             REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
-            1. HOST SPECIES: What is the host species being studied? Look for terms like "Human", "Mouse", "Rat", "Drosophila", etc. If it's an environmental study, the "host" might be the environment itself.
 
-            2. BODY SITE: Where was the microbiome sample collected from? Look for terms like "Gut", "Oral", "Skin", "Indoor", "Restroom", "Environmental", "Soil", "Water", etc.
+            STEP 1: HOST SPECIES ANALYSIS
+            - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
+            - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
+            - Check: Abstract, methods section, study population descriptions, mesh terms, title
+            - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+            - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+            - If you find "Human participants" or "Human subjects", mark as PRESENT
 
-            3. CONDITION: What condition, treatment, exposure, or comparison is being studied? Look for disease names, experimental conditions, comparative studies, environmental factors, etc.
+            STEP 2: BODY SITE ANALYSIS
+            - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
+            - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
+            - Check: Sample collection methods, study location descriptions, abstract, methods section
+            - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+            - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+            - If you find "fecal samples" or "stool samples", mark as PRESENT
 
-            4. SEQUENCING TYPE: What molecular method was used? Look for terms like "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", etc.
+            STEP 3: CONDITION ANALYSIS
+            - Look for: Disease names, experimental conditions, comparative studies, environmental factors
+            - Check: Study objectives, hypothesis, experimental design, disease associations, abstract
+            - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+            - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+            - If you find disease names or experimental conditions, mark as PRESENT
 
-            5. TAXA LEVEL: What taxonomic level was analyzed? Look for terms like "phylum", "genus", "species", "family", "order", or specific taxonomic names like "Proteobacteria", "Bacteroidetes", etc.
+            STEP 4: SEQUENCING TYPE ANALYSIS
+            - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
+            - Check: Methods section, molecular techniques, sequencing protocols, abstract
+            - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+            - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+            - If you find "16S" or "sequencing", mark as PRESENT
 
-            6. SAMPLE SIZE: What is the number of samples analyzed? Look for numbers, sample counts, or descriptions of sample collection.
+            STEP 5: TAXA LEVEL ANALYSIS
+            - Look for: Taxonomic levels and specific names
+            - Check: Results section, microbial community descriptions, diversity analysis, abstract
+            - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+            - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+            - If you find taxonomic names or levels, mark as PRESENT
 
-            IMPORTANT ANALYSIS REQUIREMENTS:
-            - For each field, determine if the information is PRESENT, PARTIALLY_PRESENT, or ABSENT
-            - If PRESENT: Extract the specific value and provide high confidence (0.8-1.0)
-            - If PARTIALLY_PRESENT: Extract what's available and provide medium confidence (0.4-0.7)
-            - If ABSENT: Provide reason why it's missing and confidence 0.0
-            - For missing fields, suggest what additional information would be needed for curation
-            - Pay attention to the context - environmental studies may have different "host" and "body site" than human/animal studies
+            STEP 6: SAMPLE SIZE ANALYSIS
+            - Look for: Numbers, sample counts, participant numbers, collection descriptions
+            - Check: Methods section, study design, sample collection details, abstract
+            - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+            - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+            - If you find numbers or sample counts, mark as PRESENT
 
-            Please provide your analysis in this exact JSON format:
+            CRITICAL ANALYSIS INSTRUCTIONS:
+            1. READ THE TEXT THOROUGHLY - Do not skim. Read every section carefully.
+            2. LOOK FOR EXPLICIT MENTIONS - If the text says "Human participants", that's PRESENT.
+            3. CHECK MULTIPLE SECTIONS - Title, abstract, methods, results, discussion.
+            4. USE CONTEXT CLUES - If it mentions "fecal samples from patients", that's both host (Human) and body site (Gut).
+            5. BE CONFIDENT - If you find clear information, use high confidence (0.8-1.0).
+            6. DON'T GUESS - Only mark as PRESENT if you're confident the information exists.
+
+            CONFIDENCE SCORING:
+            - PRESENT (0.8-1.0): Information is explicitly stated and clear
+            - PARTIALLY_PRESENT (0.4-0.7): Information is implied or partially described
+            - ABSENT (0.0): Information is completely missing or unclear
+
+            RESPONSE FORMAT - Return ONLY this JSON structure:
             {{
                 "host_species": {{
-                    "primary": "species_name",
+                    "primary": "extracted_species_name",
                     "confidence": 0.0-1.0,
                     "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                     "reason_if_missing": "explanation if absent",
                     "suggestions_for_curation": "what additional info is needed"
                 }},
                 "body_site": {{
-                    "site": "site_name",
+                    "site": "extracted_site_name",
                     "confidence": 0.0-1.0,
                     "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                     "reason_if_missing": "explanation if absent",
                     "suggestions_for_curation": "what additional info is needed"
                 }},
                 "condition": {{
-                    "description": "detailed_description",
+                    "description": "extracted_condition_description",
                     "confidence": 0.0-1.0,
                     "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                     "reason_if_missing": "explanation if absent",
                     "suggestions_for_curation": "what additional info is needed"
                 }},
                 "sequencing_type": {{
-                    "method": "method_name",
+                    "method": "extracted_sequencing_method",
                     "confidence": 0.0-1.0,
                     "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                     "reason_if_missing": "explanation if absent",
                     "suggestions_for_curation": "what additional info is needed"
                 }},
                 "taxa_level": {{
-                    "level": "taxonomic_level",
+                    "level": "extracted_taxonomic_level",
                     "confidence": 0.0-1.0,
                     "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                     "reason_if_missing": "explanation if absent",
                     "suggestions_for_curation": "what additional info is needed"
                 }},
                 "sample_size": {{
-                    "size": "sample_count",
+                    "size": "extracted_sample_size",
                     "confidence": 0.0-1.0,
                     "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                     "reason_if_missing": "explanation if absent",
                     "suggestions_for_curation": "what additional info is needed"
-                }},
-                "missing_fields": ["field1", "field2", ...],
-                "curation_preparation_summary": "Overall assessment of what's needed for curation"
+                }}
             }}
 
-            CRITICAL INSTRUCTIONS: 
-            - Focus ONLY on the 6 fields listed above
-            - Do NOT include Factor-Based Analysis, Detailed Explanation, Specific Reasons, Examples and Evidence, Key Findings, Category Scores, or Analysis Confidence
-            - For each missing field, provide specific reason and suggestions
-            - Determine curation readiness based on having all 6 fields with status "PRESENT"
+            FINAL INSTRUCTIONS:
+            - Focus ONLY on the 6 fields above
+            - Be thorough and careful in your analysis
+            - Extract actual information from the text, don't guess or infer
             - Return ONLY the JSON structure above
-            - Be thorough in your analysis - read the text carefully for each field
+            - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
+            - Use proper JSON syntax with double quotes for strings
+            - Include all required sub-fields for each main field
+            - If you find information, mark it as PRESENT with high confidence
+            - Only mark as ABSENT if you're absolutely certain the information is missing
             """
             
             analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
@@ -1393,6 +1495,7 @@ async def analyze_batch(pmids: list = Body(...), page: int = Query(1), page_size
                     "sequencing_type": {"method": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                     "taxa_level": {"level": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
                     "sample_size": {"size": "Unknown", "confidence": 0.0, "status": "ABSENT", "reason_if_missing": "JSON parsing failed", "suggestions_for_curation": "Re-run analysis"},
+        
                     "missing_fields": ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"],
                     "curation_preparation_summary": "Analysis failed - re-run required"
                 }
@@ -1503,31 +1606,25 @@ def list_pmids():
 
 @app.get("/health", tags=["System"])
 async def health_check():
-    """Health check endpoint to monitor system status."""
-    try:
-        # Check cache status
-        cache_stats = cache_manager.get_cache_stats()
-        
-        # Check if services are responsive
-        health_status = {
+    """Health check endpoint to verify the service is running."""
+    return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "cache": cache_stats,
-            "services": {
-                "cache_manager": "operational",
-                "data_retrieval": "operational",
-                "qa_system": "operational" if qa_system else "not_configured"
-            }
-        }
-        
-        return health_status
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return {
-            "status": "unhealthy",
-            "timestamp": datetime.now().isoformat(),
-            "error": str(e)
+        "version": "2.0.0",
+        "service": "BioAnalyzer"
+    }
+
+@app.get("/config", tags=["System"])
+async def get_config():
+    """Get configuration settings for the frontend."""
+    return {
+        "timeouts": {
+            "frontend": FRONTEND_TIMEOUT,
+            "gemini": GEMINI_TIMEOUT,
+            "analysis": ANALYSIS_TIMEOUT
+        },
+        "version": "2.0.0",
+        "service": "BioAnalyzer"
         }
 
 @app.get("/health/gemini", tags=["System"])
@@ -1584,6 +1681,58 @@ async def get_metrics():
         logger.error(f"Metrics collection failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Metrics collection failed: {str(e)}")
 
+@app.delete("/cache/analysis/{pmid}", tags=["Cache Management"])
+async def delete_analysis_cache(pmid: str):
+    """Delete cached analysis results for a specific PMID."""
+    try:
+        success = cache_manager.delete_analysis_result(pmid)
+        if success:
+            return {"message": f"Analysis cache deleted for PMID {pmid}", "pmid": pmid}
+        else:
+            raise HTTPException(status_code=404, detail=f"No analysis cache found for PMID {pmid}")
+    except Exception as e:
+        logger.error(f"Failed to delete analysis cache for PMID {pmid}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete analysis cache: {str(e)}")
+
+@app.delete("/cache/metadata/{pmid}", tags=["Cache Management"])
+async def delete_metadata_cache(pmid: str):
+    """Delete cached metadata for a specific PMID."""
+    try:
+        success = cache_manager.delete_metadata(pmid)
+        if success:
+            return {"message": f"Metadata cache deleted for PMID {pmid}", "pmid": pmid}
+        else:
+            raise HTTPException(status_code=404, detail=f"No metadata cache found for PMID {pmid}")
+    except Exception as e:
+        logger.error(f"Failed to delete metadata cache for PMID {pmid}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete metadata cache: {str(e)}")
+
+@app.delete("/cache/fulltext/{pmid}", tags=["Cache Management"])
+async def delete_fulltext_cache(pmid: str):
+    """Delete cached full text for a specific PMID."""
+    try:
+        success = cache_manager.delete_fulltext(pmid)
+        if success:
+            return {"message": f"Full text cache deleted for PMID {pmid}", "pmid": pmid}
+        else:
+            raise HTTPException(status_code=404, detail=f"No full text cache found for PMID {pmid}")
+    except Exception as e:
+        logger.error(f"Failed to delete full text cache for PMID {pmid}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete full text cache: {str(e)}")
+
+@app.delete("/cache/all", tags=["Cache Management"])
+async def clear_all_cache():
+    """Clear all cached data."""
+    try:
+        success = cache_manager.clear_all_cache()
+        if success:
+            return {"message": "All cache cleared successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to clear cache")
+    except Exception as e:
+        logger.error(f"Failed to clear all cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
 @app.get("/enhanced_analysis/{pmid}", tags=["Paper Analysis"])
 async def enhanced_analysis(pmid: str):
     """
@@ -1626,27 +1775,46 @@ async def enhanced_analysis(pmid: str):
                 "cached": True
             }
         
-        # Get paper metadata
-        metadata = retriever.get_paper_metadata(pmid)
-        csv_metadata = get_paper_metadata_from_csv(pmid)
+        # Get paper metadata (with timeout to prevent hanging)
+        try:
+            logger.info(f"Retrieving metadata for PMID {pmid}...")
+            metadata = await asyncio.wait_for(
+                retriever.get_paper_metadata_async(pmid),
+                timeout=20.0  # 20 second timeout for metadata retrieval
+            )
+            csv_metadata = get_paper_metadata_from_csv(pmid)
+            
+            if csv_metadata:
+                metadata.update(csv_metadata)
+            
+            if not metadata:
+                raise HTTPException(status_code=404, detail=f"Paper not found: {pmid}")
+            
+            # Store metadata in cache
+            cache_manager.store_metadata(pmid, metadata, "pubmed")
+            logger.info(f"Successfully retrieved metadata for PMID {pmid}")
+            
+        except asyncio.TimeoutError:
+            logger.error(f"Metadata retrieval timed out for PMID {pmid} after 20 seconds")
+            raise HTTPException(status_code=408, detail=f"Metadata retrieval timed out for PMID {pmid}")
+        except Exception as e:
+            logger.error(f"Failed to retrieve metadata for PMID {pmid}: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve metadata: {str(e)}")
         
-        if csv_metadata:
-            metadata.update(csv_metadata)
-        
-        if not metadata:
-            raise HTTPException(status_code=404, detail=f"Paper not found: {pmid}")
-        
-        # Store metadata in cache
-        cache_manager.store_metadata(pmid, metadata, "pubmed")
-        
-        # Get full text if available
+        # Get full text if available (with timeout to prevent hanging)
         full_text = ""
         try:
-            full_text = retriever.get_pmc_fulltext(pmid)
+            logger.info(f"Attempting to retrieve PMC full text for PMID {pmid}...")
+            # Add timeout to prevent hanging
+            full_text = await asyncio.wait_for(
+                retriever.get_pmc_fulltext_async(pmid),
+                timeout=30.0  # 30 second timeout for PMC retrieval
+            )
             if isinstance(full_text, str):
                 try:
                     soup = BeautifulSoup(full_text, 'lxml')
                     full_text = retriever._extract_text_from_pmc_xml(soup)
+                    logger.info(f"Successfully retrieved and parsed PMC full text for PMID {pmid}")
                 except Exception as e:
                     logger.warning(f"Failed to parse PMC XML for PMID {pmid}: {str(e)}")
             
@@ -1654,9 +1822,22 @@ async def enhanced_analysis(pmid: str):
             if full_text:
                 cache_manager.store_fulltext(pmid, full_text, "pmc")
                 
+        except asyncio.TimeoutError:
+            logger.warning(f"PMC full text retrieval timed out for PMID {pmid} after 30 seconds")
+            full_text = ""
         except Exception as e:
             logger.warning(f"Failed to retrieve PMC full text for PMID {pmid}: {str(e)}")
             full_text = ""
+        
+        # Log the content being sent to LLM for debugging
+        logger.info(f"=== LLM Analysis Request for PMID {pmid} ===")
+        logger.info(f"Title: {metadata.get('title', '')[:100]}...")
+        logger.info(f"Abstract length: {len(metadata.get('abstract', ''))} characters")
+        logger.info(f"MeSH Terms: {metadata.get('mesh_terms', [])}")
+        logger.info(f"Full text length: {len(full_text) if full_text else 0} characters")
+        logger.info(f"Preliminary extraction - Host: {metadata.get('host', 'Not extracted')}")
+        logger.info(f"Preliminary extraction - Body Site: {metadata.get('body_site', 'Not extracted')}")
+        logger.info(f"Preliminary extraction - Sequencing: {metadata.get('sequencing_type', 'Not extracted')}")
         
         # Create enhanced prompt for specific analysis - same as enhanced endpoints
         enhanced_prompt = f"""
@@ -1665,62 +1846,77 @@ async def enhanced_analysis(pmid: str):
         PAPER INFORMATION:
         Title: {metadata.get('title', '')}
         Abstract: {metadata.get('abstract', '')}
-        Full Text: {full_text[:3000] if full_text else 'Not available'}
+        MeSH Terms: {', '.join(metadata.get('mesh_terms', []))}
+        Publication Type: {', '.join(metadata.get('publication_types', []))}
+        Journal: {metadata.get('journal', '')}
+        Year: {metadata.get('year', '')}
+        
+        PRELIMINARY EXTRACTION (from metadata):
+        - Host Species: {metadata.get('host', 'Not extracted')}
+        - Body Site: {metadata.get('body_site', 'Not extracted')}
+        - Sequencing Type: {metadata.get('sequencing_type', 'Not extracted')}
+        
+        FULL TEXT CONTENT (first 8000 characters):
+        {full_text[:8000] if full_text else 'Not available'}
 
         REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
 
-        1. HOST SPECIES:
+        STEP 1: HOST SPECIES ANALYSIS
            - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
            - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
-           - Check: Abstract, methods section, study population descriptions, mesh terms
+        - Check: Abstract, methods section, study population descriptions, mesh terms, title
            - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
            - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+        - If you find "Human participants" or "Human subjects", mark as PRESENT
 
-        2. BODY SITE:
+        STEP 2: BODY SITE ANALYSIS
            - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
            - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
-           - Check: Sample collection methods, study location descriptions, abstract
+        - Check: Sample collection methods, study location descriptions, abstract, methods section
            - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
            - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+        - If you find "fecal samples" or "stool samples", mark as PRESENT
 
-        3. CONDITION:
+        STEP 3: CONDITION ANALYSIS
            - Look for: Disease names, experimental conditions, comparative studies, environmental factors
-           - Check: Study objectives, hypothesis, experimental design, disease associations
+        - Check: Study objectives, hypothesis, experimental design, disease associations, abstract
            - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
            - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+        - If you find disease names or experimental conditions, mark as PRESENT
 
-        4. SEQUENCING TYPE:
+        STEP 4: SEQUENCING TYPE ANALYSIS
            - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
-           - Check: Methods section, molecular techniques, sequencing protocols
+        - Check: Methods section, molecular techniques, sequencing protocols, abstract
            - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
            - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+        - If you find "16S" or "sequencing", mark as PRESENT
 
-        5. TAXA LEVEL:
+        STEP 5: TAXA LEVEL ANALYSIS
            - Look for: Taxonomic levels and specific names
-           - Check: Results section, microbial community descriptions, diversity analysis
+        - Check: Results section, microbial community descriptions, diversity analysis, abstract
            - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
            - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+        - If you find taxonomic names or levels, mark as PRESENT
 
-        6. SAMPLE SIZE:
+        STEP 6: SAMPLE SIZE ANALYSIS
            - Look for: Numbers, sample counts, participant numbers, collection descriptions
-           - Check: Methods section, study design, sample collection details
+        - Check: Methods section, study design, sample collection details, abstract
            - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
            - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+        - If you find numbers or sample counts, mark as PRESENT
 
-        ANALYSIS INSTRUCTIONS:
-        - Read the text THOROUGHLY for each field
-        - If information is clearly stated, mark as "PRESENT" with confidence 0.8-1.0
-        - If information is partially stated or implied, mark as "PARTIALLY_PRESENT" with confidence 0.4-0.7
-        - If information is completely missing, mark as "ABSENT" with confidence 0.0
-        - For environmental studies, adapt your analysis: "Indoor environment" can be both host and body site
-        - Pay attention to context clues and implicit information
-        - Extract actual information from the text, don't guess or infer
+        CRITICAL ANALYSIS INSTRUCTIONS:
+        1. READ THE TEXT THOROUGHLY - Do not skim. Read every section carefully.
+        2. LOOK FOR EXPLICIT MENTIONS - If the text says "Human participants", that's PRESENT.
+        3. CHECK MULTIPLE SECTIONS - Title, abstract, methods, results, discussion.
+        4. USE CONTEXT CLUES - If it mentions "fecal samples from patients", that's both host (Human) and body site (Gut).
+        5. BE CONFIDENT - If you find clear information, use high confidence (0.8-1.0).
+        6. DON'T GUESS - Only mark as PRESENT if you're confident the information exists.
 
-        CRITICAL: This paper contains microbial analysis. Look carefully for:
-        - Any mention of bacteria, microbiome, microbial communities
-        - Sequencing methods and molecular techniques
-        - Sample collection and study design details
-        - Comparative analyses or experimental conditions
+        CONFIDENCE SCORING:
+        - PRESENT (0.8-1.0): Information is explicitly stated and clear
+        - PARTIALLY_PRESENT (0.4-0.7): Information is implied or partially described
+        - ABSENT (0.0): Information is completely missing or unclear
 
         RESPONSE FORMAT - Return ONLY this JSON structure:
         {{
@@ -1776,11 +1972,19 @@ async def enhanced_analysis(pmid: str):
         - Ensure all field names match exactly: "host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"
         - Use proper JSON syntax with double quotes for strings
         - Include all required sub-fields for each main field
+        - If you find information, mark it as PRESENT with high confidence
+        - Only mark as ABSENT if you're absolutely certain the information is missing
         """
         
         # Run enhanced analysis using Gemini
         try:
             analysis = await qa_system.analyze_paper_enhanced(enhanced_prompt)
+            
+            # Log the LLM response for debugging
+            logger.info(f"=== LLM Response for PMID {pmid} ===")
+            logger.info(f"Response status: {analysis.get('status', 'unknown')}")
+            logger.info(f"Response confidence: {analysis.get('confidence', 'unknown')}")
+            logger.info(f"Raw key findings: {analysis.get('key_findings', '{}')[:500]}...")
             
             # Parse the JSON response from Gemini
             try:
@@ -1790,7 +1994,9 @@ async def enhanced_analysis(pmid: str):
                 required_fields = ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]
                 
                 # Use the field enhancer to validate and improve extraction accuracy
-                enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                # Temporarily bypass field enhancer to test if it's causing the issue
+                # enhanced_analysis = field_enhancer.enhance_extraction(parsed_analysis, full_text)
+                enhanced_analysis = parsed_analysis
                 
                 # Ensure all required fields exist with proper structure
                 missing_fields = []
@@ -1949,68 +2155,117 @@ async def enhanced_analysis_batch(pmids: List[str] = Body(...), max_concurrent: 
                     PAPER INFORMATION:
                     Title: {metadata.get('title', '')}
                     Abstract: {metadata.get('abstract', '')}
-                    Full Text: {full_text[:3000] if full_text else 'Not available'}
+                    MeSH Terms: {', '.join(metadata.get('mesh_terms', []))}
+                    Publication Type: {', '.join(metadata.get('publication_types', []))}
+                    Journal: {metadata.get('journal', '')}
+                    Year: {metadata.get('year', '')}
+                    
+                    PRELIMINARY EXTRACTION (from metadata):
+                    - Host Species: {metadata.get('host', 'Not extracted')}
+                    - Body Site: {metadata.get('body_site', 'Not extracted')}
+                    - Sequencing Type: {metadata.get('sequencing_type', 'Not extracted')}
+                    
+                    FULL TEXT CONTENT (first 8000 characters):
+                    {full_text[:8000] if full_text else 'Not available'}
 
                     REQUIRED ANALYSIS - EXTRACT THESE 6 FIELDS WITH HIGH ACCURACY:
-                    1. HOST SPECIES: What is the host species being studied? Look for terms like "Human", "Mouse", "Rat", "Drosophila", etc. If it's an environmental study, the "host" might be the environment itself.
 
-                    2. BODY SITE: Where was the microbiome sample collected from? Look for terms like "Gut", "Oral", "Skin", "Indoor", "Restroom", "Environmental", "Soil", "Water", etc.
+                    STEP 1: HOST SPECIES ANALYSIS
+                    - Look for: "Human", "Mouse", "Rat", "Drosophila", "Zebrafish", "Pig", "Cow", "Chicken", etc.
+                    - For environmental studies: Look for "Environment", "Indoor", "Outdoor", "Built environment", "Natural environment"
+                    - Check: Abstract, methods section, study population descriptions, mesh terms, title
+                    - Examples: "Human participants", "Adult female offspring", "Built environment microbiome", "Indoor air samples"
+                    - Be specific: "Human" not "mammal", "Mouse" not "rodent"
+                    - If you find "Human participants" or "Human subjects", mark as PRESENT
 
-                    3. CONDITION: What condition, treatment, exposure, or comparison is being studied? Look for disease names, experimental conditions, comparative studies, environmental factors, etc.
+                    STEP 2: BODY SITE ANALYSIS
+                    - For human/animal: "Gut", "Oral", "Skin", "Vaginal", "Lung", "Nasal", "Ear", "Stool", "Feces"
+                    - For environmental: "Indoor", "Restroom", "Hospital", "School", "Office", "Soil", "Water", "Air", "Surface"
+                    - Check: Sample collection methods, study location descriptions, abstract, methods section
+                    - Examples: "Fecal samples", "Oral swabs", "Indoor dust", "Restroom surfaces", "Hospital air"
+                    - Be precise: "Gut" not "digestive system", "Indoor air" not "air"
+                    - If you find "fecal samples" or "stool samples", mark as PRESENT
 
-                    4. SEQUENCING TYPE: What molecular method was used? Look for terms like "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", etc.
+                    STEP 3: CONDITION ANALYSIS
+                    - Look for: Disease names, experimental conditions, comparative studies, environmental factors
+                    - Check: Study objectives, hypothesis, experimental design, disease associations, abstract
+                    - Examples: "IBD patients", "Obesity", "Diabetes", "Antibiotic treatment", "Men vs women comparison", "Floor differences", "Seasonal changes"
+                    - Be specific: "Type 2 Diabetes" not "diabetes", "Crohn's disease" not "IBD"
+                    - If you find disease names or experimental conditions, mark as PRESENT
 
-                    5. TAXA LEVEL: What taxonomic level was analyzed? Look for terms like "phylum", "genus", "species", "family", "order", or specific taxonomic names like "Proteobacteria", "Bacteroidetes", etc.
+                    STEP 4: SEQUENCING TYPE ANALYSIS
+                    - Look for: "16S rRNA", "metagenomics", "shotgun sequencing", "amplicon sequencing", "metatranscriptomics"
+                    - Check: Methods section, molecular techniques, sequencing protocols, abstract
+                    - Examples: "16S rRNA gene sequencing", "V4 region amplification", "Illumina sequencing", "Next-generation sequencing"
+                    - Be precise: "16S rRNA" not "sequencing", "Metagenomics" not "genomics"
+                    - If you find "16S" or "sequencing", mark as PRESENT
 
-                    6. SAMPLE SIZE: What is the number of samples analyzed? Look for numbers, sample counts, or descriptions of sample collection.
+                    STEP 5: TAXA LEVEL ANALYSIS
+                    - Look for: Taxonomic levels and specific names
+                    - Check: Results section, microbial community descriptions, diversity analysis, abstract
+                    - Examples: "Phylum level: Proteobacteria, Actinobacteria", "Genus level: Bacteroides, Prevotella", "Species level: E. coli, B. fragilis"
+                    - Be specific: "Bacteroides fragilis" not "Bacteroides", "Proteobacteria phylum" not "bacteria"
+                    - If you find taxonomic names or levels, mark as PRESENT
 
-                    IMPORTANT ANALYSIS REQUIREMENTS:
-                    - For each field, determine if the information is PRESENT, PARTIALLY_PRESENT, or ABSENT
-                    - If PRESENT: Extract the specific value and provide high confidence (0.8-1.0)
-                    - If PARTIALLY_PRESENT: Extract what's available and provide medium confidence (0.4-0.7)
-                    - If ABSENT: Provide reason why it's missing and confidence 0.0
-                    - For missing fields, suggest what additional information would be needed for curation
-                    - Pay attention to the context - environmental studies may have different "host" and "body site" than human/animal studies
+                    STEP 6: SAMPLE SIZE ANALYSIS
+                    - Look for: Numbers, sample counts, participant numbers, collection descriptions
+                    - Check: Methods section, study design, sample collection details, abstract
+                    - Examples: "n=50 participants", "100 samples collected", "Three floors sampled", "Multiple time points"
+                    - Be precise: "n=50" not "multiple samples", "100 samples" not "large sample size"
+                    - If you find numbers or sample counts, mark as PRESENT
 
-                    Please provide your analysis in this exact JSON format:
+                    CRITICAL ANALYSIS INSTRUCTIONS:
+                    1. READ THE TEXT THOROUGHLY - Do not skim. Read every section carefully.
+                    2. LOOK FOR EXPLICIT MENTIONS - If the text says "Human participants", that's PRESENT.
+                    3. CHECK MULTIPLE SECTIONS - Title, abstract, methods, results, discussion.
+                    4. USE CONTEXT CLUES - If it mentions "fecal samples from patients", that's both host (Human) and body site (Gut).
+                    5. BE CONFIDENT - If you find clear information, use high confidence (0.8-1.0).
+                    6. DON'T GUESS - Only mark as PRESENT if you're confident the information exists.
+
+                    CONFIDENCE SCORING:
+                    - PRESENT (0.8-1.0): Information is explicitly stated and clear
+                    - PARTIALLY_PRESENT (0.4-0.7): Information is implied or partially described
+                    - ABSENT (0.0): Information is completely missing or unclear
+
+                    RESPONSE FORMAT - Return ONLY this JSON structure:
                     {{
                         "host_species": {{
-                            "primary": "species_name",
+                            "primary": "extracted_species_name",
                             "confidence": 0.0-1.0,
                             "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                             "reason_if_missing": "explanation if absent",
                             "suggestions_for_curation": "what additional info is needed"
                         }},
                         "body_site": {{
-                            "site": "site_name",
+                            "site": "extracted_site_name",
                             "confidence": 0.0-1.0,
                             "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                             "reason_if_missing": "explanation if absent",
                             "suggestions_for_curation": "what additional info is needed"
                         }},
                         "condition": {{
-                            "description": "detailed_description",
+                            "description": "extracted_condition_description",
                             "confidence": 0.0-1.0,
                             "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                             "reason_if_missing": "explanation if absent",
                             "suggestions_for_curation": "what additional info is needed"
                         }},
                         "sequencing_type": {{
-                            "method": "method_name",
+                            "method": "extracted_sequencing_method",
                             "confidence": 0.0-1.0,
                             "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                             "reason_if_missing": "explanation if absent",
                             "suggestions_for_curation": "what additional info is needed"
                         }},
                         "taxa_level": {{
-                            "level": "taxonomic_level",
+                            "level": "extracted_taxonomic_level",
                             "confidence": 0.0-1.0,
                             "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                             "reason_if_missing": "explanation if absent",
                             "suggestions_for_curation": "what additional info is needed"
                         }},
                         "sample_size": {{
-                            "size": "sample_count",
+                            "size": "extracted_sample_size",
                             "confidence": 0.0-1.0,
                             "status": "PRESENT|PARTIALLY_PRESENT|ABSENT",
                             "reason_if_missing": "explanation if absent",

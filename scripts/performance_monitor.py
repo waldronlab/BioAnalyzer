@@ -29,9 +29,9 @@ def test_pmid_query(pmid, base_url="http://localhost:8000"):
             
         print(f"✅ Health check: {health_time:.2f}s")
         
-        # Test PMID analysis
+        # Test enhanced analysis endpoint
         analysis_start = time.time()
-        response = requests.get(f"{base_url}/enhanced_analysis/{pmid}", timeout=120)
+        response = requests.get(f"{base_url}/enhanced_analysis/{pmid}", timeout=150)  # Increased timeout to 150 seconds
         analysis_time = time.time() - analysis_start
         
         total_time = time.time() - start_time

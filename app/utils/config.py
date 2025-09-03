@@ -76,10 +76,10 @@ def check_required_vars():
     return True 
 
 # Performance Configuration
-API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))  # seconds
-ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "45"))  # seconds
-GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "30"))  # seconds
-FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "60"))  # seconds
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", "60"))  # seconds - increased from 30
+ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "120"))  # seconds - increased from 45
+GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "30"))  # seconds - optimized for faster response
+FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "180"))  # seconds - increased to be longer than analysis timeout
 
 # Cache Configuration
 CACHE_VALIDITY_HOURS = int(os.getenv("CACHE_VALIDITY_HOURS", "24"))

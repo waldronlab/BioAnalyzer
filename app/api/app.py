@@ -68,10 +68,6 @@ app = FastAPI(
     - **Reason if Missing**: Why the field is not present
     - **Suggestions**: What additional information is needed for curation
     
-    ## Curation Readiness
-    
-    A paper is considered **ready for curation** when all 6 fields have status "PRESENT".
-    
     ## Endpoints
     
     - **Paper Analysis**: Single and batch analysis of papers by PMID
@@ -79,7 +75,7 @@ app = FastAPI(
 
     - **Cache Management**: Efficient storage and retrieval of analysis results
     """,
-    version="2.0.0",
+    version="1.0.0",
     contact={
         "name": "BioAnalyzer Team",
         "url": "https://github.com/your-repo/bioanalyzer",

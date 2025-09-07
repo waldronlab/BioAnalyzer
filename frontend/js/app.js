@@ -8,7 +8,7 @@ let appConfig = {
     timeouts: {
         frontend: 180000, // Default 180 seconds in milliseconds
         gemini: 90000,    // Default 90 seconds in milliseconds
-        analysis: 120000   // Default 120 seconds in milliseconds
+        analysis: 25000   // Default 25 seconds in milliseconds (shorter than backend 30s)
     }
 };
 
@@ -22,7 +22,7 @@ async function fetchConfig() {
             appConfig.timeouts = {
                 frontend: (config.timeouts.frontend || 180) * 1000,
                 gemini: (config.timeouts.gemini || 90) * 1000,
-                analysis: (config.timeouts.analysis || 120) * 1000
+                analysis: (config.timeouts.analysis || 25) * 1000
             };
             console.log('Configuration loaded:', appConfig);
         }
@@ -178,6 +178,7 @@ async function handleSinglePmid(pmid) {
         
         // Create AbortController for timeout handling
         const controller = new AbortController();
+        console.log('Using analysis timeout:', appConfig.timeouts.analysis, 'ms (', appConfig.timeouts.analysis / 1000, 'seconds)');
         const timeoutId = setTimeout(() => controller.abort(), appConfig.timeouts.analysis); // Use appConfig.timeouts.analysis
         
         const startTime = Date.now();
@@ -196,6 +197,7 @@ async function handleSinglePmid(pmid) {
             }
         });
         
+        // Clear timeout and interval immediately after response
         clearTimeout(timeoutId);
         clearInterval(progressInterval);
         
@@ -233,6 +235,11 @@ async function handleSinglePmid(pmid) {
         
     } catch (error) {
         console.error('Error in handleSinglePmid:', error);
+        
+        // Clear timeout and interval in case of error
+        clearTimeout(timeoutId);
+        clearInterval(progressInterval);
+        
         if (error.name === 'AbortError') {
             const timeoutSeconds = Math.round(appConfig.timeouts.analysis / 1000);
             throw new Error(`Request timed out after ${timeoutSeconds} seconds. The analysis is taking longer than expected. Please try again.`);

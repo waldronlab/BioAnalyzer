@@ -5,8 +5,24 @@ import google.generativeai as genai
 import logging
 
 # Load environment variables from .env file
-env_path = Path(__file__).parents[1] / '.env'
-load_dotenv(dotenv_path=env_path)
+# Try multiple possible locations for .env file
+possible_env_paths = [
+    Path(__file__).parents[1] / '.env',  # Original location
+    Path('/app/.env'),  # Docker container location
+    Path('.env'),  # Current directory
+    Path(__file__).parents[2] / '.env',  # Project root
+]
+
+env_loaded = False
+for env_path in possible_env_paths:
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        env_loaded = True
+        break
+
+if not env_loaded:
+    # Fallback: try loading from current directory
+    load_dotenv()
 
 # API Keys
 NCBI_API_KEY = os.getenv('NCBI_API_KEY', '')
@@ -76,10 +92,10 @@ def check_required_vars():
     return True 
 
 # Performance Configuration
-API_TIMEOUT = int(os.getenv("API_TIMEOUT", "60"))  # seconds - increased from 30
-ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "120"))  # seconds - increased from 45
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))  # seconds - reduced to 30 seconds for faster failure
+ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "300"))  # seconds - increased to 5 minutes for complex analyses
 GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "30"))  # seconds - optimized for faster response
-FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "180"))  # seconds - increased to be longer than analysis timeout
+FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "300"))  # seconds - increased to match analysis timeout
 
 # Cache Configuration
 CACHE_VALIDITY_HOURS = int(os.getenv("CACHE_VALIDITY_HOURS", "24"))

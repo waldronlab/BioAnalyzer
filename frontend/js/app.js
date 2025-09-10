@@ -8,7 +8,7 @@ let appConfig = {
     timeouts: {
         frontend: 180000, // Default 180 seconds in milliseconds
         gemini: 90000,    // Default 90 seconds in milliseconds
-        analysis: 120000   // Default 120 seconds in milliseconds
+        analysis: 25000   // Default 25 seconds in milliseconds (shorter than backend 30s)
     }
 };
 
@@ -22,7 +22,7 @@ async function fetchConfig() {
             appConfig.timeouts = {
                 frontend: (config.timeouts.frontend || 180) * 1000,
                 gemini: (config.timeouts.gemini || 90) * 1000,
-                analysis: (config.timeouts.analysis || 120) * 1000
+                analysis: (config.timeouts.analysis || 25) * 1000
             };
             console.log('Configuration loaded:', appConfig);
         }
@@ -178,61 +178,76 @@ async function handleSinglePmid(pmid) {
         
         // Create AbortController for timeout handling
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), appConfig.timeouts.analysis); // Use appConfig.timeouts.analysis
+        console.log('Using analysis timeout:', appConfig.timeouts.analysis, 'ms (', appConfig.timeouts.analysis / 1000, 'seconds)');
         
-        const startTime = Date.now();
+        // Declare timeout and interval variables outside try block for error handling
+        let timeoutId;
+        let progressInterval;
         
-        // Add progress updates during the request
-        const progressInterval = setInterval(() => {
-            const currentProgress = Math.min(75, 25 + (Date.now() - startTime) / (appConfig.timeouts.analysis * 0.75) * 50);
-            showProgress('Analyzing paper content...', currentProgress);
-        }, 2000); // Update every 2 seconds
-        
-        const response = await fetch(`/enhanced_analysis/${pmid}`, {
+        try {
+            timeoutId = setTimeout(() => controller.abort(), appConfig.timeouts.analysis);
+            
+            const startTime = Date.now();
+            
+            // Add progress updates during the request
+            progressInterval = setInterval(() => {
+                const currentProgress = Math.min(75, 25 + (Date.now() - startTime) / (appConfig.timeouts.analysis * 0.75) * 50);
+                showProgress('Analyzing paper content...', currentProgress);
+            }, 2000); // Update every 2 seconds
+            
+            const response = await fetch(`/enhanced_analysis/${pmid}`, {
             signal: controller.signal,
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             }
-        });
-        
-        clearTimeout(timeoutId);
-        clearInterval(progressInterval);
-        
-        if (!response.ok) {
-            if (response.status === 408) {
-                throw new Error('Request timed out. The analysis is taking longer than expected. Please try again.');
-            } else if (response.status === 404) {
-                throw new Error('Paper not found. Please verify the PMID is correct.');
-            } else if (response.status === 500) {
-                throw new Error('Server error occurred during analysis. Please try again later.');
-            } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            });
+            
+            // Clear timeout and interval immediately after response
+            clearTimeout(timeoutId);
+            clearInterval(progressInterval);
+            
+            if (!response.ok) {
+                if (response.status === 408) {
+                    throw new Error('Request timed out. The analysis is taking longer than expected. Please try again.');
+                } else if (response.status === 404) {
+                    throw new Error('Paper not found. Please verify the PMID is correct.');
+                } else if (response.status === 500) {
+                    throw new Error('Server error occurred during analysis. Please try again later.');
+                } else {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
             }
-        }
-        
-        showProgress('Analyzing paper content...', 75);
-        
-        const data = await response.json();
-        if (data.error) {
-            // Enhanced error handling for Gemini API issues
-            if (data.error_type && data.debug_info) {
-                throw new Error(formatDetailedError(data.error, data.error_type, data.debug_info));
-            } else {
-                throw new Error(data.error);
+            
+            showProgress('Analyzing paper content...', 75);
+            
+            const data = await response.json();
+            if (data.error) {
+                // Enhanced error handling for Gemini API issues
+                if (data.error_type && data.debug_info) {
+                    throw new Error(formatDetailedError(data.error, data.error_type, data.debug_info));
+                } else {
+                    throw new Error(data.error);
+                }
             }
+            
+            showProgress('Analysis complete!', 100);
+            
+            return [{
+                pmid: pmid,
+                title: data.title || 'N/A',
+                enhanced_analysis: data.enhanced_analysis || {}
+            }];
+        } catch (innerError) {
+            // Clear timeout and interval in case of error
+            if (timeoutId) clearTimeout(timeoutId);
+            if (progressInterval) clearInterval(progressInterval);
+            throw innerError;
         }
-        
-        showProgress('Analysis complete!', 100);
-        
-        return [{
-            pmid: pmid,
-            title: data.title || 'N/A',
-            enhanced_analysis: data.enhanced_analysis || {}
-        }];
         
     } catch (error) {
         console.error('Error in handleSinglePmid:', error);
+        
         if (error.name === 'AbortError') {
             const timeoutSeconds = Math.round(appConfig.timeouts.analysis / 1000);
             throw new Error(`Request timed out after ${timeoutSeconds} seconds. The analysis is taking longer than expected. Please try again.`);

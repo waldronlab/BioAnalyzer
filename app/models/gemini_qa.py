@@ -444,9 +444,17 @@ Please provide a detailed analysis in the following structured format:
 
 CRITICAL: If the paper contains ANY specific microbial taxa identification, abundance data, or microbial community analysis, it should be marked as READY FOR CURATION. This includes environmental studies with health implications. Only mark as NOT READY if the paper completely lacks microbial data or is purely a review article."""
 
-            # Use Gemini API to generate the analysis
+            # Use Gemini API to generate the analysis with fast parameters
             model = genai.GenerativeModel(self.model)
-            response = await model.generate_content_async(f"{prompt}\n\nAnalyze this paper:\n{content}")
+            response = await model.generate_content_async(
+                f"{prompt}\n\nAnalyze this paper:\n{content}",
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.1,
+                    max_output_tokens=500,
+                    top_p=0.8,
+                    top_k=20
+                )
+            )
             analysis_text = response.text.strip()
 
             # Save results if directory is specified
@@ -609,10 +617,18 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                 logger.info(f"Starting Gemini API call with {GEMINI_TIMEOUT}s timeout...")
                 start_time = time.time()
                 
-                # Use asyncio.wait_for to add timeout to the API call
+                # Use asyncio.wait_for to add timeout to the API call with fast generation parameters
                 loop = asyncio.get_event_loop()
                 response = await asyncio.wait_for(
-                    loop.run_in_executor(None, model.generate_content, enhanced_structured_prompt),
+                    loop.run_in_executor(None, lambda: model.generate_content(
+                        enhanced_structured_prompt,
+                        generation_config=genai.types.GenerationConfig(
+                            temperature=0.1,  # Low temperature for consistent, fast responses
+                            max_output_tokens=500,  # Limit output for speed
+                            top_p=0.7,  # Reduce sampling for speed
+                            top_k=10  # Limit vocabulary for speed
+                        )
+                    )),
                     timeout=GEMINI_TIMEOUT  # Use GEMINI_TIMEOUT from config
                 )
                 
@@ -949,7 +965,15 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                 "If the user provides a paper context, use it to inform your answer."
             )
             model = genai.GenerativeModel(self.model)
-            response = await model.generate_content_async(f"{chat_prompt}\nUser: {prompt}")
+            response = await model.generate_content_async(
+                f"{chat_prompt}\nUser: {prompt}",
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,
+                    max_output_tokens=300,
+                    top_p=0.9,
+                    top_k=40
+                )
+            )
             reply = response.text.strip()
             confidence = 1.0 if reply else 0.0
             return {

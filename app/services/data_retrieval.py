@@ -24,7 +24,7 @@ class PubMedRetriever:
         self.cache_dir = config.CACHE_DIR
         # Add timeout configuration
         self.timeout = API_TIMEOUT  # Use API_TIMEOUT from config
-        self.max_workers = 3  # Limit concurrent API calls
+        self.max_workers = 5  # Increase concurrent API calls for speed
         
     def _handle_api_call(self, func, *args, **kwargs) -> Dict:
         """Handle API calls with retries, rate limiting, and timeout.
@@ -41,24 +41,27 @@ class PubMedRetriever:
         if self.api_key and "api_key" not in kwargs:
             kwargs["api_key"] = self.api_key
             
+        # Use shorter timeout for retries to fail faster
+        retry_timeout = min(self.timeout, 5)  # Max 5 seconds per retry
+        
         for attempt in range(config.MAX_RETRIES):
             try:
                 # Use ThreadPoolExecutor to handle timeouts
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(func, *args, **kwargs)
-                    handle = future.result(timeout=self.timeout)
+                    handle = future.result(timeout=retry_timeout)
                     
                 return Entrez.read(handle, validate=False)
             except concurrent.futures.TimeoutError:
-                logger.warning(f"Attempt {attempt + 1} timed out after {self.timeout}s")
+                logger.warning(f"Attempt {attempt + 1} timed out after {retry_timeout}s")
                 if attempt < config.MAX_RETRIES - 1:
-                    time.sleep(config.RETRY_DELAY * (attempt + 1))
+                    time.sleep(config.RETRY_DELAY)  # Shorter delay between retries
                 else:
-                    raise TimeoutError(f"API call timed out after {self.timeout}s")
+                    raise TimeoutError(f"API call timed out after {retry_timeout}s")
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
                 if attempt < config.MAX_RETRIES - 1:
-                    time.sleep(config.RETRY_DELAY * (attempt + 1))
+                    time.sleep(config.RETRY_DELAY)
                 else:
                     raise
                     

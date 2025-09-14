@@ -99,4 +99,4 @@ Get statistics about how well the 6 essential curation fields are being identifi
 
 ## License
 
-[Your License Here] 
+Artistic-2.0

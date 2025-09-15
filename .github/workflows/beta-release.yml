@@ -76,8 +76,9 @@ jobs:
           try {
             const prNumber = ${{ github.event.number }};
             const betaUrl = '${{ steps.url.outputs.beta_url }}';
-            const allTags = '${{ steps.meta.outputs.tags }}';
-            const imageTag = allTags.split('\n')[0].trim(); // Get the first tag and trim whitespace
+            const tagsJson = '${{ steps.meta.outputs.json }}';
+            const tagsData = JSON.parse(tagsJson);
+            const imageTag = tagsData.tags[0]; // Get the first tag from JSON
             const commitSha = '${{ github.sha }}';
             const shortSha = commitSha.substring(0, 7);
             
@@ -89,7 +90,7 @@ jobs:
           "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\n\n" +
           "###  Docker Image\n" +
           "```bash\n" +
-          "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:" + imageTag + "\n" +
+          "docker pull " + imageTag + "\n" +
           "```\n\n" +
           "###  Quick Local Test\n" +
           "```bash\n" +
@@ -100,7 +101,7 @@ jobs:
           "  -e GEMINI_API_KEY=your_api_key \\\\\n" +
           "  -e NCBI_API_KEY=your_ncbi_key \\\\\n" +
           "  -e EMAIL=your_email \\\\\n" +
-          "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:" + imageTag + "\n" +
+          "  " + imageTag + "\n" +
           "```\n\n" +
           "###  Testing Checklist\n" +
           "- [ ] Test paper analysis functionality\n" +

@@ -73,7 +73,7 @@ app = FastAPI(
     - **Curation Statistics**: Performance metrics and field analysis statistics
     - **Cache Management**: Efficient storage and retrieval of analysis results
     """,
-    version="2.0.0",
+    version="1.0.0",
     contact={
         "name": "BioAnalyzer Team",
         "url": "https://github.com/your-repo/bioanalyzer",
@@ -1364,7 +1364,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "service": "BioAnalyzer - BugSigDB Curation Analysis",
-        "version": "2.0.0"
+        "version": "1.0.0"
     }
 
 @app.get("/metrics", tags=["System"])

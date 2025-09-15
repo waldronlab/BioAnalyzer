@@ -1607,7 +1607,7 @@ async def health_check():
     return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-        "version": "2.0.0",
+        "version": "1.0.0",
         "service": "BioAnalyzer"
     }
 
@@ -1620,7 +1620,7 @@ async def get_config():
             "gemini": GEMINI_TIMEOUT,
             "analysis": ANALYSIS_TIMEOUT  # Use ANALYSIS_TIMEOUT for proper analysis timeout
         },
-        "version": "2.0.0",
+        "version": "1.0.0",
         "service": "BioAnalyzer"
         }
 

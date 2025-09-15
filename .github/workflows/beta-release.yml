@@ -3,7 +3,7 @@ name: Beta Release on PR
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: [main, master]
+    # Remove branches restriction to allow beta releases for PRs targeting any branch
   workflow_dispatch: # Allow manual triggering
 
 env:
@@ -18,7 +18,7 @@ jobs:
       packages: write
       pull-requests: write
       issues: write
-      deployments: write   # ✅ needed to create deployments
+      deployments: write   #  needed to create deployments
 
     steps:
     - name: Checkout code
@@ -83,8 +83,6 @@ jobs:
             const commitSha = '${{ github.sha }}';
             const shortSha = commitSha.substring(0, 7);
 
-            console.log('Debug info:', { prNumber, betaUrl, imageTag, shortSha });
-
             const comment = "##  Beta Release Ready for Testing!\\n\\n" +
             "**PR #" + prNumber + "** has been automatically deployed for testing.\\n\\n" +
             "###  Test Your Changes\\n" +
@@ -125,7 +123,7 @@ jobs:
           
             const existingComment = comments.data.find(comment => 
               comment.user.type === 'Bot' && 
-              comment.body.includes(' Beta Release Ready for Testing!')
+              comment.body.includes('Beta Release Ready for Testing!')
             );
           
             if (existingComment) {
@@ -214,15 +212,35 @@ jobs:
       with:
         script: |
           const prNumber = ${{ github.event.number }};
-          const comment = "##  Beta Release Cleaned Up\n\n" +
-          "The beta release for **PR #" + prNumber + "** has been cleaned up.\n\n" +
-          "All associated Docker images and deployments have been removed.\n\n" +
-          "---\n" +
+          const comment = "## 🧹 Beta Release Cleaned Up\\n\\n" +
+          "The beta release for **PR #" + prNumber + "** has been cleaned up.\\n\\n" +
+          "All associated Docker images and deployments have been removed.\\n\\n" +
+          "---\\n\\n" +
           "*Thank you for testing! Your feedback helps improve BioAnalyzer.*";
 
-          await github.rest.issues.createComment({
+          const comments = await github.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: prNumber,
-            body: comment
           });
+
+          const existingComment = comments.data.find(comment =>
+            comment.user.type === 'Bot' &&
+            comment.body.includes('Beta Release Cleaned Up')
+          );
+
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: comment
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: comment
+            });
+          }

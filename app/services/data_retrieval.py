@@ -42,7 +42,7 @@ class PubMedRetriever:
             kwargs["api_key"] = self.api_key
             
         # Use shorter timeout for retries to fail faster
-        retry_timeout = min(self.timeout, 5)  # Max 5 seconds per retry
+        retry_timeout = min(self.timeout, 15)  # Max 15 seconds per retry
         
         for attempt in range(config.MAX_RETRIES):
             try:

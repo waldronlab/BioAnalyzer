@@ -377,11 +377,12 @@ Status: Running`;
                 document.getElementById('links').style.display = 'none';
                 return;
             }
-            const baseUrl = `http://localhost:${port}`;
-            document.getElementById('frontendLink').href = baseUrl;
-            document.getElementById('apiLink').href = `${baseUrl}/api`;
-            document.getElementById('docsLink').href = `${baseUrl}/docs`;
-            document.getElementById('healthLink').href = `${baseUrl}/health`;
+            const host = 'localhost';
+            // Build URLs safely with the URL constructor
+            document.getElementById('frontendLink').href = new URL(`http://${host}:${port}/`).toString();
+            document.getElementById('apiLink').href = new URL(`/api`, `http://${host}:${port}`).toString();
+            document.getElementById('docsLink').href = new URL(`/docs`, `http://${host}:${port}`).toString();
+            document.getElementById('healthLink').href = new URL(`/health`, `http://${host}:${port}`).toString();
             document.getElementById('links').style.display = 'grid';
         }
 

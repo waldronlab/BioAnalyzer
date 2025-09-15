@@ -83,37 +83,10 @@ jobs:
             const commitSha = '${{ github.sha }}';
             const shortSha = commitSha.substring(0, 7);
 
-            const comment = "##  Beta Release Ready for Testing!\\n\\n" +
-            "**PR #" + prNumber + "** has been automatically deployed for testing.\\n\\n" +
-            "###  Test Your Changes\\n" +
+            const comment = "## 🚀 Beta Release Ready for Testing!\\n\\n" +
             "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\\n\\n" +
-            "###  Docker Image\\n" +
-            "```bash\\n" +
-            "docker pull " + imageTag + "\\n" +
-            "```\\n\\n" +
-            "###  Quick Local Test\\n" +
-            "```bash\\n" +
-            "# Pull and run the beta image\\n" +
-            "docker run -d \\\\\\n" +
-            "  --name bioanalyzer-beta-" + prNumber + " \\\\\\n" +
-            "  -p 8000:8000 \\\\\\n" +
-            "  -e GEMINI_API_KEY=your_api_key \\\\\\n" +
-            "  -e NCBI_API_KEY=your_ncbi_key \\\\\\n" +
-            "  -e EMAIL=your_email \\\\\\n" +
-            "  " + imageTag + "\\n" +
-            "```\\n\\n" +
-            "###  Testing Checklist\\n" +
-            "- [ ] Test paper analysis functionality\\n" +
-            "- [ ] Verify API endpoints work correctly\\n" +
-            "- [ ] Check frontend UI responsiveness\\n" +
-            "- [ ] Test error handling\\n" +
-            "- [ ] Verify data extraction accuracy\\n\\n" +
-            "###  Changes in this PR\\n" +
-            "**Commit:** " + shortSha + "\\n" +
-            "**Branch:** ${{ github.head_ref }}\\n\\n" +
             "---\\n" +
-            "*This beta release will be automatically updated when you push new commits to this PR.*\\n" +
-            "*The deployment will be cleaned up when the PR is closed.*";
+            "*This beta release will be automatically updated when you push new commits to this PR.*";
 
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -123,7 +96,7 @@ jobs:
           
             const existingComment = comments.data.find(comment => 
               comment.user.type === 'Bot' && 
-              comment.body.includes('Beta Release Ready for Testing!')
+              comment.body.includes('🚀 Beta Release Ready for Testing!')
             );
           
             if (existingComment) {
@@ -213,10 +186,9 @@ jobs:
         script: |
           const prNumber = ${{ github.event.number }};
           const comment = "## 🧹 Beta Release Cleaned Up\\n\\n" +
-          "The beta release for **PR #" + prNumber + "** has been cleaned up.\\n\\n" +
-          "All associated Docker images and deployments have been removed.\\n\\n" +
+          "The beta release for this PR has been cleaned up.\\n\\n" +
           "---\\n\\n" +
-          "*Thank you for testing! Your feedback helps improve BioAnalyzer.*";
+          "*Thank you for testing!*";
 
           const comments = await github.rest.issues.listComments({
             owner: context.repo.owner,

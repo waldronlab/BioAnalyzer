@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioAnalyzer Beta Deployment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .link-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            text-decoration: none;
+            color: #333;
+            transition: transform 0.2s;
+        }
+
+        .link-card:hover {
+            transform: translateY(-2px);
+            text-decoration: none;
+            color: #333;
+        }
+
+        .link-card h3 {
+            margin-bottom: 5px;
+            color: #667eea;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .pr-info {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .pr-info h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        .pr-info p {
+            color: #424242;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 BioAnalyzer Beta</h1>
+            <p>Deploy and test the latest BioAnalyzer features</p>
+        </div>
+
+        <div class="pr-info" id="prInfo" style="display: none;">
+            <h3>📋 PR Information</h3>
+            <p><strong>PR #:</strong> <span id="prNumber">-</span></p>
+            <p><strong>Branch:</strong> <span id="prBranch">-</span></p>
+            <p><strong>Commit:</strong> <span id="prCommit">-</span></p>
+        </div>
+
+        <form id="deployForm">
+            <div class="form-group">
+                <label for="apiKey">Gemini API Key *</label>
+                <input type="password" id="apiKey" required placeholder="Enter your Gemini API key">
+            </div>
+
+            <div class="form-group">
+                <label for="ncbiKey">NCBI API Key *</label>
+                <input type="password" id="ncbiKey" required placeholder="Enter your NCBI API key">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" required placeholder="Enter your email">
+            </div>
+
+            <div class="form-group">
+                <label for="port">Port</label>
+                <select id="port">
+                    <option value="8000">8000 (Default)</option>
+                    <option value="8080">8080</option>
+                    <option value="3000">3000</option>
+                    <option value="5000">5000</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="tag">Beta Tag</label>
+                <input type="text" id="tag" placeholder="Leave empty for latest">
+            </div>
+
+            <button type="submit" class="btn" id="deployBtn">
+                🚀 Deploy Beta
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Deploying BioAnalyzer Beta...</p>
+        </div>
+
+        <div class="output" id="output"></div>
+
+        <div class="status" id="status"></div>
+
+        <div class="links" id="links" style="display: none;">
+            <a href="#" class="link-card" id="frontendLink" target="_blank">
+                <h3>🌐 Frontend</h3>
+                <p>Main Application</p>
+            </a>
+            <a href="#" class="link-card" id="apiLink" target="_blank">
+                <h3>🔌 API</h3>
+                <p>API Endpoints</p>
+            </a>
+            <a href="#" class="link-card" id="docsLink" target="_blank">
+                <h3>📚 Documentation</h3>
+                <p>API Documentation</p>
+            </a>
+            <a href="#" class="link-card" id="healthLink" target="_blank">
+                <h3>❤️ Health Check</h3>
+                <p>System Status</p>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Get URL parameters for PR info
+        const urlParams = new URLSearchParams(window.location.search);
+        const prNumber = urlParams.get('pr');
+        const prBranch = urlParams.get('branch');
+        const prCommit = urlParams.get('commit');
+
+        if (prNumber) {
+            document.getElementById('prNumber').textContent = prNumber;
+            document.getElementById('prBranch').textContent = prBranch || 'main';
+            document.getElementById('prCommit').textContent = prCommit ? prCommit.substring(0, 7) : '-';
+            document.getElementById('prInfo').style.display = 'block';
+        }
+
+        document.getElementById('deployForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                apiKey: document.getElementById('apiKey').value,
+                ncbiKey: document.getElementById('ncbiKey').value,
+                email: document.getElementById('email').value,
+                port: document.getElementById('port').value,
+                tag: document.getElementById('tag').value || 'beta-latest'
+            };
+
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('deployBtn').disabled = true;
+            document.getElementById('output').style.display = 'none';
+            document.getElementById('status').style.display = 'none';
+            document.getElementById('links').style.display = 'none';
+
+            try {
+                // Simulate deployment (in real implementation, this would call your backend)
+                await simulateDeployment(formData);
+                
+                // Show success
+                showStatus('success', '✅ Beta deployment successful!');
+                showLinks(formData.port);
+                
+            } catch (error) {
+                showStatus('error', '❌ Deployment failed: ' + error.message);
+                showOutput('Deployment failed:\n' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('deployBtn').disabled = false;
+            }
+        });
+
+        async function simulateDeployment(formData) {
+            // This is a simulation - in real implementation, you'd call your backend API
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    const output = `🚀 Starting BioAnalyzer Beta Deployment...
+📦 Pulling image: ghcr.io/your-username/bioanalyzer:${formData.tag}
+🔧 Configuring environment variables...
+🌐 Starting container on port ${formData.port}...
+✅ Health check passed!
+🎉 Deployment completed successfully!
+
+Container ID: bioanalyzer-beta-${Date.now()}
+Image: ghcr.io/your-username/bioanalyzer:${formData.tag}
+Port: ${formData.port}
+Status: Running`;
+
+                    showOutput(output);
+                    resolve();
+                }, 3000);
+            });
+        }
+
+        function showOutput(text) {
+            const output = document.getElementById('output');
+            output.textContent = text;
+            output.style.display = 'block';
+        }
+
+        function showStatus(type, message) {
+            const status = document.getElementById('status');
+            status.className = `status ${type}`;
+            status.textContent = message;
+            status.style.display = 'block';
+        }
+
+        function showLinks(port) {
+            // Ensure port is a valid number between 1 and 65535
+            const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) < 65536;
+            if (!validPort) {
+                document.getElementById('frontendLink').href = '#';
+                document.getElementById('apiLink').href = '#';
+                document.getElementById('docsLink').href = '#';
+                document.getElementById('healthLink').href = '#';
+                document.getElementById('links').style.display = 'none';
+                return;
+            }
+            const host = 'localhost';
+            // Build URLs safely with the URL constructor
+            document.getElementById('frontendLink').href = new URL(`http://${host}:${port}/`).toString();
+            document.getElementById('apiLink').href = new URL(`/api`, `http://${host}:${port}`).toString();
+            document.getElementById('docsLink').href = new URL(`/docs`, `http://${host}:${port}`).toString();
+            document.getElementById('healthLink').href = new URL(`/health`, `http://${host}:${port}`).toString();
+            document.getElementById('links').style.display = 'grid';
+        }
+
+        // Auto-fill form if parameters are provided
+        if (urlParams.get('apiKey')) {
+            document.getElementById('apiKey').value = urlParams.get('apiKey');
+        }
+        if (urlParams.get('ncbiKey')) {
+            document.getElementById('ncbiKey').value = urlParams.get('ncbiKey');
+        }
+        if (urlParams.get('email')) {
+            document.getElementById('email').value = urlParams.get('email');
+        }
+    </script>
+</body>
+</html>

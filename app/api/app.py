@@ -36,6 +36,7 @@ import os
 from bs4 import BeautifulSoup
 import csv
 from app.services.cache_manager import CacheManager
+from app.api.beta_deployment import router as beta_router
 
 # Add the project root to Python path
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -113,6 +114,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include beta deployment router
+app.include_router(beta_router)
 
 # Initialize components
 text_processor = AdvancedTextProcessor()

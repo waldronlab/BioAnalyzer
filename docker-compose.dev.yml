@@ -18,6 +18,11 @@ services:
       - DEBUG=true
       - WATCHFILES_FORCE_POLLING=true
       - ENVIRONMENT=development
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    extra_hosts:
+      - "eutils.ncbi.nlm.nih.gov:130.14.29.112"
     volumes:
       # Mount source code for live reloading
       - ./app:/app/app

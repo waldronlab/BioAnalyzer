@@ -8,7 +8,7 @@ let appConfig = {
     timeouts: {
         frontend: 180000, // Default 180 seconds in milliseconds
         gemini: 90000,    // Default 90 seconds in milliseconds
-        analysis: 25000   // Default 25 seconds in milliseconds (shorter than backend 30s)
+        analysis: 30000   // Default 30 seconds in milliseconds (allows for metadata + analysis)
     }
 };
 

@@ -91,11 +91,11 @@ def check_required_vars():
     
     return True 
 
-# Performance Configuration
-API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))  # seconds - reduced to 30 seconds for faster failure
-ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "300"))  # seconds - increased to 5 minutes for complex analyses
-GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "30"))  # seconds - optimized for faster response
-FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "300"))  # seconds - increased to match analysis timeout
+# Performance Configuration - Optimized for 10-second analysis
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", "10"))  # seconds - NCBI API timeout
+ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "25"))  # seconds - total analysis timeout
+GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "8"))  # seconds - Gemini API timeout
+FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "30"))  # seconds - frontend timeout
 
 # Cache Configuration
 CACHE_VALIDITY_HOURS = int(os.getenv("CACHE_VALIDITY_HOURS", "24"))

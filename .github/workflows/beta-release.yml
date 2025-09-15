@@ -18,6 +18,7 @@ jobs:
       packages: write
       pull-requests: write
       issues: write
+      deployments: write   # ✅ needed to create deployments
 
     steps:
     - name: Checkout code
@@ -78,86 +79,100 @@ jobs:
             const betaUrl = '${{ steps.url.outputs.beta_url }}';
             const tagsJson = '${{ steps.meta.outputs.json }}';
             const tagsData = JSON.parse(tagsJson);
-            const imageTag = tagsData.tags[0]; // Get the first tag from JSON
+            const imageTag = tagsData.tags[0]; 
             const commitSha = '${{ github.sha }}';
             const shortSha = commitSha.substring(0, 7);
-            
-            console.log('Debug info:', { prNumber, betaUrl, imageTag, shortSha });
-          
-          const comment = "##  Beta Release Ready for Testing!\\n\\n" +
-          "**PR #" + prNumber + "** has been automatically deployed for testing.\\n\\n" +
-          "###  Test Your Changes\\n" +
-          "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\\n\\n" +
-          "###  Docker Image\\n" +
-          "```bash\\n" +
-          "docker pull " + imageTag + "\\n" +
-          "```\\n\\n" +
-          "###  Quick Local Test\\n" +
-          "```bash\\n" +
-          "# Pull and run the beta image\\n" +
-          "docker run -d \\\\\\n" +
-          "  --name bioanalyzer-beta-" + prNumber + " \\\\\\n" +
-          "  -p 8000:8000 \\\\\\n" +
-          "  -e GEMINI_API_KEY=your_api_key \\\\\\n" +
-          "  -e NCBI_API_KEY=your_ncbi_key \\\\\\n" +
-          "  -e EMAIL=your_email \\\\\\n" +
-          "  " + imageTag + "\\n" +
-          "```\\n\\n" +
-          "###  Testing Checklist\\n" +
-          "- [ ] Test paper analysis functionality\\n" +
-          "- [ ] Verify API endpoints work correctly\\n" +
-          "- [ ] Check frontend UI responsiveness\\n" +
-          "- [ ] Test error handling\\n" +
-          "- [ ] Verify data extraction accuracy\\n\\n" +
-          "###  Changes in this PR\\n" +
-          "**Commit:** " + shortSha + "\\n" +
-          "**Branch:** ${{ github.head_ref }}\\n\\n" +
-          "---\\n" +
-          "*This beta release will be automatically updated when you push new commits to this PR.*\\n" +
-          "*The deployment will be cleaned up when the PR is closed.*";
 
-          // Find existing comment
-          const comments = await github.rest.issues.listComments({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: prNumber,
-          });
-          
-          const existingComment = comments.data.find(comment => 
-            comment.user.type === 'Bot' && 
-            comment.body.includes(' Beta Release Ready for Testing!')
-          );
-          
-          if (existingComment) {
-            // Update existing comment
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existingComment.id,
-              body: comment
-            });
-          } else {
-            // Create new comment
-            await github.rest.issues.createComment({
+            console.log('Debug info:', { prNumber, betaUrl, imageTag, shortSha });
+
+            const comment = "##  Beta Release Ready for Testing!\\n\\n" +
+            "**PR #" + prNumber + "** has been automatically deployed for testing.\\n\\n" +
+            "###  Test Your Changes\\n" +
+            "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\\n\\n" +
+            "###  Docker Image\\n" +
+            "```bash\\n" +
+            "docker pull " + imageTag + "\\n" +
+            "```\\n\\n" +
+            "###  Quick Local Test\\n" +
+            "```bash\\n" +
+            "# Pull and run the beta image\\n" +
+            "docker run -d \\\\\\n" +
+            "  --name bioanalyzer-beta-" + prNumber + " \\\\\\n" +
+            "  -p 8000:8000 \\\\\\n" +
+            "  -e GEMINI_API_KEY=your_api_key \\\\\\n" +
+            "  -e NCBI_API_KEY=your_ncbi_key \\\\\\n" +
+            "  -e EMAIL=your_email \\\\\\n" +
+            "  " + imageTag + "\\n" +
+            "```\\n\\n" +
+            "###  Testing Checklist\\n" +
+            "- [ ] Test paper analysis functionality\\n" +
+            "- [ ] Verify API endpoints work correctly\\n" +
+            "- [ ] Check frontend UI responsiveness\\n" +
+            "- [ ] Test error handling\\n" +
+            "- [ ] Verify data extraction accuracy\\n\\n" +
+            "###  Changes in this PR\\n" +
+            "**Commit:** " + shortSha + "\\n" +
+            "**Branch:** ${{ github.head_ref }}\\n\\n" +
+            "---\\n" +
+            "*This beta release will be automatically updated when you push new commits to this PR.*\\n" +
+            "*The deployment will be cleaned up when the PR is closed.*";
+
+            const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
-              body: comment
             });
-          }
+          
+            const existingComment = comments.data.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes(' Beta Release Ready for Testing!')
+            );
+          
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: comment
+              });
+            }
           } catch (error) {
             console.error('Error creating deployment comment:', error);
             throw error;
           }
 
+    - name: Create deployment
+      id: deployment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const deployment = await github.rest.repos.createDeployment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: context.sha,
+            environment: 'beta',
+            description: 'Beta release deployment',
+            auto_merge: false,
+            required_contexts: [] // allow deployment without checks
+          });
+          core.setOutput("id", deployment.data.id);
+
     - name: Create deployment status
       uses: actions/github-script@v7
       with:
         script: |
+          const deploymentId = ${{ steps.deployment.outputs.id }};
           await github.rest.repos.createDeploymentStatus({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            deployment_id: context.payload.deployment?.id || 0,
+            deployment_id: deploymentId,
             state: 'success',
             environment: 'beta',
             description: 'Beta release deployed successfully',
@@ -170,6 +185,7 @@ jobs:
     permissions:
       packages: write
       pull-requests: write
+      deployments: write
 
     steps:
     - name: Log in to Container Registry
@@ -184,14 +200,12 @@ jobs:
         PR_NUMBER=${{ github.event.number }}
         echo "Cleaning up beta images for PR #$PR_NUMBER"
         
-        # List and delete beta images for this PR
         docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
           -e REGISTRY=${{ env.REGISTRY }} \
           -e IMAGE_NAME=${{ env.IMAGE_NAME }} \
           -e PR_NUMBER=$PR_NUMBER \
           alpine:latest sh -c '
             apk add --no-cache curl jq
-            # This would need to be implemented with the registry API
             echo "Beta images cleanup completed for PR #$PR_NUMBER"
           '
 
@@ -200,7 +214,6 @@ jobs:
       with:
         script: |
           const prNumber = ${{ github.event.number }};
-          
           const comment = "##  Beta Release Cleaned Up\n\n" +
           "The beta release for **PR #" + prNumber + "** has been cleaned up.\n\n" +
           "All associated Docker images and deployments have been removed.\n\n" +

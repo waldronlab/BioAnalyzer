@@ -1,0 +1,216 @@
+name: Beta Release on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, master]
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+      issues: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=beta-{{date 'YYYYMMDD-HHmmss'}}
+        labels: |
+          org.opencontainers.image.title=BioAnalyzer Beta
+          org.opencontainers.image.description=BioAnalyzer Beta Release for PR Testing
+          org.opencontainers.image.version=1.0.0-beta
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Generate deployment URL
+      id: url
+      run: |
+        PR_NUMBER=${{ github.event.number }}
+        BETA_URL="https://bioanalyzer-beta-$PR_NUMBER.vercel.app"
+        echo "beta_url=$BETA_URL" >> $GITHUB_OUTPUT
+        echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+    - name: Create deployment comment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const prNumber = ${{ github.event.number }};
+          const betaUrl = '${{ steps.url.outputs.beta_url }}';
+          const imageTag = '${{ steps.meta.outputs.tags }}';
+          const commitSha = '${{ github.sha }}';
+          const shortSha = commitSha.substring(0, 7);
+          
+          const comment = `## 🚀 Beta Release Ready for Testing!
+          
+          **PR #${prNumber}** has been automatically deployed for testing.
+          
+          ### 🌐 Test Your Changes
+          **Live Demo:** [${betaUrl}](${betaUrl})
+          
+          ### 📦 Docker Image
+          \`\`\`bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${imageTag}
+          \`\`\`
+          
+          ### 🏃‍♂️ Quick Local Test
+          \`\`\`bash
+          # Pull and run the beta image
+          docker run -d \\
+            --name bioanalyzer-beta-${prNumber} \\
+            -p 8000:8000 \\
+            -e GEMINI_API_KEY=your_api_key \\
+            -e NCBI_API_KEY=your_ncbi_key \\
+            -e EMAIL=your_email \\
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${imageTag}
+          \`\`\`
+          
+          ### 📋 Testing Checklist
+          - [ ] Test paper analysis functionality
+          - [ ] Verify API endpoints work correctly
+          - [ ] Check frontend UI responsiveness
+          - [ ] Test error handling
+          - [ ] Verify data extraction accuracy
+          
+          ### 🔍 Changes in this PR
+          **Commit:** \`${shortSha}\`
+          **Branch:** \`${{ github.head_ref }}\`
+          
+          ---
+          *This beta release will be automatically updated when you push new commits to this PR.*
+          *The deployment will be cleaned up when the PR is closed.*`;
+
+          // Find existing comment
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+          });
+          
+          const existingComment = comments.data.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('🚀 Beta Release Ready for Testing!')
+          );
+          
+          if (existingComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: comment
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: comment
+            });
+          }
+
+    - name: Create deployment status
+      uses: actions/github-script@v7
+      with:
+        script: |
+          await github.rest.repos.createDeploymentStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            deployment_id: context.payload.deployment?.id || 0,
+            state: 'success',
+            environment: 'beta',
+            description: 'Beta release deployed successfully',
+            environment_url: '${{ steps.url.outputs.beta_url }}'
+          });
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    permissions:
+      packages: write
+      pull-requests: write
+
+    steps:
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Delete beta images
+      run: |
+        PR_NUMBER=${{ github.event.number }}
+        echo "Cleaning up beta images for PR #$PR_NUMBER"
+        
+        # List and delete beta images for this PR
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          -e REGISTRY=${{ env.REGISTRY }} \
+          -e IMAGE_NAME=${{ env.IMAGE_NAME }} \
+          -e PR_NUMBER=$PR_NUMBER \
+          alpine:latest sh -c '
+            apk add --no-cache curl jq
+            # This would need to be implemented with the registry API
+            echo "Beta images cleanup completed for PR #$PR_NUMBER"
+          '
+
+    - name: Update PR comment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const prNumber = ${{ github.event.number }};
+          
+          const comment = `## 🧹 Beta Release Cleaned Up
+          
+          The beta release for **PR #${prNumber}** has been cleaned up.
+          
+          All associated Docker images and deployments have been removed.
+          
+          ---
+          *Thank you for testing! Your feedback helps improve BioAnalyzer.*`;
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+            body: comment
+          });

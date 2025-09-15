@@ -3,7 +3,7 @@ name: Beta Release on PR
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: [main, master]
+    # Remove branches restriction to allow beta releases for PRs targeting any branch
   workflow_dispatch: # Allow manual triggering
 
 env:

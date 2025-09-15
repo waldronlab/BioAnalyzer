@@ -79,14 +79,14 @@ jobs:
           const commitSha = '${{ github.sha }}';
           const shortSha = commitSha.substring(0, 7);
           
-          const comment = `## 🚀 Beta Release Ready for Testing!
+          const comment = `## Beta Release Ready for Testing!
           
           **PR #${prNumber}** has been automatically deployed for testing.
           
           ### 🌐 Test Your Changes
           **Live Demo:** [${betaUrl}](${betaUrl})
           
-          ### 📦 Docker Image
+          ### Docker Image
           \`\`\`bash
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${imageTag}
           \`\`\`
@@ -127,7 +127,7 @@ jobs:
           
           const existingComment = comments.data.find(comment => 
             comment.user.type === 'Bot' && 
-            comment.body.includes('🚀 Beta Release Ready for Testing!')
+            comment.body.includes('Beta Release Ready for Testing!')
           );
           
           if (existingComment) {
@@ -199,7 +199,7 @@ jobs:
         script: |
           const prNumber = ${{ github.event.number }};
           
-          const comment = `## 🧹 Beta Release Cleaned Up
+          const comment = `## Beta Release Cleaned Up
           
           The beta release for **PR #${prNumber}** has been cleaned up.
           

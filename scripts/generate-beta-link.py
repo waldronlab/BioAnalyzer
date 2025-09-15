@@ -77,11 +77,11 @@ def generate_docker_commands(
     commands.append(f"  -p {port}:8000 \\")
     
     if api_key:
-        commands.append(f"  -e GEMINI_API_KEY={api_key} \\")
+        commands.append(f"  -e GEMINI_API_KEY=***REDACTED*** \\")
     if ncbi_key:
-        commands.append(f"  -e NCBI_API_KEY={ncbi_key} \\")
+        commands.append(f"  -e NCBI_API_KEY=***REDACTED*** \\")
     if email:
-        commands.append(f"  -e EMAIL={email} \\")
+        commands.append(f"  -e EMAIL=***REDACTED*** \\")
     
     commands.append(f"  ghcr.io/your-username/bioanalyzer:{tag}")
     commands.append("")

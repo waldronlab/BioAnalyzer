@@ -79,55 +79,15 @@ jobs:
           const commitSha = '${{ github.sha }}';
           const shortSha = commitSha.substring(0, 7);
           
-<<<<<<< HEAD
-          const comment = `## Beta Release Ready for Testing!
-          
-          **PR #${prNumber}** has been automatically deployed for testing.
-          
-          ### 🌐 Test Your Changes
-          **Live Demo:** [${betaUrl}](${betaUrl})
-          
-          ### Docker Image
-          \`\`\`bash
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${imageTag}
-          \`\`\`
-          
-          ### 🏃‍♂️ Quick Local Test
-          \`\`\`bash
-          # Pull and run the beta image
-          docker run -d \\
-            --name bioanalyzer-beta-${prNumber} \\
-            -p 8000:8000 \\
-            -e GEMINI_API_KEY=your_api_key \\
-            -e NCBI_API_KEY=your_ncbi_key \\
-            -e EMAIL=your_email \\
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${imageTag}
-          \`\`\`
-          
-          ### 📋 Testing Checklist
-          - [ ] Test paper analysis functionality
-          - [ ] Verify API endpoints work correctly
-          - [ ] Check frontend UI responsiveness
-          - [ ] Test error handling
-          - [ ] Verify data extraction accuracy
-          
-          ### 🔍 Changes in this PR
-          **Commit:** \`${shortSha}\`
-          **Branch:** \`${{ github.head_ref }}\`
-          
-          ---
-          *This beta release will be automatically updated when you push new commits to this PR.*
-          *The deployment will be cleaned up when the PR is closed.*`;
-=======
-          const comment = "## 🚀 Beta Release Ready for Testing!\n\n" +
+          const comment = "##  Beta Release Ready for Testing!\n\n" +
           "**PR #" + prNumber + "** has been automatically deployed for testing.\n\n" +
-          "### 🌐 Test Your Changes\n" +
+          "###  Test Your Changes\n" +
           "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\n\n" +
-          "### 📦 Docker Image\n" +
+          "###  Docker Image\n" +
           "```bash\n" +
           "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:" + imageTag + "\n" +
           "```\n\n" +
-          "### 🏃‍♂️ Quick Local Test\n" +
+          "###  Quick Local Test\n" +
           "```bash\n" +
           "# Pull and run the beta image\n" +
           "docker run -d \\\\\n" +
@@ -138,19 +98,18 @@ jobs:
           "  -e EMAIL=your_email \\\\\n" +
           "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:" + imageTag + "\n" +
           "```\n\n" +
-          "### 📋 Testing Checklist\n" +
+          "###  Testing Checklist\n" +
           "- [ ] Test paper analysis functionality\n" +
           "- [ ] Verify API endpoints work correctly\n" +
           "- [ ] Check frontend UI responsiveness\n" +
           "- [ ] Test error handling\n" +
           "- [ ] Verify data extraction accuracy\n\n" +
-          "### 🔍 Changes in this PR\n" +
+          "###  Changes in this PR\n" +
           "**Commit:** `" + shortSha + "`\n" +
           "**Branch:** `${{ github.head_ref }}`\n\n" +
           "---\n" +
           "*This beta release will be automatically updated when you push new commits to this PR.*\n" +
           "*The deployment will be cleaned up when the PR is closed.*";
->>>>>>> 4379296 (Beta release update)
 
           // Find existing comment
           const comments = await github.rest.issues.listComments({
@@ -161,7 +120,7 @@ jobs:
           
           const existingComment = comments.data.find(comment => 
             comment.user.type === 'Bot' && 
-            comment.body.includes('Beta Release Ready for Testing!')
+            comment.body.includes(' Beta Release Ready for Testing!')
           );
           
           if (existingComment) {
@@ -233,14 +192,11 @@ jobs:
         script: |
           const prNumber = ${{ github.event.number }};
           
-          const comment = `## Beta Release Cleaned Up
-          
-          The beta release for **PR #${prNumber}** has been cleaned up.
-          
-          All associated Docker images and deployments have been removed.
-          
-          ---
-          *Thank you for testing! Your feedback helps improve BioAnalyzer.*`;
+          const comment = "##  Beta Release Cleaned Up\n\n" +
+          "The beta release for **PR #" + prNumber + "** has been cleaned up.\n\n" +
+          "All associated Docker images and deployments have been removed.\n\n" +
+          "---\n" +
+          "*Thank you for testing! Your feedback helps improve BioAnalyzer.*";
 
           await github.rest.issues.createComment({
             owner: context.repo.owner,

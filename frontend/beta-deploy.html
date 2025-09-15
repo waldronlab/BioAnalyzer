@@ -367,13 +367,21 @@ Status: Running`;
         }
 
         function showLinks(port) {
+            // Ensure port is a valid number between 1 and 65535
+            const validPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) < 65536;
+            if (!validPort) {
+                document.getElementById('frontendLink').href = '#';
+                document.getElementById('apiLink').href = '#';
+                document.getElementById('docsLink').href = '#';
+                document.getElementById('healthLink').href = '#';
+                document.getElementById('links').style.display = 'none';
+                return;
+            }
             const baseUrl = `http://localhost:${port}`;
-            
             document.getElementById('frontendLink').href = baseUrl;
             document.getElementById('apiLink').href = `${baseUrl}/api`;
             document.getElementById('docsLink').href = `${baseUrl}/docs`;
             document.getElementById('healthLink').href = `${baseUrl}/health`;
-            
             document.getElementById('links').style.display = 'grid';
         }
 

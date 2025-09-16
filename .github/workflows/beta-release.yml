@@ -2,8 +2,7 @@ name: Beta Release on PR
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
-    # Remove branches restriction to allow beta releases for PRs targeting any branch
+    types: [opened, synchronize, reopened, closed] # include closed so cleanup runs
   workflow_dispatch: # Allow manual triggering
 
 env:
@@ -12,13 +11,14 @@ env:
 
 jobs:
   build-and-deploy:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       pull-requests: write
       issues: write
-      deployments: write   #  needed to create deployments
+      deployments: write
 
     steps:
     - name: Checkout code
@@ -65,33 +65,41 @@ jobs:
     - name: Generate deployment URL
       id: url
       run: |
-        PR_NUMBER=${{ github.event.number }}
-        BETA_URL="https://bioanalyzer-beta-$PR_NUMBER.vercel.app"
-        echo "beta_url=$BETA_URL" >> $GITHUB_OUTPUT
-        echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          PR_NUMBER=${{ github.event.number }}
+          BETA_URL="https://bioanalyzer-beta-$PR_NUMBER.vercel.app"
+          echo "beta_url=$BETA_URL" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "BETA_URL=$BETA_URL" >> $GITHUB_ENV
+        else
+          echo "beta_url=" >> $GITHUB_OUTPUT
+          echo "pr_number=manual" >> $GITHUB_OUTPUT
+          echo "BETA_URL=" >> $GITHUB_ENV
+        fi
 
     - name: Create deployment comment
+      if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
       with:
         script: |
           try {
             const prNumber = ${{ github.event.number }};
-            const betaUrl = '${{ steps.url.outputs.beta_url }}';
+            const betaUrl = process.env.BETA_URL || '${{ steps.url.outputs.beta_url }}';
             const tagsJson = '${{ steps.meta.outputs.json }}';
             const tagsData = JSON.parse(tagsJson);
-            const imageTag = tagsData.tags[0]; 
+            const imageTag = tagsData.tags[0];
             const commitSha = '${{ github.sha }}';
             const shortSha = commitSha.substring(0, 7);
 
-            const comment = "##  Beta Release Ready for Testing!\\n\\n" +
+            const comment = "## 🚀 Beta Release Ready for Testing!\\n\\n" +
             "**PR #" + prNumber + "** has been automatically deployed for testing.\\n\\n" +
-            "###  Test Your Changes\\n" +
-            "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\\n\\n" +
-            "###  Docker Image\\n" +
+            "### 🔗 Test Your Changes\\n" +
+            (betaUrl ? "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\\n\\n" : "_No beta URL available for this run_\\n\\n") +
+            "### 🐳 Docker Image\\n" +
             "```bash\\n" +
             "docker pull " + imageTag + "\\n" +
             "```\\n\\n" +
-            "###  Quick Local Test\\n" +
+            "### ⚡ Quick Local Test\\n" +
             "```bash\\n" +
             "# Pull and run the beta image\\n" +
             "docker run -d \\\\\\n" +
@@ -102,13 +110,13 @@ jobs:
             "  -e EMAIL=your_email \\\\\\n" +
             "  " + imageTag + "\\n" +
             "```\\n\\n" +
-            "###  Testing Checklist\\n" +
+            "### ✅ Testing Checklist\\n" +
             "- [ ] Test paper analysis functionality\\n" +
             "- [ ] Verify API endpoints work correctly\\n" +
             "- [ ] Check frontend UI responsiveness\\n" +
             "- [ ] Test error handling\\n" +
             "- [ ] Verify data extraction accuracy\\n\\n" +
-            "###  Changes in this PR\\n" +
+            "### 📦 Changes in this PR\\n" +
             "**Commit:** " + shortSha + "\\n" +
             "**Branch:** ${{ github.head_ref }}\\n\\n" +
             "---\\n" +
@@ -120,12 +128,12 @@ jobs:
               repo: context.repo.repo,
               issue_number: prNumber,
             });
-          
-            const existingComment = comments.data.find(comment => 
-              comment.user.type === 'Bot' && 
+
+            const existingComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('Beta Release Ready for Testing!')
             );
-          
+
             if (existingComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -158,7 +166,7 @@ jobs:
             environment: 'beta',
             description: 'Beta release deployment',
             auto_merge: false,
-            required_contexts: [] // allow deployment without checks
+            required_contexts: []
           });
           core.setOutput("id", deployment.data.id);
 
@@ -179,7 +187,7 @@ jobs:
 
   cleanup:
     runs-on: ubuntu-latest
-    if: github.event.action == 'closed'
+    if: github.event.action == 'closed' && github.actor != 'dependabot[bot]'
     permissions:
       packages: write
       pull-requests: write
@@ -197,11 +205,7 @@ jobs:
       run: |
         PR_NUMBER=${{ github.event.number }}
         echo "Cleaning up beta images for PR #$PR_NUMBER"
-        
         docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-          -e REGISTRY=${{ env.REGISTRY }} \
-          -e IMAGE_NAME=${{ env.IMAGE_NAME }} \
-          -e PR_NUMBER=$PR_NUMBER \
           alpine:latest sh -c '
             apk add --no-cache curl jq
             echo "Beta images cleanup completed for PR #$PR_NUMBER"

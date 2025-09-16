@@ -83,10 +83,12 @@ jobs:
             const commitSha = '${{ github.sha }}';
             const shortSha = commitSha.substring(0, 7);
 
-            const comment = "## 🚀 Beta Release Ready for Testing! +
-            "** [" + betaUrl + "](" + betaUrl + ")\\n\\n" +
-            "---\\n" +
-            "*This beta release will be automatically updated when you push new commits to this PR.*";
+            const comment = `## 🚀 Beta Release Ready for Testing!
+              ** [${betaUrl}](${betaUrl})
+              
+              ---
+              
+              *This beta release will be automatically updated when you push new commits to this PR.*`;
 
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,

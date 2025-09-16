@@ -2,8 +2,8 @@ name: Beta Release on PR
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, closed] # include closed so cleanup runs
-  workflow_dispatch: # Allow manual triggering
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-and-deploy:
-    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.actor != 'dependabot[bot]')
+    if: github.actor != 'dependabot[bot]' && (github.event.pull_request.draft == false || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,6 +23,26 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+        fetch-depth: 0
+
+    - name: Prepare deployment variables
+      id: prepare_deployment
+      run: |
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          SANITIZED_BRANCH=$(echo "${{ github.head_ref }}" | tr -cs '[:alnum:]' '-' | tr '[:upper:]' '[:lower:]' | sed 's/-$//')
+          PR_NUMBER="${{ github.event.number }}"
+          TAG_SUFFIX="pr-${PR_NUMBER}-${TIMESTAMP}"
+        else
+          SANITIZED_BRANCH=$(echo "${{ github.ref_name }}" | tr -cs '[:alnum:]' '-' | tr '[:upper:]' '[:lower:]' | sed 's/-$//')
+          TAG_SUFFIX="manual-${SANITIZED_BRANCH}-${TIMESTAMP}"
+        fi
+        echo "sanitized_branch=$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
+        echo "tag_suffix=$TAG_SUFFIX" >> $GITHUB_OUTPUT
+        echo "pr_number=${{ github.event.number }}" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -40,10 +60,9 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix=sha-
+          type=raw,value=${{ steps.prepare_deployment.outputs.tag_suffix }}
           type=raw,value=beta-{{date 'YYYYMMDD-HHmmss'}}
+          type=sha,prefix=sha-
         labels: |
           org.opencontainers.image.title=BioAnalyzer Beta
           org.opencontainers.image.description=BioAnalyzer Beta Release for PR Testing
@@ -65,93 +84,45 @@ jobs:
     - name: Generate deployment URL
       id: url
       run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          PR_NUMBER=${{ github.event.number }}
-          BETA_URL="https://bioanalyzer-beta-$PR_NUMBER.vercel.app"
-          echo "beta_url=$BETA_URL" >> $GITHUB_OUTPUT
-          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "BETA_URL=$BETA_URL" >> $GITHUB_ENV
-        else
-          echo "beta_url=" >> $GITHUB_OUTPUT
-          echo "pr_number=manual" >> $GITHUB_OUTPUT
-          echo "BETA_URL=" >> $GITHUB_ENV
-        fi
+        PR_NUMBER=${{ github.event.number }}
+        BETA_URL="https://bioanalyzer-beta-$PR_NUMBER.vercel.app"
+        echo "beta_url=$BETA_URL" >> $GITHUB_OUTPUT
 
     - name: Create deployment comment
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
       with:
         script: |
-          try {
-            const prNumber = ${{ github.event.number }};
-            const betaUrl = process.env.BETA_URL || '${{ steps.url.outputs.beta_url }}';
-            const tagsJson = '${{ steps.meta.outputs.json }}';
-            const tagsData = JSON.parse(tagsJson);
-            const imageTag = tagsData.tags[0];
-            const commitSha = '${{ github.sha }}';
-            const shortSha = commitSha.substring(0, 7);
+          const prNumber = ${{ github.event.number }};
+          const betaUrl = '${{ steps.url.outputs.beta_url }}';
+          const comment = "🚀 **Beta Release Ready for Testing**\n\n" +
+                          "🔗 [Live Demo](" + betaUrl + ")";
 
-            const comment = "## 🚀 Beta Release Ready for Testing!\\n\\n" +
-            "**PR #" + prNumber + "** has been automatically deployed for testing.\\n\\n" +
-            "### 🔗 Test Your Changes\\n" +
-            (betaUrl ? "**Live Demo:** [" + betaUrl + "](" + betaUrl + ")\\n\\n" : "_No beta URL available for this run_\\n\\n") +
-            "### 🐳 Docker Image\\n" +
-            "```bash\\n" +
-            "docker pull " + imageTag + "\\n" +
-            "```\\n\\n" +
-            "### ⚡ Quick Local Test\\n" +
-            "```bash\\n" +
-            "# Pull and run the beta image\\n" +
-            "docker run -d \\\\\\n" +
-            "  --name bioanalyzer-beta-" + prNumber + " \\\\\\n" +
-            "  -p 8000:8000 \\\\\\n" +
-            "  -e GEMINI_API_KEY=your_api_key \\\\\\n" +
-            "  -e NCBI_API_KEY=your_ncbi_key \\\\\\n" +
-            "  -e EMAIL=your_email \\\\\\n" +
-            "  " + imageTag + "\\n" +
-            "```\\n\\n" +
-            "### ✅ Testing Checklist\\n" +
-            "- [ ] Test paper analysis functionality\\n" +
-            "- [ ] Verify API endpoints work correctly\\n" +
-            "- [ ] Check frontend UI responsiveness\\n" +
-            "- [ ] Test error handling\\n" +
-            "- [ ] Verify data extraction accuracy\\n\\n" +
-            "### 📦 Changes in this PR\\n" +
-            "**Commit:** " + shortSha + "\\n" +
-            "**Branch:** ${{ github.head_ref }}\\n\\n" +
-            "---\\n" +
-            "*This beta release will be automatically updated when you push new commits to this PR.*\\n" +
-            "*The deployment will be cleaned up when the PR is closed.*";
-
-            const comments = await github.rest.issues.listComments({
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+          });
+        
+          const existingComment = comments.data.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('🚀 **Beta Release Ready for Testing**')
+          );
+        
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: comment
+            });
+          } else {
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
+              body: comment
             });
-
-            const existingComment = comments.data.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('Beta Release Ready for Testing!')
-            );
-
-            if (existingComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body: comment
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body: comment
-              });
-            }
-          } catch (error) {
-            console.error('Error creating deployment comment:', error);
-            throw error;
           }
 
     - name: Create deployment
@@ -166,7 +137,7 @@ jobs:
             environment: 'beta',
             description: 'Beta release deployment',
             auto_merge: false,
-            required_contexts: []
+            required_contexts: [] // allow deployment without checks
           });
           core.setOutput("id", deployment.data.id);
 
@@ -201,26 +172,20 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Delete beta images
+    - name: Clean up beta images
       run: |
         PR_NUMBER=${{ github.event.number }}
         echo "Cleaning up beta images for PR #$PR_NUMBER"
-        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-          alpine:latest sh -c '
-            apk add --no-cache curl jq
-            echo "Beta images cleanup completed for PR #$PR_NUMBER"
-          '
+        docker images --format "table {{.Repository}}:{{.Tag}}" | grep "pr-${PR_NUMBER}" || echo "No PR-specific images found"
+        echo "Cleanup completed for PR #$PR_NUMBER"
 
     - name: Update PR comment
       uses: actions/github-script@v7
       with:
         script: |
           const prNumber = ${{ github.event.number }};
-          const comment = "## 🧹 Beta Release Cleaned Up\\n\\n" +
-          "The beta release for **PR #" + prNumber + "** has been cleaned up.\\n\\n" +
-          "All associated Docker images and deployments have been removed.\\n\\n" +
-          "---\\n\\n" +
-          "*Thank you for testing! Your feedback helps improve BioAnalyzer.*";
+          const comment = "🧹 **Beta Release Cleaned Up**\n\n" +
+                          "PR #" + prNumber + " beta release has been cleaned up.";
 
           const comments = await github.rest.issues.listComments({
             owner: context.repo.owner,

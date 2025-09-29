@@ -99,11 +99,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-<<<<<<< HEAD
-=======
 # Mount static files
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
->>>>>>> monolithic-api-refactor
 
 # Include routers
 app.include_router(paper_analysis.router)

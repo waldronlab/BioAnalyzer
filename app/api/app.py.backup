@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="BioAnalyzer - BugSigDB Curation Analysis",
     description="""
-    **BioAnalyzer** - A specialized AI-powered tool for analyzing scientific papers for BugSigDB curation readiness.
+    **BioAnalyzer** - A specialized tool for analyzing scientific papers for BugSigDB curation readiness.
     
     ## Core Functionality
     
@@ -55,10 +55,10 @@ app = FastAPI(
     
     ## Analysis Results
     
-    For each field, the AI provides:
+    For each field, the system provides:
     - **Status**: PRESENT, PARTIALLY_PRESENT, or ABSENT
     - **Value**: The extracted information
-    - **Confidence**: AI confidence score (0.0-1.0)
+    - **Confidence**: Confidence score (0.0-1.0)
     - **Reason if Missing**: Why the field is not present
     - **Suggestions**: What additional information is needed for curation
     
@@ -118,9 +118,9 @@ app.add_middleware(
 text_processor = AdvancedTextProcessor()
 model = None
 if GEMINI_API_KEY:
-    print("Model Status: Using gemini as primary model")
+    print("Model Status: Using configured model API")
 else:
-    print("Model Status: No Gemini API key found. No LLM available.")
+    print("Model Status: No model API key found. Model-based features will be limited.")
 retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 
 qa_system = UnifiedQA(
@@ -233,7 +233,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             print("Sending analysis result to frontend:", analysis_result)
                             await websocket.send_json(analysis_result)
                         else:
-                            await websocket.send_json({"error": "No AI models available for analysis"})
+                            await websocket.send_json({"error": "No model APIs available for analysis"})
                     except Exception as e:
                         print(f"Error analyzing paper: {str(e)}")
                         await websocket.send_json({"error": f"Error analyzing paper: {str(e)}"})

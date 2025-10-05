@@ -5,7 +5,7 @@ A scientific paper analysis tool focused on microbiome research and BugSigDB cur
 ## Features
 
 - **Browse Papers**: Search papers by PMID and analyze them for BugSigDB curation readiness
-- **Chat Assistant**: Interactive AI-powered assistance for analysis questions
+ - **Interactive assistant**: Contextual assistance for analysis questions
 
 ## Key BugSigDB Curation Fields
 
@@ -22,8 +22,8 @@ The system analyzes papers for the following 6 essential fields that determine c
 
 ## Architecture
 
-- **FastAPI Backend**: Python-based API server with AI-powered analysis
-- **AI Models**: Integration with Google Gemini for intelligent paper analysis
+ - **FastAPI Backend**: Python-based API server with automated analysis
+ - **Model integration**: Optional integration with external language models for paper analysis
 - **Frontend**: Modern web interface built with Bootstrap and vanilla JavaScript
 - **Core Functionality**: Automated extraction and assessment of curation fields from scientific papers
 
@@ -33,7 +33,7 @@ The system analyzes papers for the following 6 essential fields that determine c
 - Python 3.11+ (for local development)
 - API Keys:
   - NCBI API key for PubMed access
-  - Google Gemini API key for AI analysis
+  - Model API key for automated analysis (set GEMINI_API_KEY)
 
 ## Installation
 

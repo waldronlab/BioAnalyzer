@@ -6,11 +6,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
 ENV WATCHFILES_FORCE_POLLING=true
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies + SSL certificates
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     curl \
+    ca-certificates \
+    openssl \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -49,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Start the application with auto-reload
-CMD ["python", "main.py"] 
+CMD ["python", "main.py"]

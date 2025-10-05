@@ -36,7 +36,7 @@ BugsigdbAnalyzer/
 ### **`app/models/`** - Data Models
 - **`config.py`** - Model configuration classes
 - **`unified_qa.py`** - Unified QA system implementation
-- **`gemini_qa.py`** - Gemini AI integration
+- **`gemini_qa.py`** - Model API integration for automated analysis
 
 ### **`app/services/`** - Business Services
 - **`data_retrieval.py`** - PubMed data retrieval service

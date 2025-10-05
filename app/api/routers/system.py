@@ -16,7 +16,8 @@ from app.utils.config import (
     GEMINI_TIMEOUT,
     ANALYSIS_TIMEOUT,
     API_TIMEOUT,
-    GEMINI_API_KEY
+    GEMINI_API_KEY,
+    NCBI_API_KEY
 )
 from app.models.unified_qa import UnifiedQA
 from app.services.data_retrieval import PubMedRetriever
@@ -28,8 +29,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["System"])
 
 # Initialize services for health checks
-unified_qa = UnifiedQA()
-pubmed_retriever = PubMedRetriever()
+unified_qa = UnifiedQA(use_gemini=True, gemini_api_key=GEMINI_API_KEY)
+pubmed_retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 
 
 @router.get("/")

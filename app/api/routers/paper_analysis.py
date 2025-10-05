@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Paper Analysis"])
 
 # Initialize services
-unified_qa = UnifiedQA()
+unified_qa = UnifiedQA(use_gemini=True, gemini_api_key=GEMINI_API_KEY)
 pubmed_retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 text_processor = AdvancedTextProcessor()
 methods_scorer = MethodsScorer()
@@ -229,8 +229,15 @@ async def analyze_paper(pmid: str, request: Request):
         if not analysis_result:
             raise HTTPException(status_code=404, detail=f"Paper {pmid} not found or could not be analyzed")
         
-        return analysis_result
+        # Return minimal payload: pmid + fields only
+        return {
+            "pmid": pmid,
+            "fields": analysis_result.get("fields", {})
+        }
         
+    except HTTPException as e:
+        # Preserve HTTPException (e.g., 404) instead of converting to 500
+        raise e
     except Exception as e:
         logger.error(f"Error analyzing paper {pmid}: {e}")
         raise HTTPException(status_code=500, detail=f"Error analyzing paper: {str(e)}")
@@ -260,8 +267,16 @@ async def enhanced_analysis(pmid: str):
         # Enhance the analysis with additional validation
         enhanced_result = await enhance_analysis_result(basic_analysis, pmid)
         
-        return enhanced_result
+        # Match frontend expectations: include title and wrap fields under 'enhanced_analysis'
+        return {
+            "pmid": pmid,
+            "title": basic_analysis.get("title", ""),
+            "enhanced_analysis": enhanced_result.get("fields", {})
+        }
         
+    except HTTPException as e:
+        # Preserve explicit HTTP errors (like 404)
+        raise e
     except Exception as e:
         logger.error(f"Error in enhanced analysis for PMID {pmid}: {e}")
         raise HTTPException(status_code=500, detail=f"Error in enhanced analysis: {str(e)}")
@@ -271,31 +286,64 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
     """Internal method to analyze a paper."""
     try:
         # Check cache first
-        cached_result = cache_manager.get_analysis(pmid)
+        cached_result = cache_manager.get_analysis_result(pmid)
         if cached_result:
             logger.info(f"Using cached analysis for PMID {pmid}")
             return cached_result
         
-        # Retrieve paper data
-        paper_data = await pubmed_retriever.get_paper_data(pmid)
-        if not paper_data:
-            logger.warning(f"No data found for PMID {pmid}")
-            return None
+        # Minimal retrieval: abstract + full text (+ optional title)
+        texts = await pubmed_retriever.get_texts_for_analysis_async(pmid)
+        paper_data = {
+            "title": texts.get('title', ''),
+            "authors": [],
+            "journal": '',
+            "publication_date": '',
+            "abstract": texts.get('abstract', ''),
+            "full_text": texts.get('full_text', '')
+        }
         
         # Process the paper
         start_time = datetime.now()
         
         # Extract and process text
         full_text = paper_data.get('full_text', '')
-        if not full_text:
-            logger.warning(f"No full text available for PMID {pmid}")
-            return None
+        abstract = paper_data.get('abstract', '')
+        
+        # Use both abstract and full text for analysis
+        text_for_analysis = f"{abstract}\n\n{full_text}" if abstract else full_text
+        
+        if not text_for_analysis.strip():
+            logger.warning(f"No text content available for PMID {pmid}; returning fallback analysis")
+            field_analysis = create_comprehensive_fallback_analysis()
+            processing_time = (datetime.now() - start_time).total_seconds()
+            analysis_result = {
+                "pmid": pmid,
+                "title": paper_data.get('title', ''),
+                "authors": paper_data.get('authors', []),
+                "journal": paper_data.get('journal', ''),
+                "publication_date": paper_data.get('publication_date', ''),
+                "fields": field_analysis,
+                "curation_summary": generate_curation_summary(field_analysis, []),
+                "analysis_timestamp": get_current_timestamp(),
+                "processing_time": processing_time,
+                "model_used": DEFAULT_MODEL,
+                "full_text": ""
+            }
+            cache_manager.store_analysis_result(pmid, analysis_result, paper_data)
+            return analysis_result
         
         # Process text for analysis
-        processed_text = text_processor.process_text(full_text)
+        processed_text = text_processor.process_text(text_for_analysis)
         
-        # Perform field analysis
-        field_analysis = await perform_field_analysis(processed_text, pmid)
+        # Perform field analysis with timeout
+        try:
+            field_analysis = await asyncio.wait_for(
+                perform_field_analysis(processed_text, pmid),
+                timeout=ANALYSIS_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Field analysis timed out for PMID {pmid}, using fallback")
+            field_analysis = create_comprehensive_fallback_analysis()
         
         # Calculate processing time
         processing_time = (datetime.now() - start_time).total_seconds()
@@ -312,11 +360,11 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
             "analysis_timestamp": get_current_timestamp(),
             "processing_time": processing_time,
             "model_used": DEFAULT_MODEL,
-            "full_text": full_text[:1000] + "..." if len(full_text) > 1000 else full_text
+            "full_text": text_for_analysis[:1000] + "..." if len(text_for_analysis) > 1000 else text_for_analysis
         }
         
         # Cache the result
-        cache_manager.cache_analysis(pmid, analysis_result)
+        cache_manager.store_analysis_result(pmid, analysis_result, paper_data)
         
         return analysis_result
         
@@ -342,12 +390,11 @@ async def perform_field_analysis(text: str, pmid: str) -> Dict:
         
         for field, question in field_questions.items():
             try:
-                # Ask the question using the unified QA system
-                response = await unified_qa.ask_question(
-                    question=question,
-                    context=text,
-                    pmid=pmid
-                )
+                # Create a prompt combining question and context
+                prompt = f"Context: {text[:2000]}\n\nQuestion: {question}\n\nPlease provide a specific answer based on the context."
+                
+                # Use chat method to ask the question
+                response = await unified_qa.chat(prompt)
                 
                 # Process the response
                 field_results[field] = process_field_response(response, field)

@@ -33,7 +33,7 @@ async def delete_analysis_cache(pmid: str):
     Returns confirmation of cache deletion.
     """
     try:
-        success = cache_manager.delete_analysis(pmid)
+        success = cache_manager.delete_analysis_result(pmid)
         
         if success:
             return {
@@ -296,14 +296,14 @@ async def cache_health_check():
         
         # Test write
         test_data = {"test": "data", "timestamp": get_current_timestamp()}
-        write_success = cache_manager.cache_analysis(test_pmid, test_data)
+        write_success = cache_manager.store_analysis_result(test_pmid, test_data, {})
         
         # Test read
-        read_data = cache_manager.get_analysis(test_pmid)
+        read_data = cache_manager.get_analysis_result(test_pmid)
         read_success = read_data is not None
         
         # Test delete
-        delete_success = cache_manager.delete_analysis(test_pmid)
+        delete_success = cache_manager.delete_analysis_result(test_pmid)
         
         # Get cache stats
         stats = cache_manager.get_cache_stats()

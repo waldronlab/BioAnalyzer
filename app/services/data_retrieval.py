@@ -39,7 +39,13 @@ class PubMedRetriever:
             try:
                 # Respect inter-request delay to avoid rate limiting
                 time.sleep(max(NCBI_RATE_LIMIT_DELAY, 0.0))
-                response = self.session.get(url, params=params, timeout=API_TIMEOUT or 30)
+                # Use conservative timeouts: 5s to connect, <=10s to read
+                per_request_timeout = min(API_TIMEOUT or 30, 10)
+                response = self.session.get(
+                    url,
+                    params=params,
+                    timeout=(5, per_request_timeout)
+                )
                 response.raise_for_status()
                 return response.text
             except requests.exceptions.RequestException as e:
@@ -238,10 +244,22 @@ class PubMedRetriever:
         Minimal retrieval for analysis: abstract and full_text (and optional title).
         Avoids heavy metadata requirements to reduce failure modes.
         """
-        metadata = await self.get_paper_metadata_async(pmid)
+        # Run metadata and full-text retrieval in parallel with strict timeouts
+        async def fetch_metadata():
+            try:
+                return await asyncio.wait_for(self.get_paper_metadata_async(pmid), timeout=8)
+            except Exception:
+                return {}
+
+        async def fetch_fulltext():
+            try:
+                return await asyncio.wait_for(self.get_pmc_fulltext_async(pmid), timeout=10)
+            except Exception:
+                return ""
+
+        metadata, full_text = await asyncio.gather(fetch_metadata(), fetch_fulltext())
         abstract = metadata.get("abstract", "") if metadata else ""
         title = metadata.get("title", "") if metadata else ""
-        full_text = await self.get_pmc_fulltext_async(pmid)
         return {
             "title": title,
             "abstract": abstract,

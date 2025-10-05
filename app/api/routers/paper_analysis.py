@@ -413,7 +413,7 @@ async def perform_field_analysis(text: str, pmid: str) -> Dict:
 def process_field_response(response: Dict, field_name: str) -> Dict:
     """Process the response from the QA system for a specific field."""
     try:
-        answer = response.get('answer', '')
+        answer = response.get('answer') or response.get('text', '')
         confidence = response.get('confidence', 0.0)
         
         if not answer or confidence < 0.3:

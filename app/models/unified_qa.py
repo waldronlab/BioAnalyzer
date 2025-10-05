@@ -17,7 +17,7 @@ class UnifiedQA:
         self.use_gemini = use_gemini
         if use_gemini and gemini_api_key and gemini_api_key.strip():
             self.qa_system = GeminiQA(api_key=gemini_api_key)
-            logger.info(f"Initialized UnifiedQA with configured model API key: {gemini_api_key[:10]}...")
+            logger.info("Initialized UnifiedQA with configured model API key.")
         else:
             self.qa_system = None
             logger.warning(f"No model API key provided. use_gemini={use_gemini}, api_key_provided={bool(gemini_api_key)}. Chat functionality will be limited.")

@@ -5,7 +5,7 @@ from .gemini_qa import GeminiQA
 logger = logging.getLogger(__name__)
 
 class UnifiedQA:
-    """Unified QA system that wraps GeminiQA for conversational interactions."""
+    """Unified QA system that wraps an external model interface for conversational interactions."""
     
     def __init__(self, use_gemini: bool = True, gemini_api_key: Optional[str] = None):
         """Initialize the unified QA system.
@@ -15,11 +15,12 @@ class UnifiedQA:
             gemini_api_key: API key for Gemini
         """
         self.use_gemini = use_gemini
-        if use_gemini and gemini_api_key:
+        if use_gemini and gemini_api_key and gemini_api_key.strip():
             self.qa_system = GeminiQA(api_key=gemini_api_key)
+            logger.info("Initialized UnifiedQA with configured model API key.")
         else:
             self.qa_system = None
-            logger.warning("No Gemini API key provided. Chat functionality will be limited.")
+            logger.warning(f"No model API key provided. use_gemini={use_gemini}, api_key_provided={bool(gemini_api_key)}. Chat functionality will be limited.")
     
     async def chat(self, prompt: str) -> dict:
         """Chat with the QA system.

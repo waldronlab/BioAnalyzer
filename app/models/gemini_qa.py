@@ -13,7 +13,7 @@ import time
 logger = logging.getLogger(__name__)
 
 class GeminiQA:
-    """Enhanced QA system using Gemini's API for biomedical paper analysis."""
+    """Enhanced QA system using an external model API for biomedical paper analysis."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "models/gemini-1.5-pro-latest", results_dir: Optional[Path] = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
@@ -21,7 +21,7 @@ class GeminiQA:
         self.results_dir = results_dir or Path("results")
         self.results_dir.mkdir(parents=True, exist_ok=True)
         if not self.api_key:
-            logger.warning("No Gemini API key provided. Set GEMINI_API_KEY in your environment.")
+            logger.warning("No model API key provided. Set GEMINI_API_KEY in your environment.")
         genai.configure(api_key=self.api_key)
 
     def estimate_confidence(self, key_findings):
@@ -461,13 +461,13 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             if self.results_dir:
                 timestamp = datetime.now(pytz.UTC).strftime("%Y%m%d_%H%M%S")
                 paper_title = paper_content.get('title', 'unknown').replace(' ', '_')
-                filename = self.results_dir / f"gemini_analysis_{timestamp}_{paper_title[:50]}.txt"
+                filename = self.results_dir / f"model_analysis_{timestamp}_{paper_title[:50]}.txt"
                 with open(filename, 'w') as f:
                     f.write(analysis_text)
                 logger.info(f"Analysis saved to {filename}")
 
             # Enhanced parsing of the response
-            logger.info(f"Raw LLM response for debugging:\n{analysis_text}")
+            logger.info(f"Raw model response for debugging:\n{analysis_text}")
             curation_analysis = self.parse_enhanced_analysis(analysis_text)
             logger.info(f"Parsed curation analysis: {curation_analysis}")
             
@@ -491,7 +491,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             }
         except Exception as e:
             error_str = str(e)
-            logger.error(f"Gemini API error in paper analysis: {error_str}")
+            logger.error(f"Model API error in paper analysis: {error_str}")
             return {
                 "error": error_str,
                 "confidence": 0.0,
@@ -614,7 +614,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             
             # Generate response with enhanced prompt and timeout
             try:
-                logger.info(f"Starting Gemini API call with {GEMINI_TIMEOUT}s timeout...")
+                logger.info(f"Starting model API call with {GEMINI_TIMEOUT}s timeout...")
                 start_time = time.time()
                 
                 # Use asyncio.wait_for to add timeout to the API call with fast generation parameters
@@ -643,9 +643,9 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                     }
                     
             except asyncio.TimeoutError:
-                logger.error(f"Gemini API call timed out after {GEMINI_TIMEOUT} seconds")
+                logger.error(f"Model API call timed out after {GEMINI_TIMEOUT} seconds")
                 return {
-                    "error": f"Gemini API request timed out after {GEMINI_TIMEOUT} seconds. This may indicate: 1) API service is slow, 2) Network connectivity issues, 3) API quota limits, or 4) IP restrictions.",
+                    "error": f"Model API request timed out after {GEMINI_TIMEOUT} seconds. This may indicate: 1) API service is slow, 2) Network connectivity issues, 3) API quota limits, or 4) IP restrictions.",
                     "error_type": "TimeoutError",
                     "key_findings": "{}",
                     "confidence": 0.0,
@@ -655,7 +655,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                         "timestamp": datetime.now().isoformat(),
                         "suggestions": [
                             "Check your internet connection",
-                            "Verify Gemini API key is valid",
+                            "Verify model API key is valid",
                             "Check if your IP is whitelisted",
                             "Monitor API quota usage"
                         ]
@@ -712,23 +712,23 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
             
             # Detect specific error types
             if "quota" in error_msg.lower() or "quota exceeded" in error_msg.lower():
-                error_detail = "Gemini API quota exceeded. Please check your API usage limits."
-                logger.error(f"Gemini API quota exceeded: {error_msg}")
+                error_detail = "Model API quota exceeded. Please check your API usage limits."
+                logger.error(f"Model API quota exceeded: {error_msg}")
             elif "permission" in error_msg.lower() or "access" in error_msg.lower():
-                error_detail = "Gemini API access denied. Check API key permissions and IP restrictions."
-                logger.error(f"Gemini API access denied: {error_msg}")
+                error_detail = "Model API access denied. Check API key permissions and IP restrictions."
+                logger.error(f"Model API access denied: {error_msg}")
             elif "authentication" in error_msg.lower() or "invalid" in error_msg.lower():
-                error_detail = "Gemini API authentication failed. Check your API key."
-                logger.error(f"Gemini API authentication failed: {error_msg}")
+                error_detail = "Model API authentication failed. Check your API key."
+                logger.error(f"Model API authentication failed: {error_msg}")
             elif "network" in error_msg.lower() or "connection" in error_msg.lower():
                 error_detail = "Network connectivity issue. Check your internet connection."
                 logger.error(f"Network connectivity issue: {error_msg}")
             elif "timeout" in error_msg.lower():
-                error_detail = "Gemini API request timed out. The service may be slow or unavailable."
-                logger.error(f"Gemini API timeout: {error_msg}")
+                error_detail = "Model API request timed out. The service may be slow or unavailable."
+                logger.error(f"Model API timeout: {error_msg}")
             else:
                 error_detail = f"Unexpected error: {error_msg}"
-                logger.error(f"Unexpected error in Gemini API: {error_msg}")
+                logger.error(f"Unexpected error in Model API: {error_msg}")
             
             # Log detailed error information
             logger.error(f"Error type: {error_type}")
@@ -981,7 +981,7 @@ CRITICAL: If the paper contains ANY specific microbial taxa identification, abun
                 "confidence": confidence
             }
         except Exception as e:
-            logger.error(f"Gemini API error in chat: {str(e)}")
+            logger.error(f"Model API error in chat: {str(e)}")
             return {
                 "text": f"[Error: {str(e)}]",
                 "confidence": 0.0

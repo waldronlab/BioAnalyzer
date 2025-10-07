@@ -3,38 +3,107 @@ window.chatHistory = [];
 window.ws = null;
 window.isConnected = false;
 
-// Global configuration
-let appConfig = {
-    timeouts: {
-        frontend: 180000, // Default 180 seconds in milliseconds
-        gemini: 90000,    // Default 90 seconds in milliseconds
-        analysis: 30000   // Default 30 seconds in milliseconds (allows for metadata + analysis)
-    }
+// ---------------------------------------------------------------------------
+// Default frontend configuration (merged with backend config if available)
+// ---------------------------------------------------------------------------
+const defaultConfig = {
+    frontend: {
+        apiBaseUrl: '/api/v1',
+        analysisTimeout: 30000, // 30 seconds default
+        model: {
+            hidden_size: 768,
+            num_hidden_layers: 6,
+            num_attention_heads: 12,
+            intermediate_size: 3072,
+        },
+    },
 };
 
-// Fetch configuration from backend
+// Global configuration (timeouts preserved from existing app expectations)
+let appConfig = {
+    // Keep the existing timeouts structure for backward compatibility
+    timeouts: {
+        frontend: 180000, // Default 180 seconds in milliseconds
+        gemini: 90000, // Default 90 seconds in milliseconds
+        analysis: 30000, // Default 30 seconds in milliseconds
+    },
+    // Start with default frontend config; fetchConfig will merge real values
+    frontend: { ...defaultConfig.frontend },
+};
+
+// Fetch configuration from backend and merge into defaults
 async function fetchConfig() {
     try {
-        const response = await fetch('/config');
-        if (response.ok) {
-            const config = await response.json();
-            // Convert seconds to milliseconds for frontend use
-            appConfig.timeouts = {
-                frontend: (config.timeouts.frontend || 180) * 1000,
-                gemini: (config.timeouts.gemini || 90) * 1000,
-                analysis: (config.timeouts.analysis || 25) * 1000
-            };
-            console.log('Configuration loaded:', appConfig);
+        const response = await fetch('/api/v1/config');
+        if (!response.ok) {
+            console.warn('Config endpoint returned non-OK status:', response.status);
+            return appConfig;
         }
+
+        const config = await response.json();
+
+        // Merge frontend config if provided by the backend
+        if (config.frontend) {
+            appConfig.frontend = { ...defaultConfig.frontend, ...config.frontend };
+        }
+
+        // Support legacy/timeouts section in seconds -> convert to ms
+        if (config.timeouts) {
+            appConfig.timeouts = {
+                frontend: (config.timeouts.frontend || appConfig.timeouts.frontend / 1000) * 1000,
+                gemini: (config.timeouts.gemini || appConfig.timeouts.gemini / 1000) * 1000,
+                analysis: (config.timeouts.analysis || appConfig.timeouts.analysis / 1000) * 1000,
+            };
+        }
+
+        console.log('Configuration loaded and merged:', appConfig);
+        return appConfig;
     } catch (error) {
         console.warn('Failed to load configuration, using defaults:', error);
+        return appConfig;
     }
 }
 
-// Initialize configuration when the page loads
-document.addEventListener('DOMContentLoaded', function() {
-    fetchConfig();
+// Initialize configuration when the page loads and wire quick UI controls
+document.addEventListener('DOMContentLoaded', async function() {
+    await fetchConfig();
+
+    // Bind optional analyze button (newer HTML may use #analyze-btn and #pmid-input)
+    const analyzeButton = document.getElementById('analyze-btn');
+    const pmidInput = document.getElementById('pmid-input') || document.getElementById('singlePmid');
+    if (analyzeButton && pmidInput) {
+        analyzeButton.addEventListener('click', async () => {
+            const pmid = pmidInput.value.trim();
+            if (!pmid) {
+                showAlert('Please enter a valid PubMed ID.', 'warning');
+                return;
+            }
+            showLoading();
+            try {
+                const results = await handleSinglePmid(pmid);
+                displayResults(results);
+            } catch (e) {
+                console.error('Analysis error:', e);
+            } finally {
+                hideLoading();
+            }
+        });
+    }
 });
+
+// Utility: Display alerts for user feedback
+function showAlert(message, type = 'info') {
+    const alertBox = document.getElementById('alert-box');
+    if (alertBox) {
+        alertBox.innerHTML = `
+      <div class="alert ${type}">
+        <strong>${type.toUpperCase()}:</strong> ${message}
+      </div>
+    `;
+    } else {
+        alert(message);
+    }
+}
 
 // Immediately define the function globally
 window.analyzePapers = async function() {
@@ -167,46 +236,48 @@ async function handleFileUpload(file) {
     }
 }
 
-// Handle single PMID
+// Handle single PMID (call original enhanced_analysis endpoint and keep timeout/progress handling)
 async function handleSinglePmid(pmid) {
     try {
         // Ensure we have the latest configuration
         await fetchConfig();
-        
-        // Show progress indicator
+
+        // Prefer frontend-configured timeout if present, otherwise fallback to legacy timeouts
+        const timeout = (appConfig.frontend && appConfig.frontend.analysisTimeout) || appConfig.timeouts.analysis || 30000;
+
         showProgress('Retrieving paper metadata...', 25);
-        
-        // Create AbortController for timeout handling
+
         const controller = new AbortController();
-        console.log('Using analysis timeout:', appConfig.timeouts.analysis, 'ms (', appConfig.timeouts.analysis / 1000, 'seconds)');
-        
+        console.log('Using analysis timeout:', timeout, 'ms (', timeout / 1000, 'seconds)');
+
         // Declare timeout and interval variables outside try block for error handling
         let timeoutId;
         let progressInterval;
-        
+
         try {
-            timeoutId = setTimeout(() => controller.abort(), appConfig.timeouts.analysis);
-            
+            timeoutId = setTimeout(() => controller.abort(), timeout);
+
             const startTime = Date.now();
-            
+
             // Add progress updates during the request
             progressInterval = setInterval(() => {
-                const currentProgress = Math.min(75, 25 + (Date.now() - startTime) / (appConfig.timeouts.analysis * 0.75) * 50);
-                showProgress('Analyzing paper content...', currentProgress);
+                const currentProgress = Math.min(75, 25 + (Date.now() - startTime) / (timeout * 0.75) * 50);
+                showProgress('Analyzing paper content...', Math.round(currentProgress));
             }, 2000); // Update every 2 seconds
-            
-            const response = await fetch(`/enhanced_analysis/${pmid}`, {
-            signal: controller.signal,
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
+
+            // Keep the original API endpoint unchanged
+            const response = await fetch(`/api/v1/enhanced_analysis/${pmid}`, {
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
             });
-            
+
             // Clear timeout and interval immediately after response
             clearTimeout(timeoutId);
             clearInterval(progressInterval);
-            
+
             if (!response.ok) {
                 if (response.status === 408) {
                     throw new Error('Request timed out. The analysis is taking longer than expected. Please try again.');
@@ -218,9 +289,9 @@ async function handleSinglePmid(pmid) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
             }
-            
+
             showProgress('Analyzing paper content...', 75);
-            
+
             const data = await response.json();
             if (data.error) {
                 // Enhanced error handling for Gemini API issues
@@ -230,13 +301,13 @@ async function handleSinglePmid(pmid) {
                     throw new Error(data.error);
                 }
             }
-            
+
             showProgress('Analysis complete!', 100);
-            
+
             return [{
                 pmid: pmid,
                 title: data.title || 'N/A',
-                enhanced_analysis: data.enhanced_analysis || {}
+                enhanced_analysis: data.enhanced_analysis || data
             }];
         } catch (innerError) {
             // Clear timeout and interval in case of error
@@ -244,14 +315,17 @@ async function handleSinglePmid(pmid) {
             if (progressInterval) clearInterval(progressInterval);
             throw innerError;
         }
-        
+
     } catch (error) {
         console.error('Error in handleSinglePmid:', error);
-        
+
         if (error.name === 'AbortError') {
-            const timeoutSeconds = Math.round(appConfig.timeouts.analysis / 1000);
-            throw new Error(`Request timed out after ${timeoutSeconds} seconds. The analysis is taking longer than expected. Please try again.`);
+            const timeoutSeconds = Math.round(((appConfig.frontend && appConfig.frontend.analysisTimeout) || appConfig.timeouts.analysis || 30000) / 1000);
+            showAlert(`Analysis timed out after ${timeoutSeconds} seconds. Try again later.`, 'warning');
+            throw new Error('AbortError');
         }
+
+        showAlert(`Analysis failed: ${error.message}`, 'error');
         throw error;
     }
 }
@@ -313,7 +387,7 @@ async function handleBatchPmids(pmidsText) {
     
     // Try the enhanced endpoint first
     try {
-        const response = await fetch('/enhanced_analysis_batch', {
+        const response = await fetch('/api/v1/enhanced_analysis_batch', {
                 method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -628,7 +702,7 @@ window.analyzeBatchPapers = window.analyzePapers;
         
         // Simulate a response (replace with actual AI chat later)
         setTimeout(() => {
-            displayChatMessage('Thank you for your message. The chat assistant is currently being configured.', 'assistant');
+            displayChatMessage('Thank you for your message. The assistant is being configured.', 'assistant');
         }, 1000);
     }
 

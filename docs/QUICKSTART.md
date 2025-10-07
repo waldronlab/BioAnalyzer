@@ -58,7 +58,7 @@ pip install -r requirements.txt
 2. Sign in → Generate API key
 3. Copy the key
 
-##### Google Gemini API Key (AI analysis)
+##### Model API Key (for automated analysis)
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Sign in → Create API key
 3. Copy the key
@@ -68,7 +68,7 @@ pip install -r requirements.txt
 # Create environment file
 cat > .env << EOF
 NCBI_API_KEY=your_ncbi_key_here
-GEMINI_API_KEY=your_gemini_key_here
+GEMINI_API_KEY=your_model_key_here
 EMAIL=your_email@example.com
 DEFAULT_MODEL=gemini
 EOF

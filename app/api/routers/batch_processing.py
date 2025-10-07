@@ -13,7 +13,7 @@ from pathlib import Path
 from app.models.unified_qa import UnifiedQA
 from app.services.data_retrieval import PubMedRetriever
 from app.utils.text_processing import AdvancedTextProcessor
-from app.utils.config import NCBI_API_KEY, DEFAULT_MODEL
+from app.utils.config import NCBI_API_KEY, GEMINI_API_KEY, DEFAULT_MODEL
 from app.utils.performance_logger import perf_logger
 from app.services.cache_manager import CacheManager
 from app.api.models.api_models import BatchAnalysisRequest, EnhancedBatchAnalysisRequest
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Batch Processing"])
 
 # Initialize services
-unified_qa = UnifiedQA()
+unified_qa = UnifiedQA(use_gemini=True, gemini_api_key=GEMINI_API_KEY)
 pubmed_retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 text_processor = AdvancedTextProcessor()
 cache_manager = CacheManager()
@@ -151,7 +151,7 @@ async def analyze_batch(
             async with semaphore:
                 try:
                     # Check cache first
-                    cached_result = cache_manager.get_analysis(pmid)
+                    cached_result = cache_manager.get_analysis_result(pmid)
                     if cached_result:
                         return {
                             "pmid": pmid,
@@ -165,7 +165,7 @@ async def analyze_batch(
                     
                     if analysis_result:
                         # Cache the result
-                        cache_manager.cache_analysis(pmid, analysis_result)
+                        cache_manager.store_analysis_result(pmid, analysis_result, {})
                         return {
                             "pmid": pmid,
                             "status": "success",
@@ -304,7 +304,7 @@ async def enhanced_analysis_batch(
             async with semaphore:
                 try:
                     # Check cache first
-                    cached_result = cache_manager.get_analysis(pmid)
+                    cached_result = cache_manager.get_analysis_result(pmid)
                     if cached_result:
                         # Enhance cached result
                         enhanced_result = await enhance_analysis_result(cached_result, pmid)
@@ -356,6 +356,7 @@ async def enhanced_analysis_batch(
             "failed_analyses": len(failed_results),
             "max_concurrent": max_concurrent,
             "results": successful_results,
+            "batch_results": successful_results,  # alias for frontend
             "errors": failed_results,
             "processing_timestamp": get_current_timestamp(),
             "analysis_type": "enhanced"
@@ -425,21 +426,27 @@ def parse_excel_content(content: bytes) -> List[str]:
 async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
     """Internal method to analyze a single paper."""
     try:
-        # Retrieve paper data
-        paper_data = await pubmed_retriever.get_paper_data(pmid)
-        if not paper_data:
-            return None
+        # Retrieve minimal texts for analysis
+        texts = await pubmed_retriever.get_texts_for_analysis_async(pmid)
+        paper_data = {
+            "pmid": pmid,
+            "title": texts.get('title', ''),
+            "abstract": texts.get('abstract', ''),
+            "full_text": texts.get('full_text', '')
+        }
         
         # Process the paper
         start_time = datetime.now()
         
-        # Extract and process text
+        # Extract and process text (use abstract if full text missing)
         full_text = paper_data.get('full_text', '')
-        if not full_text:
+        abstract = paper_data.get('abstract', '')
+        text_for_analysis = f"{abstract}\n\n{full_text}" if abstract else full_text
+        if not text_for_analysis.strip():
             return None
         
         # Process text for analysis
-        processed_text = text_processor.process_text(full_text)
+        processed_text = text_processor.process_text(text_for_analysis)
         
         # Perform field analysis
         field_analysis = await perform_field_analysis(processed_text, pmid)
@@ -486,11 +493,11 @@ async def perform_field_analysis(text: str, pmid: str) -> Dict:
         
         for field, question in field_questions.items():
             try:
-                response = await unified_qa.ask_question(
-                    question=question,
-                    context=text,
-                    pmid=pmid
-                )
+                # Create a prompt combining question and context
+                prompt = f"Context: {text[:2000]}\n\nQuestion: {question}\n\nPlease provide a specific answer based on the context."
+                
+                # Use chat method to ask the question
+                response = await unified_qa.chat(prompt)
                 
                 field_results[field] = process_field_response(response, field)
                 

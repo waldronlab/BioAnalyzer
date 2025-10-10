@@ -169,10 +169,10 @@ async def ncbi_health_check(pmid: str = "31452104"):
             "pmid": pmid
         }
     except Exception as e:
-        logger.error(f"NCBI health check error: {e}")
+        logger.error(f"NCBI health check error: {e}", exc_info=True)
         return {
             "status": "unhealthy",
-            "error": str(e),
+            "error": "An internal error occurred. Please try again later.",
             "timestamp": get_current_timestamp(),
             "pmid": pmid
         }

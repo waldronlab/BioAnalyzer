@@ -19,7 +19,6 @@ services:
       # Mount source code for live reloading
       - ./app:/app/app
       - ./config:/app/config
-      - ./main.py:/app/main.py
       - ./frontend:/app/frontend
       # Data and cache volumes
       - ./data:/app/data

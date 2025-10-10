@@ -21,13 +21,11 @@ services:
     dns:
       - 8.8.8.8
       - 8.8.4.4
-    extra_hosts:
-      - "eutils.ncbi.nlm.nih.gov:130.14.29.112"
+    # Note: avoid pinning eutils.ncbi.nlm.nih.gov to a static IP; let DNS handle it to prevent TLS/connectivity issues
     volumes:
       # Mount source code for live reloading
       - ./app:/app/app
       - ./config:/app/config
-      - ./main.py:/app/main.py
       - ./frontend:/app/frontend
       # Data and cache volumes
       - ./data:/app/data

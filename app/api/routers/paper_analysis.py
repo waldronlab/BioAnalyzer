@@ -28,6 +28,7 @@ from app.utils.field_validator import FieldExtractionEnhancer
 from app.utils.performance_logger import perf_logger
 from app.services.cache_manager import CacheManager
 from app.api.models.api_models import Question, PaperAnalysisResult
+from app.utils.fallback_extractor import BasicFieldExtractor
 from app.api.utils.api_utils import (
     extract_taxa,
     create_default_field_structure,
@@ -47,6 +48,7 @@ text_processor = AdvancedTextProcessor()
 methods_scorer = MethodsScorer()
 field_validator = FieldExtractionEnhancer()
 cache_manager = CacheManager()
+fallback_extractor = BasicFieldExtractor()
 
 
 async def process_message(message):
@@ -289,7 +291,8 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
         cached_result = cache_manager.get_analysis_result(pmid)
         if cached_result:
             logger.info(f"Using cached analysis for PMID {pmid}")
-            return cached_result
+            # Unwrap cached payload to expected analysis structure
+            return cached_result.get("analysis_data", cached_result)
         
         # Minimal retrieval: abstract + full text (+ optional title)
         texts = await pubmed_retriever.get_texts_for_analysis_async(pmid)
@@ -313,8 +316,11 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
         text_for_analysis = f"{abstract}\n\n{full_text}" if abstract else full_text
         
         if not text_for_analysis.strip():
-            logger.warning(f"No text content available for PMID {pmid}; returning fallback analysis")
-            field_analysis = create_comprehensive_fallback_analysis()
+            logger.warning(f"No text content available for PMID {pmid}; attempting heuristic fallback")
+            # Try heuristic extraction from whatever minimal title/abstract we have (likely empty)
+            heuristic_fields = fallback_extractor.extract((paper_data.get('title','') + '\n' + paper_data.get('abstract','')).strip())
+            # If still nothing, create comprehensive fallback
+            field_analysis = heuristic_fields or create_comprehensive_fallback_analysis()
             processing_time = (datetime.now() - start_time).total_seconds()
             analysis_result = {
                 "pmid": pmid,
@@ -342,8 +348,8 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
                 timeout=ANALYSIS_TIMEOUT
             )
         except asyncio.TimeoutError:
-            logger.warning(f"Field analysis timed out for PMID {pmid}, using fallback")
-            field_analysis = create_comprehensive_fallback_analysis()
+            logger.warning(f"Field analysis timed out for PMID {pmid}, using heuristic fallback")
+            field_analysis = fallback_extractor.extract(text_for_analysis) or create_comprehensive_fallback_analysis()
         
         # Calculate processing time
         processing_time = (datetime.now() - start_time).total_seconds()
@@ -376,7 +382,8 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
 async def perform_field_analysis(text: str, pmid: str) -> Dict:
     """Perform analysis of the 6 essential fields."""
     try:
-        # Use the unified QA system for field extraction
+        # Use the unified QA system for field extraction if available
+        has_llm = getattr(unified_qa, 'qa_system', None) is not None
         field_questions = {
             "host_species": "What host species is being studied in this research?",
             "body_site": "What body site or anatomical location was sampled for microbiome analysis?",
@@ -388,21 +395,29 @@ async def perform_field_analysis(text: str, pmid: str) -> Dict:
         
         field_results = {}
         
-        for field, question in field_questions.items():
-            try:
-                # Create a prompt combining question and context
-                prompt = f"Context: {text[:2000]}\n\nQuestion: {question}\n\nPlease provide a specific answer based on the context."
-                
-                # Use chat method to ask the question
-                response = await unified_qa.chat(prompt)
-                
-                # Process the response
-                field_results[field] = process_field_response(response, field)
-                
-            except Exception as e:
-                logger.warning(f"Error analyzing field {field} for PMID {pmid}: {e}")
-                field_results[field] = create_default_field_structure(field)
-        
+        if has_llm:
+            for field, question in field_questions.items():
+                try:
+                    # Create a prompt combining question and context
+                    prompt = f"Context: {text[:2000]}\n\nQuestion: {question}\n\nPlease provide a specific answer based on the context."
+                    response = await unified_qa.chat(prompt)
+                    field_results[field] = process_field_response(response, field)
+                except Exception as e:
+                    logger.warning(f"Error analyzing field {field} for PMID {pmid}: {e}")
+                    field_results[field] = create_default_field_structure(field)
+        else:
+            # No LLM available: use heuristic fallback
+            logger.info("LLM not available; using heuristic fallback extractor for fields")
+            field_results = fallback_extractor.extract(text)
+
+        # If some fields remain ABSENT with low confidence, try to fill with heuristic hints
+        if has_llm:
+            heuristic = fallback_extractor.extract(text)
+            for k, v in heuristic.items():
+                cur = field_results.get(k, {})
+                if not cur or cur.get('status') == 'ABSENT':
+                    field_results[k] = v
+
         return field_results
         
     except Exception as e:

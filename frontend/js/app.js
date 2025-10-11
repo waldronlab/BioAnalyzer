@@ -2,6 +2,7 @@
 window.chatHistory = [];
 window.ws = null;
 window.isConnected = false;
+window.latestResults = []; // holds the most recent analysis results shown in UI
 
 // ---------------------------------------------------------------------------
 // Default frontend configuration (merged with backend config if available)
@@ -195,7 +196,7 @@ async function handleFileUpload(file) {
     formData.append('file', file);
     
     try {
-        const response = await fetch('/upload_csv', {
+        const response = await fetch('/api/v1/upload_csv', {
             method: 'POST',
             body: formData
         });
@@ -228,7 +229,17 @@ async function handleFileUpload(file) {
         }
         
         console.log('Upload successful, results:', data);
-        return data.results || [];
+        
+        // If upload returned PMIDs, kick off streaming batch analysis automatically
+        const pmids = Array.isArray(data.pmids) ? data.pmids : [];
+        if (pmids.length > 0) {
+            showProgress('Starting batch analysis (streaming)...', 15);
+            const results = await analyzeBatchStreaming(pmids);
+            return results;
+        }
+        
+        // If no PMIDs present, nothing to analyze
+        return [];
         
     } catch (error) {
         console.error('File upload error:', error);
@@ -399,7 +410,7 @@ async function handleBatchPmids(pmidsText) {
             const errorText = await response.text();
             
             // If enhanced fails, try the regular batch endpoint
-            const regularResponse = await fetch('/analyze_batch', {
+            const regularResponse = await fetch('/api/v1/analyze_batch', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -514,8 +525,169 @@ function showError(message) {
     if (emptyState) emptyState.style.display = 'none';
 }
 
+// Append a single result card (incremental rendering)
+function renderResultCard(result) {
+    const analysis = (result && result.enhanced_analysis) || {};
+    return `
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <strong>PMID ${result.pmid || ''}</strong> - ${result.title ? escapeHtml(result.title) : 'N/A'}
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="field-card">
+                            <h6><i class="fas fa-dna me-2"></i>Host Species</h6>
+                            <p class="mb-1"><strong>Value:</strong> ${analysis.host_species?.primary || analysis.host_species?.value || 'Unknown'}</p>
+                            <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.host_species?.status?.toLowerCase() || 'absent'}">${analysis.host_species?.status || 'ABSENT'}</span></p>
+                            <p class="mb-1"><strong>Confidence:</strong> ${(analysis.host_species?.confidence || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="field-card">
+                            <h6><i class="fas fa-map-marker-alt me-2"></i>Body Site</h6>
+                            <p class="mb-1"><strong>Value:</strong> ${analysis.body_site?.site || analysis.body_site?.value || 'Unknown'}</p>
+                            <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.body_site?.status?.toLowerCase() || 'absent'}">${analysis.body_site?.status || 'ABSENT'}</span></p>
+                            <p class="mb-1"><strong>Confidence:</strong> ${(analysis.body_site?.confidence || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="field-card">
+                            <h6><i class="fas fa-stethoscope me-2"></i>Condition</h6>
+                            <p class="mb-1"><strong>Value:</strong> ${analysis.condition?.description || analysis.condition?.value || 'Unknown'}</p>
+                            <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.condition?.status?.toLowerCase() || 'absent'}">${analysis.condition?.status || 'ABSENT'}</span></p>
+                            <p class="mb-1"><strong>Confidence:</strong> ${(analysis.condition?.confidence || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="field-card">
+                            <h6><i class="fas fa-microscope me-2"></i>Sequencing Type</h6>
+                            <p class="mb-1"><strong>Value:</strong> ${analysis.sequencing_type?.method || analysis.sequencing_type?.value || 'Unknown'}</p>
+                            <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.sequencing_type?.status?.toLowerCase() || 'absent'}">${analysis.sequencing_type?.status || 'ABSENT'}</span></p>
+                            <p class="mb-1"><strong>Confidence:</strong> ${(analysis.sequencing_type?.confidence || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="field-card">
+                            <h6><i class="fas fa-sitemap me-2"></i>Taxa Level</h6>
+                            <p class="mb-1"><strong>Value:</strong> ${analysis.taxa_level?.level || analysis.taxa_level?.value || 'Unknown'}</p>
+                            <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.taxa_level?.status?.toLowerCase() || 'absent'}">${analysis.taxa_level?.status || 'ABSENT'}</span></p>
+                            <p class="mb-1"><strong>Confidence:</strong> ${(analysis.taxa_level?.confidence || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="field-card">
+                            <h6><i class="fas fa-hashtag me-2"></i>Sample Size</h6>
+                            <p class="mb-1"><strong>Value:</strong> ${analysis.sample_size?.size || analysis.sample_size?.value || 'Unknown'}</p>
+                            <p class="mb-1"><strong>Status:</strong> <span class="status-${analysis.sample_size?.status?.toLowerCase() || 'absent'}">${analysis.sample_size?.status || 'ABSENT'}</span></p>
+                            <p class="mb-1"><strong>Confidence:</strong> ${(analysis.sample_size?.confidence || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+}
+
+function appendResult(result) {
+    const resultsContent = document.getElementById('results-content');
+    const emptyState = document.getElementById('empty-state');
+    const loadingElement = document.getElementById('loading');
+
+    if (emptyState) emptyState.style.display = 'none';
+    if (loadingElement) loadingElement.style.display = 'none';
+
+    if (resultsContent && resultsContent.style.display !== 'block') {
+        resultsContent.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>Analysis Results
+                </h4>
+                <div>
+                    <button class="btn btn-outline-success btn-sm me-2" onclick="exportResults()">
+                        <i class="fas fa-download me-2"></i>Export CSV
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="clearResults()">
+                        <i class="fas fa-trash me-2"></i>Clear
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Papers Analyzed</h5>
+                            <h2 class="text-primary" id="results-count">0</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        resultsContent.style.display = 'block';
+    }
+
+    // Append card
+    resultsContent.innerHTML += renderResultCard(result);
+
+    // Store in latestResults for export
+    if (Array.isArray(window.latestResults)) {
+        window.latestResults.push(result);
+    } else {
+        window.latestResults = [result];
+    }
+
+    // Update counter
+    const countEl = document.getElementById('results-count');
+    if (countEl) {
+        const current = parseInt(countEl.textContent || '0', 10) || 0;
+        countEl.textContent = String(current + 1);
+    }
+}
+
+// Stream analysis results via SSE and append as they arrive
+async function analyzeBatchStreaming(pmids) {
+    return new Promise((resolve, reject) => {
+        const results = [];
+        const url = `/api/v1/enhanced_analysis_batch_stream?pmids=${encodeURIComponent(pmids.join(','))}&max_concurrent=1`;
+        const es = new EventSource(url);
+
+        es.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data && data.pmid) {
+                    appendResult(data);
+                    results.push(data);
+                }
+            } catch (e) {
+                console.warn('Failed to parse streaming event:', e);
+            }
+        };
+
+        es.addEventListener('done', () => {
+            es.close();
+            resolve(results);
+        });
+
+        es.onerror = (err) => {
+            console.warn('Streaming error:', err);
+            try { es.close(); } catch {}
+            // Resolve whatever we have so far
+            resolve(results);
+        };
+    });
+}
+
 // Display results in the new format
 function displayResults(results) {
+    // Keep a canonical copy for export
+    if (Array.isArray(results)) {
+        window.latestResults = results.slice();
+    }
     
     if (!results || results.length === 0) {
         showError('No results to display');
@@ -663,8 +835,91 @@ function displayResults(results) {
 
 // Export results to CSV
 window.exportResults = function() {
-    // Implementation for CSV export
-    alert('CSV export functionality will be implemented here');
+    try {
+        const rows = Array.isArray(window.latestResults) ? window.latestResults : [];
+        if (rows.length === 0) {
+            showAlert('No results to export yet.', 'warning');
+            return;
+        }
+        // Build CSV header
+        const header = [
+            'pmid','title',
+            'host_species.value','host_species.status','host_species.confidence',
+            'body_site.value','body_site.status','body_site.confidence',
+            'condition.value','condition.status','condition.confidence',
+            'sequencing_type.value','sequencing_type.status','sequencing_type.confidence',
+            'taxa_level.value','taxa_level.status','taxa_level.confidence',
+            'sample_size.value','sample_size.status','sample_size.confidence'
+        ];
+
+        function val(obj, path, altKeys=[]) {
+            try {
+                let v = obj;
+                for (const k of path.split('.')) {
+                    if (v == null) return '';
+                    v = v[k];
+                }
+                if (v == null && altKeys.length) {
+                    for (const ak of altKeys) {
+                        const av = obj?.enhanced_analysis?.[ak]?.value;
+                        if (av != null) return String(av);
+                    }
+                }
+                return v == null ? '' : String(v);
+            } catch { return ''; }
+        }
+
+        // CSV escape
+        const esc = (s) => {
+            const x = String(s ?? '');
+            if (/[,"\n]/.test(x)) return '"' + x.replace(/"/g, '""') + '"';
+            return x;
+        };
+
+        // Build data rows
+        const lines = [header.join(',')];
+        for (const r of rows) {
+            const a = r?.enhanced_analysis || {};
+            const line = [
+                esc(r.pmid || ''),
+                esc(r.title || ''),
+                esc(a.host_species?.value ?? a.host_species?.primary ?? ''),
+                esc(a.host_species?.status ?? ''),
+                esc(a.host_species?.confidence ?? ''),
+                esc(a.body_site?.value ?? a.body_site?.site ?? ''),
+                esc(a.body_site?.status ?? ''),
+                esc(a.body_site?.confidence ?? ''),
+                esc(a.condition?.value ?? a.condition?.description ?? ''),
+                esc(a.condition?.status ?? ''),
+                esc(a.condition?.confidence ?? ''),
+                esc(a.sequencing_type?.value ?? a.sequencing_type?.method ?? ''),
+                esc(a.sequencing_type?.status ?? ''),
+                esc(a.sequencing_type?.confidence ?? ''),
+                esc(a.taxa_level?.value ?? a.taxa_level?.level ?? ''),
+                esc(a.taxa_level?.status ?? ''),
+                esc(a.taxa_level?.confidence ?? ''),
+                esc(a.sample_size?.value ?? a.sample_size?.size ?? ''),
+                esc(a.sample_size?.status ?? ''),
+                esc(a.sample_size?.confidence ?? ''),
+            ];
+            lines.push(line.join(','));
+        }
+
+        const csv = lines.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        a.download = `bioanalyzer_results_${ts}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error('Export failed:', e);
+        showAlert('Export failed. See console for details.', 'error');
+    }
 };
 
 // Clear results

@@ -24,6 +24,7 @@ from app.services.data_retrieval import PubMedRetriever
 from app.utils.performance_logger import perf_logger
 from app.api.models.api_models import HealthResponse, ConfigResponse, MetricsResponse
 from app.api.utils.api_utils import get_current_timestamp
+from app.services.data_retrieval import PubMedRetriever
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["System"])
@@ -150,6 +151,30 @@ async def gemini_health_check():
             "api_key_configured": bool(GEMINI_API_KEY),
             "error": str(e),
             "timestamp": get_current_timestamp()
+        }
+
+
+@router.get("/health/ncbi")
+async def ncbi_health_check(pmid: str = "31452104"):
+    """Check NCBI E-Utilities connectivity and basic metadata availability."""
+    try:
+        retriever = PubMedRetriever(api_key=NCBI_API_KEY)
+        md = retriever.fetch_paper_metadata(pmid)
+        ok = bool(md.get("title") or md.get("abstract"))
+        return {
+            "status": "healthy" if ok else "unhealthy",
+            "title_present": bool(md.get("title")),
+            "abstract_present": bool(md.get("abstract")),
+            "timestamp": get_current_timestamp(),
+            "pmid": pmid
+        }
+    except Exception as e:
+        logger.error(f"NCBI health check error: {e}", exc_info=True)
+        return {
+            "status": "unhealthy",
+            "error": "An internal error occurred. Please try again later.",
+            "timestamp": get_current_timestamp(),
+            "pmid": pmid
         }
 
 

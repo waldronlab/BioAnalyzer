@@ -91,11 +91,11 @@ def check_required_vars():
     
     return True 
 
-# Performance Configuration - Optimized for 10-second analysis
-API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))  # seconds - NCBI API timeout
-ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "25"))  # seconds - total analysis timeout
-GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "8"))  # seconds - Gemini API timeout
-FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "30"))  # seconds - frontend timeout
+# Performance Configuration - tightened defaults for responsiveness
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", "10"))  # seconds - NCBI API timeout
+ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "15"))  # seconds - total analysis timeout
+GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "6"))  # seconds - Gemini API timeout
+FRONTEND_TIMEOUT = int(os.getenv("FRONTEND_TIMEOUT", "20"))  # seconds - frontend timeout
 
 # Cache Configuration
 CACHE_VALIDITY_HOURS = int(os.getenv("CACHE_VALIDITY_HOURS", "24"))
@@ -104,6 +104,9 @@ MAX_CACHE_SIZE = int(os.getenv("MAX_CACHE_SIZE", "1000"))  # number of entries
 # Rate Limiting
 NCBI_RATE_LIMIT_DELAY = float(os.getenv("NCBI_RATE_LIMIT_DELAY", "0.34"))  # seconds
 MAX_CONCURRENT_REQUESTS = int(os.getenv("MAX_CONCURRENT_REQUESTS", "3"))
+
+# Retrieval configuration
+USE_FULLTEXT = os.getenv('USE_FULLTEXT', '0').lower() in ('1', 'true', 'yes')
 
 # Logging Configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

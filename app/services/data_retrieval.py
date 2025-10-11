@@ -3,7 +3,7 @@ import time
 import asyncio
 from typing import List, Dict, Any, Optional
 from xml.etree import ElementTree
-from app.utils.config import NCBI_RATE_LIMIT_DELAY, API_TIMEOUT
+from app.utils.config import NCBI_RATE_LIMIT_DELAY, API_TIMEOUT, USE_FULLTEXT
 
 
 class PubMedRetriever:
@@ -39,8 +39,8 @@ class PubMedRetriever:
             try:
                 # Respect inter-request delay to avoid rate limiting
                 time.sleep(max(NCBI_RATE_LIMIT_DELAY, 0.0))
-                # Use conservative timeouts: 5s to connect, <=10s to read
-                per_request_timeout = min(API_TIMEOUT or 30, 10)
+                # Use conservative timeouts: 5s to connect, <=8s to read (lower for responsiveness)
+                per_request_timeout = min(API_TIMEOUT or 30, 8)
                 response = self.session.get(
                     url,
                     params=params,
@@ -241,23 +241,27 @@ class PubMedRetriever:
 
     async def get_texts_for_analysis_async(self, pmid: str) -> Dict[str, str]:
         """
-        Minimal retrieval for analysis: abstract and full_text (and optional title).
-        Avoids heavy metadata requirements to reduce failure modes.
+        Minimal retrieval for analysis: abstract and optional full_text (and optional title).
+        Full text fetching can be disabled via USE_FULLTEXT to reduce latency.
         """
-        # Run metadata and full-text retrieval in parallel with strict timeouts
+        # Metadata (title/abstract) is required
         async def fetch_metadata():
             try:
-                return await asyncio.wait_for(self.get_paper_metadata_async(pmid), timeout=8)
+                return await asyncio.wait_for(self.get_paper_metadata_async(pmid), timeout=6)
             except Exception:
                 return {}
 
-        async def fetch_fulltext():
-            try:
-                return await asyncio.wait_for(self.get_pmc_fulltext_async(pmid), timeout=10)
-            except Exception:
-                return ""
+        if USE_FULLTEXT:
+            async def fetch_fulltext():
+                try:
+                    return await asyncio.wait_for(self.get_pmc_fulltext_async(pmid), timeout=8)
+                except Exception:
+                    return ""
+            metadata, full_text = await asyncio.gather(fetch_metadata(), fetch_fulltext())
+        else:
+            metadata = await fetch_metadata()
+            full_text = ""
 
-        metadata, full_text = await asyncio.gather(fetch_metadata(), fetch_fulltext())
         abstract = metadata.get("abstract", "") if metadata else ""
         title = metadata.get("title", "") if metadata else ""
         return {

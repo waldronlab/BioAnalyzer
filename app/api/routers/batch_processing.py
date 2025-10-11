@@ -2,6 +2,7 @@
 Batch processing endpoints for multiple paper analysis.
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body
+from fastapi.responses import StreamingResponse
 from typing import Dict, List, Optional
 import csv
 import asyncio
@@ -9,6 +10,7 @@ import logging
 from datetime import datetime
 import pytz
 from pathlib import Path
+import json
 
 from app.models.unified_qa import UnifiedQA
 from app.services.data_retrieval import PubMedRetriever
@@ -18,6 +20,7 @@ from app.utils.performance_logger import perf_logger
 from app.services.cache_manager import CacheManager
 from app.api.models.api_models import BatchAnalysisRequest, EnhancedBatchAnalysisRequest
 from app.api.utils.api_utils import get_current_timestamp
+from app.utils.fallback_extractor import BasicFieldExtractor
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Batch Processing"])
@@ -27,6 +30,7 @@ unified_qa = UnifiedQA(use_gemini=True, gemini_api_key=GEMINI_API_KEY)
 pubmed_retriever = PubMedRetriever(api_key=NCBI_API_KEY)
 text_processor = AdvancedTextProcessor()
 cache_manager = CacheManager()
+fallback_extractor = BasicFieldExtractor()
 
 
 @router.post("/upload_csv")
@@ -83,16 +87,20 @@ async def upload_csv(file: UploadFile = File(...)):
         with open(file_path, "wb") as f:
             f.write(content)
         
-        # Return upload summary
+        # Return upload summary (return ALL PMIDs; include a preview for UI convenience)
         return {
             "filename": file.filename,
             "pmids_found": len(pmids),
-            "pmids": pmids[:10],  # Return first 10 for preview
+            "pmids": pmids,  # full list for analysis
+            "pmids_preview": pmids[:10],  # first 10 for UI preview
             "file_path": file_path,
             "upload_timestamp": get_current_timestamp(),
             "status": "uploaded_successfully"
         }
         
+    except HTTPException as e:
+        # Preserve explicit 4xx errors (e.g., no PMIDs found)
+        raise e
     except Exception as e:
         logger.error(f"Error uploading CSV file: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
@@ -153,11 +161,13 @@ async def analyze_batch(
                     # Check cache first
                     cached_result = cache_manager.get_analysis_result(pmid)
                     if cached_result:
+                        # Extract actual analysis payload from cache wrapper if present
+                        cached_analysis = cached_result.get("analysis_data", cached_result)
                         return {
                             "pmid": pmid,
                             "status": "success",
                             "cached": True,
-                            "analysis": cached_result
+                            "analysis": cached_analysis
                         }
                     
                     # Perform analysis
@@ -306,8 +316,9 @@ async def enhanced_analysis_batch(
                     # Check cache first
                     cached_result = cache_manager.get_analysis_result(pmid)
                     if cached_result:
-                        # Enhance cached result
-                        enhanced_result = await enhance_analysis_result(cached_result, pmid)
+                        # Enhance cached result (unwrap stored payload if necessary)
+                        cached_analysis = cached_result.get("analysis_data", cached_result)
+                        enhanced_result = await enhance_analysis_result(cached_analysis, pmid)
                         return {
                             "pmid": pmid,
                             "status": "success",
@@ -319,8 +330,8 @@ async def enhanced_analysis_batch(
                     analysis_result = await analyze_paper_internal(pmid)
                     if analysis_result:
                         enhanced_result = await enhance_analysis_result(analysis_result, pmid)
-                        # Cache the enhanced result
-                        cache_manager.cache_analysis(pmid, enhanced_result)
+                        # Cache the enhanced result using existing cache manager API
+                        cache_manager.store_analysis_result(pmid, enhanced_result, {}, source="enhanced")
                         return {
                             "pmid": pmid,
                             "status": "success",
@@ -367,6 +378,64 @@ async def enhanced_analysis_batch(
         raise HTTPException(status_code=500, detail=f"Error in enhanced batch analysis: {str(e)}")
 
 
+@router.get("/enhanced_analysis_batch_stream")
+async def enhanced_analysis_batch_stream(
+    pmids: str = Query(..., description="Comma-separated PMIDs"),
+    max_concurrent: int = Query(1, description="Concurrency; 1 for strict FCFS")
+):
+    """
+    Stream enhanced analysis results as they complete (SSE).
+
+    - Accepts a comma-separated list of PMIDs via query string.
+    - Default is strict first-come-first-serve (sequential) when max_concurrent=1.
+    - Emits one event per PMID with the shape: { pmid, title, enhanced_analysis }.
+    """
+    try:
+        pmid_list = [p.strip() for p in (pmids or '').split(',') if p.strip()]
+        if not pmid_list:
+            raise HTTPException(status_code=400, detail="No PMIDs provided")
+
+        semaphore = asyncio.Semaphore(max(1, min(max_concurrent, 20)))
+
+        async def analyze_one(pmid: str) -> Dict:
+            async with semaphore:
+                # Use cache-first path similar to non-streaming endpoint
+                cached_result = cache_manager.get_analysis_result(pmid)
+                if cached_result:
+                    cached_analysis = cached_result.get("analysis_data", cached_result)
+                    enhanced = await enhance_analysis_result(cached_analysis, pmid)
+                    return {"pmid": pmid, "title": enhanced.get("title", ""), "enhanced_analysis": enhanced.get("fields", {})}
+                basic = await analyze_paper_internal(pmid)
+                if basic:
+                    enhanced = await enhance_analysis_result(basic, pmid)
+                    # Store for future reuse
+                    cache_manager.store_analysis_result(pmid, enhanced, {}, source="enhanced")
+                    return {"pmid": pmid, "title": basic.get("title", ""), "enhanced_analysis": enhanced.get("fields", {})}
+                return {"pmid": pmid, "error": "Analysis failed"}
+
+        async def event_generator():
+            # Strict FCFS: process sequentially when max_concurrent == 1
+            if max_concurrent <= 1:
+                for pmid in pmid_list:
+                    result = await analyze_one(pmid)
+                    yield f"data: {json.dumps(result, ensure_ascii=False)}\n\n"
+            else:
+                # Concurrent: emit in completion order
+                tasks = [asyncio.create_task(analyze_one(pmid)) for pmid in pmid_list]
+                for coro in asyncio.as_completed(tasks):
+                    result = await coro
+                    yield f"data: {json.dumps(result, ensure_ascii=False)}\n\n"
+            # Signal completion
+            yield "event: done\n"
+            yield "data: {\"status\": \"complete\"}\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    except Exception as e:
+        logger.error(f"Error in streaming batch analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in streaming batch analysis: {str(e)}")
+
+
 def parse_csv_content(content: bytes) -> List[str]:
     """Parse CSV content and extract PMIDs."""
     try:
@@ -374,11 +443,25 @@ def parse_csv_content(content: bytes) -> List[str]:
         text_content = content.decode('utf-8')
         csv_reader = csv.DictReader(io.StringIO(text_content))
         
-        pmids = []
+        pmids: List[str] = []
+        header_fields = [h.strip() for h in (csv_reader.fieldnames or [])]
+        header_candidates = {h.lower() for h in header_fields}
+        has_direct_header = any(h in header_candidates for h in ['pmid', 'pubmed_id', 'pmid_id'])
+
         for row in csv_reader:
-            pmid = row.get('pmid', '').strip() or row.get('PMID', '').strip()
-            if pmid and pmid.isdigit():
-                pmids.append(pmid)
+            if has_direct_header:
+                pmid = (row.get('pmid') or row.get('PMID') or row.get('pubmed_id') or row.get('pmid_id') or '').strip()
+                if pmid and pmid.isdigit():
+                    pmids.append(pmid)
+            else:
+                # Fallback: scan all cell values for numeric PMID-like tokens
+                for value in row.values():
+                    if not value:
+                        continue
+                    token = str(value).strip()
+                    # Keep numeric strings of reasonable PMID length (5-10)
+                    if token.isdigit() and 5 <= len(token) <= 10:
+                        pmids.append(token)
         
         return pmids
         
@@ -393,30 +476,37 @@ def parse_excel_content(content: bytes) -> List[str]:
         import pandas as pd
         import io
         
-        # Read Excel file
+        # Read Excel file (first sheet by default)
         df = pd.read_excel(io.BytesIO(content))
         
-        # Look for PMID column
+        # Prefer known columns
         pmid_columns = ['pmid', 'PMID', 'pmid_id', 'pubmed_id']
-        pmid_column = None
+        lower_cols = {str(c).lower(): c for c in df.columns}
+        pmid_column = next((lower_cols[c] for c in pmid_columns if c in lower_cols), None)
         
-        for col in pmid_columns:
-            if col in df.columns:
-                pmid_column = col
-                break
+        pmids: List[str] = []
+        if pmid_column is not None:
+            for pmid in df[pmid_column].dropna():
+                pmid_str = str(pmid).strip()
+                if pmid_str.isdigit():
+                    pmids.append(pmid_str)
+        else:
+            # Fallback: scan all columns for numeric PMID-like tokens
+            for col in df.columns:
+                for val in df[col].dropna().astype(str):
+                    token = val.strip()
+                    if token.isdigit() and 5 <= len(token) <= 10:
+                        pmids.append(token)
         
-        if not pmid_column:
-            logger.warning("No PMID column found in Excel file")
-            return []
+        # Deduplicate while preserving order
+        seen = set()
+        uniq_pmids = []
+        for p in pmids:
+            if p not in seen:
+                seen.add(p)
+                uniq_pmids.append(p)
         
-        # Extract PMIDs
-        pmids = []
-        for pmid in df[pmid_column].dropna():
-            pmid_str = str(pmid).strip()
-            if pmid_str.isdigit():
-                pmids.append(pmid_str)
-        
-        return pmids
+        return uniq_pmids
         
     except Exception as e:
         logger.error(f"Error parsing Excel content: {e}")
@@ -448,7 +538,7 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
         # Process text for analysis
         processed_text = text_processor.process_text(text_for_analysis)
         
-        # Perform field analysis
+        # Perform field analysis (with heuristic fallback integration)
         field_analysis = await perform_field_analysis(processed_text, pmid)
         
         # Calculate processing time
@@ -476,10 +566,10 @@ async def analyze_paper_internal(pmid: str) -> Optional[Dict]:
 
 
 async def perform_field_analysis(text: str, pmid: str) -> Dict:
-    """Perform analysis of the 6 essential fields."""
+    """Perform analysis of the 6 essential fields with heuristic fallback."""
     try:
-        from app.api.utils.api_utils import create_default_field_structure, generate_curation_summary
-        
+        # Use the unified QA system for field extraction if available
+        has_llm = getattr(unified_qa, 'qa_system', None) is not None
         field_questions = {
             "host_species": "What host species is being studied in this research?",
             "body_site": "What body site or anatomical location was sampled for microbiome analysis?",
@@ -491,22 +581,28 @@ async def perform_field_analysis(text: str, pmid: str) -> Dict:
         
         field_results = {}
         
-        for field, question in field_questions.items():
-            try:
-                # Create a prompt combining question and context
-                prompt = f"Context: {text[:2000]}\n\nQuestion: {question}\n\nPlease provide a specific answer based on the context."
-                
-                # Use chat method to ask the question
-                response = await unified_qa.chat(prompt)
-                
-                field_results[field] = process_field_response(response, field)
-                
-            except Exception as e:
-                logger.warning(f"Error analyzing field {field} for PMID {pmid}: {e}")
-                field_results[field] = create_default_field_structure(field)
-        
+        if has_llm:
+            for field, question in field_questions.items():
+                try:
+                    prompt = f"Context: {text[:2000]}\n\nQuestion: {question}\n\nPlease provide a specific answer based on the context."
+                    response = await unified_qa.chat(prompt)
+                    field_results[field] = process_field_response(response, field)
+                except Exception as e:
+                    logger.warning(f"Error analyzing field {field} for PMID {pmid}: {e}")
+                    field_results[field] = create_default_field_structure(field)
+        else:
+            logger.info("LLM not available; using heuristic fallback extractor for batch fields")
+            field_results = fallback_extractor.extract(text)
+
+        # If some fields remain ABSENT, attempt heuristic fill-ins
+        if has_llm:
+            heuristic = fallback_extractor.extract(text)
+            for k, v in heuristic.items():
+                cur = field_results.get(k, {})
+                if not cur or cur.get('status') == 'ABSENT':
+                    field_results[k] = v
+
         return field_results
-        
     except Exception as e:
         logger.error(f"Error in field analysis for PMID {pmid}: {e}")
         from app.api.utils.api_utils import create_comprehensive_fallback_analysis

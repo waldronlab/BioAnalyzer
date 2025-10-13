@@ -1,12 +1,16 @@
 import re
-from typing import Dict, List
-from app.utils.bugsigdb_analyzer import BugSigDBAnalyzer
+import logging
+from typing import Dict, List, Optional
+
+from app.services.bugsigdb_classifier import MicrobeSigClassifier
+
+logger = logging.getLogger(__name__)
 
 
 class BasicFieldExtractor:
     """
-    Heuristic fallback extractor for the 6 BugSigDB fields when LLM is unavailable.
-    Uses keyword and regex-based extraction and BugSigDBAnalyzer helpers.
+    Heuristic fallback extractor for the 6 BugSigDB fields when the Gemini/LLM model is unavailable.
+    Uses keyword and regex-based extraction and MicrobeSigClassifier helpers.
     """
 
     HOST_SPECIES_KEYWORDS = {
@@ -27,13 +31,20 @@ class BasicFieldExtractor:
     ]
 
     def __init__(self):
-        self.analyzer = BugSigDBAnalyzer()
+        # Initialize classifier for metadata-based extraction
+        try:
+            self.classifier = MicrobeSigClassifier()
+            logger.info("BasicFieldExtractor: MicrobeSigClassifier initialized successfully.")
+        except Exception as e:
+            logger.warning(f"Could not initialize MicrobeSigClassifier: {e}")
+            self.classifier = None
 
-    def extract(self, text: str) -> Dict:
+    def extract(self, text: str) -> Dict[str, Dict]:
+        """Extract BugSigDB-relevant fields from text using heuristics and classifier."""
         t = (text or '').lower()
         fields: Dict[str, Dict] = {}
 
-        # Host species
+        # --- Host species ---
         host_value = None
         for sp, kws in self.HOST_SPECIES_KEYWORDS.items():
             if any(k in t for k in kws):
@@ -41,36 +52,33 @@ class BasicFieldExtractor:
                 break
         fields['host_species'] = self._mk_field(host_value)
 
-        # Body site and condition via analyzer dictionaries
-        analysis = self.analyzer.analyze_paper(t)
-        body_site_value = analysis.get('body_sites', [None])[0] if analysis.get('body_sites') else None
-        fields['body_site'] = self._mk_field(body_site_value)
-
+        # --- Classifier-based body site, condition, sequencing type ---
+        body_site_value = None
         condition_value = None
-        diseases = analysis.get('disease_categories') or []
-        if diseases:
-            condition_value = diseases[0]
-        fields['condition'] = self._mk_field(condition_value)
+        seq_value = None
 
-        # Sequencing type via analyzer
-        seqs = analysis.get('sequencing_type') or []
-        seq_value = seqs[0] if seqs else None
+        if self.classifier:
+            try:
+                prediction = self.classifier.analyze_text(t)
+                body_site_value = prediction.get("body_site")
+                condition_value = prediction.get("condition")
+                seq_value = prediction.get("sequencing_type")
+            except Exception as e:
+                logger.error(f"Classifier analysis failed: {e}")
+
+        fields['body_site'] = self._mk_field(body_site_value)
+        fields['condition'] = self._mk_field(condition_value)
         fields['sequencing_type'] = self._mk_field(seq_value)
 
-        # Taxa level keyword search
-        taxa_value = None
-        for k in self.TAXA_LEVEL_KEYWORDS:
-            if k in t:
-                taxa_value = k
-                break
+        # --- Taxa level keyword search ---
+        taxa_value = next((k for k in self.TAXA_LEVEL_KEYWORDS if k in t), None)
         fields['taxa_level'] = self._mk_field(taxa_value)
 
-        # Sample size regexes
+        # --- Sample size regex detection ---
         sample_value = None
         for rgx in self.SAMPLE_SIZE_REGEX:
             m = re.search(rgx, t)
             if m:
-                # last group often has the number
                 nums = [g for g in m.groups() if g and g.isdigit()]
                 if nums:
                     sample_value = nums[-1]
@@ -79,7 +87,8 @@ class BasicFieldExtractor:
 
         return fields
 
-    def _mk_field(self, value: str):
+    def _mk_field(self, value: Optional[str]) -> Dict[str, Optional[str]]:
+        """Format extracted field into standard response format."""
         if value is None:
             return {
                 'status': 'ABSENT',
@@ -91,7 +100,7 @@ class BasicFieldExtractor:
         return {
             'status': 'PRESENT',
             'value': value,
-            'confidence': 0.6,  # heuristic
+            'confidence': 0.6,  # heuristic confidence
             'reason_if_missing': None,
             'suggestions': None,
         }

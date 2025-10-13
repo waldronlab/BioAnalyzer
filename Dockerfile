@@ -51,5 +51,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Start the application with auto-reload
-CMD ["python", "main.py"]
+# Start the application (reload controlled via env var)
+CMD ["bash", "-c", "uvicorn app.api.app:app --host 0.0.0.0 --port 8000 ${UVICORN_RELOAD:+--reload}"]

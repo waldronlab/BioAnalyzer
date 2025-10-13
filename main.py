@@ -20,18 +20,22 @@ from app.api.app import app
 
 if __name__ == "__main__":
     import uvicorn
+
+    reload_flag = os.getenv("UVICORN_RELOAD", "false").lower() in ("true", "1", "yes")
+
     print("🚀 Starting BugSigDB Analyzer...")
     print("📁 Project root:", project_root)
     print("🌐 Application will be available at: http://127.0.0.1:8000")
     print("📚 API documentation at: http://127.0.0.1:8000/docs")
     print("🔍 Health check at: http://127.0.0.1:8000/health")
     print("📊 Metrics at: http://127.0.0.1:8000/metrics")
+    print(f"🔁 Live reload: {'enabled' if reload_flag else 'disabled'}")
     print("\nPress Ctrl+C to stop the server")
-    
+
     uvicorn.run(
         "app.api.app:app",
         host="0.0.0.0",
         port=8000,
         log_level="info",
-        reload=True  # Enable auto-reload for development
-    ) 
+        reload=reload_flag
+    )

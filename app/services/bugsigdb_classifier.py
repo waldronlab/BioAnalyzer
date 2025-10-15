@@ -198,6 +198,56 @@ def predict_papers(
     
     return results
 
+class MicrobeSigClassifier(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Existing model definition...
+        # Add any necessary layers if not present
+
+    def analyze_text(self, text: str) -> Dict:
+        """Analyze text for microbe signatures.
+        
+        Args:
+            text: Input text to analyze
+            
+        Returns:
+            Dictionary with analysis results
+        """
+        # Implement text analysis logic here
+        # For example:
+        # 1. Preprocess text
+        # 2. Extract features
+        # 3. Run forward pass
+        # 4. Process outputs
+        
+        # Placeholder implementation
+        try:
+            # Assuming preprocessor is available globally or passed
+            preprocessor = TextPreprocessor()
+            embeddings, additional_features = preprocessor.prepare_batch([], [text])  # Adjust for single text
+            
+            # Make prediction
+            with torch.no_grad():
+                self.eval()
+                signature_out = self.signature_head(embeddings, additional_features)
+                sequencing_out = self.sequencing_head(embeddings, additional_features)
+                body_site_out = self.body_site_head(embeddings, additional_features)
+                
+            # Process outputs
+            has_signature = bool(torch.sigmoid(signature_out) > 0.5)
+            sequencing_type = get_sequencing_types()[torch.argmax(sequencing_out).item()]
+            body_site = get_body_sites()[torch.argmax(body_site_out).item()]
+            
+            return {
+                "has_signature": has_signature,
+                "sequencing_type": sequencing_type,
+                "body_site": body_site
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in analyze_text: {e}")
+            return {}
+
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(

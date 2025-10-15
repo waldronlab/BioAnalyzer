@@ -15,7 +15,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import routers
-from app.api.routers import paper_analysis, batch_processing, cache_management, system
+from app.api.routers import bugsigdb_analysis, system
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -45,21 +45,16 @@ app = FastAPI(
     - **Value**: The extracted information
     - **Confidence**: AI confidence score (0.0-1.0)
     - **Reason if Missing**: Why the field is not present
-    - **Suggestions**: What additional information is needed for curation
     
     ## Endpoints
     
-    - **Paper Analysis**: Single and batch analysis of papers by PMID
-    - **CSV Upload**: Batch processing of multiple PMIDs from CSV files
-    - **Cache Management**: Efficient storage and retrieval of analysis results
+    - **Paper Analysis**: Analyze papers by PMID for the 6 essential fields
+    - **Field Information**: Get details about the 6 essential fields
+    - **System Health**: Health checks and system status
     
-    ## Modular Structure
+    ## Simple and Focused
     
-    This API is organized into modular routers for better maintainability:
-    - `/api/v1/` - Paper analysis endpoints
-    - `/api/v1/` - Batch processing endpoints  
-    - `/api/v1/` - Cache management endpoints
-    - `/api/v1/` - System and health endpoints
+    This API is streamlined to focus only on the essential BugSigDB curation requirements.
     """,
     version="1.0.0",
     contact={
@@ -72,16 +67,8 @@ app = FastAPI(
     },
     tags_metadata=[
         {
-            "name": "Paper Analysis",
-            "description": "Core endpoints for analyzing papers for BugSigDB curation readiness using the 6 essential fields."
-        },
-        {
-            "name": "Batch Processing",
-            "description": "Endpoints for processing multiple papers at once, including CSV uploads."
-        },
-        {
-            "name": "Cache Management",
-            "description": "Endpoints for managing cached analysis results and metadata."
+            "name": "BugSigDB Analysis",
+            "description": "Core endpoints for analyzing papers for the 6 essential BugSigDB fields."
         },
         {
             "name": "System",
@@ -103,9 +90,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 # Include routers
-app.include_router(paper_analysis.router)
-app.include_router(batch_processing.router)
-app.include_router(cache_management.router)
+app.include_router(bugsigdb_analysis.router)
 app.include_router(system.router)
 
 # Root endpoint

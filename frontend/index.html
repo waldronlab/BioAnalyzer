@@ -187,6 +187,17 @@
     </style>
 </head>
 <body>
+    <!-- Redirect to simplified version -->
+    <div class="container-fluid">
+        <div class="alert alert-info text-center mb-0">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>New Simplified Version Available!</strong>
+            <a href="bugsigdb.html" class="btn btn-primary btn-sm ms-3">
+                <i class="fas fa-arrow-right me-1"></i>Go to BugSigDB Analyzer
+            </a>
+        </div>
+    </div>
+    
     <div class="container-fluid">
         <!-- Main Header -->
         <div class="main-header">
@@ -267,7 +278,7 @@
                         
                         <!-- Single Analyze Button -->
                         <div class="text-center mt-4">
-                            <button class="btn analyze-button btn-lg" onclick="window.analyzePapers ? analyzePapers() : alert('Please wait for the page to fully load')">
+                            <button class="btn analyze-button btn-lg" id="analyze-btn">
                                 <i class="fas fa-microscope me-2"></i>Analyze Papers
                             </button>
                         </div>

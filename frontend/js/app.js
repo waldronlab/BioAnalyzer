@@ -31,8 +31,7 @@ const loadCache = () => {
   }
 };
 
-// Load cached results on page load
-document.addEventListener('DOMContentLoaded', () => loadCache());
+// Load cached results on page load - will be handled in main DOMContentLoaded
 
 // ---------------------------
 // Default configuration
@@ -83,28 +82,56 @@ const handleChatKeyPress = e => {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOM loaded, setting up event listeners...');
   await fetchConfig();
+  loadCache();
   const analyzeButton = document.getElementById('analyze-btn');
   const pmidInput = document.getElementById('singlePmid');
   
   console.log('Button found:', !!analyzeButton);
   console.log('PMID input found:', !!pmidInput);
+  console.log('Button element:', analyzeButton);
+  console.log('PMID input element:', pmidInput);
   
   if (analyzeButton && pmidInput) {
     console.log('Setting up analyze button click handler...');
-    analyzeButton.addEventListener('click', async () => {
-      console.log('Analyze button clicked!');
-      const pmid = pmidInput.value.trim();
-      console.log('PMID entered:', pmid);
+    analyzeButton.addEventListener('click', async (e) => {
+      e.preventDefault();
+      console.log('Analyze button clicked!', e);
       
-      if (!pmid) {
-        console.log('No PMID entered, showing warning');
-        return showAlert('Please enter a valid PubMed ID.', 'warning');
+      const pmid = pmidInput.value.trim();
+      const batchPmids = document.getElementById('batchPmids').value.trim();
+      const fileInput = document.getElementById('fileInput');
+      
+      console.log('PMID entered:', pmid);
+      console.log('Batch PMIDs entered:', batchPmids);
+      console.log('File selected:', fileInput ? fileInput.files.length > 0 : false);
+      
+      // Check if any input is provided
+      const hasFile = fileInput && fileInput.files.length > 0;
+      if (!pmid && !batchPmids && !hasFile) {
+        console.log('No input provided, showing warning');
+        return showAlert('Please provide input: enter a single PMID, a list of PMIDs, or upload a file.', 'warning');
       }
       
-      console.log('Starting analysis for PMID:', pmid);
+      console.log('Starting analysis...');
       showLoading();
       try {
-        const results = await handleSinglePmid(pmid);
+        let results = [];
+        
+        if (hasFile) {
+          console.log('Processing file upload...');
+          results = await handleFileUpload(fileInput.files[0]);
+        } else if (batchPmids) {
+          console.log('Processing batch PMIDs...');
+          const pmids = batchPmids.split(/[,\n]/).map(p => p.trim()).filter(Boolean);
+          if (pmids.length === 0) {
+            throw new Error('No valid PMIDs found in the list');
+          }
+          results = await analyzeBatchSequential(pmids, true); // true = progressive display
+        } else if (pmid) {
+          console.log('Processing single PMID...');
+          results = await handleSinglePmid(pmid);
+        }
+        
         console.log('Analysis completed, results:', results);
         displayResults(results);
       } catch (e) {
@@ -114,8 +141,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideLoading();
       }
     });
+    
+    // Also add Enter key support for the input
+    pmidInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        analyzeButton.click();
+      }
+    });
+    
+    // Add Enter key support for batch PMIDs input
+    const batchPmidsInput = document.getElementById('batchPmids');
+    if (batchPmidsInput) {
+      batchPmidsInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          analyzeButton.click();
+        }
+      });
+    }
+    
+    console.log('Event listeners set up successfully');
   } else {
     console.error('Required elements not found:', { analyzeButton: !!analyzeButton, pmidInput: !!pmidInput });
+    console.log('Available elements:', {
+      analyzeBtn: document.getElementById('analyze-btn'),
+      singlePmid: document.getElementById('singlePmid'),
+      allButtons: document.querySelectorAll('button'),
+      allInputs: document.querySelectorAll('input')
+    });
   }
 
   const messageInput = document.getElementById('chat-input');
@@ -144,9 +198,23 @@ window.addEventListener('beforeunload', () => {
 // Utility functions
 // ---------------------------
 const showAlert = (message, type = 'info') => {
+  console.log(`Alert [${type}]: ${message}`);
   const alertBox = document.getElementById('alert-box');
   if (alertBox) {
-    alertBox.innerHTML = `<div class="alert ${type}"><strong>${type.toUpperCase()}:</strong> ${message}</div>`;
+    const alertClass = type === 'error' ? 'alert-danger' : 
+                      type === 'warning' ? 'alert-warning' : 
+                      type === 'success' ? 'alert-success' : 'alert-info';
+    alertBox.innerHTML = `<div class="alert ${alertClass} alert-dismissible fade show">
+      <i class="fas fa-${type === 'error' ? 'exclamation-triangle' : type === 'warning' ? 'exclamation-triangle' : type === 'success' ? 'check-circle' : 'info-circle'} me-2"></i>
+      ${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>`;
+    alertBox.style.display = 'block';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      alertBox.style.display = 'none';
+    }, 5000);
   } else {
     alert(message);
   }
@@ -158,10 +226,16 @@ const showLoading = () => {
     loading.innerHTML = `<div class="text-center"><div class="spinner-border text-primary mb-3" role="status"><span class="visually-hidden">Loading...</span></div><p class="text-muted">Initializing analysis...</p><p class="text-muted small">This may take up to 60 seconds for complex papers</p></div>`;
     loading.style.display = 'block';
   }
-  ['empty-state', 'results-content'].forEach(id => document.getElementById(id)?.style.display = 'none');
+  ['empty-state', 'results-content'].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.style.display = 'none';
+  });
 };
 
-const hideLoading = () => document.getElementById('loading')?.style.display = 'none';
+const hideLoading = () => {
+  const loading = document.getElementById('loading');
+  if (loading) loading.style.display = 'none';
+};
 
 const showError = message => {
   const resultsContent = document.getElementById('results-content');
@@ -169,7 +243,8 @@ const showError = message => {
     resultsContent.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i><div style="white-space: pre-line; font-family: monospace; font-size: 0.9em;">${escapeHtml(message).replace(/\n/g, '<br>')}</div></div>`;
     resultsContent.style.display = 'block';
   }
-  document.getElementById('empty-state')?.style.display = 'none';
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) emptyState.style.display = 'none';
 };
 
 const showProgress = (message, percentage) => {
@@ -205,7 +280,7 @@ window.analyzePapers = async () => {
       results = await handleSinglePmid(singlePmid);
     } else if (batchPmids) {
       showProgress('Processing batch...', 10);
-      results = await analyzeBatchStreaming(batchPmids.split(/[,\n]/).map(p => p.trim()).filter(Boolean));
+      results = await analyzeBatchSequential(batchPmids.split(/[,\n]/).map(p => p.trim()).filter(Boolean), true);
     }
     displayResults(results);
   } catch (error) {
@@ -257,7 +332,7 @@ async function handleFileUpload(file) {
     const pmids = Array.isArray(data.pmids) ? data.pmids : [];
     if (pmids.length) {
       showProgress('Starting batch analysis...', 15);
-      return await analyzeBatchStreaming(pmids);
+      return await analyzeBatchSequential(pmids);
     }
     return [];
   } catch (error) {
@@ -339,45 +414,91 @@ async function handleSinglePmid(pmid, retryCount = 0) {
 // ---------------------------
 // Batch PMID handler (with streaming & live progress)
 // ---------------------------
-const analyzeBatchStreaming = pmids => new Promise((resolve, reject) => {
+// ---------------------------
+// Batch PMID handler (sequential processing)
+// ---------------------------
+const analyzeBatchSequential = async (pmids, progressiveDisplay = false) => {
+  console.log(`Starting batch analysis for ${pmids.length} PMIDs`);
   const results = [];
   const total = pmids.length;
-  let processed = 0;
-
-  const es = new EventSource(`/api/v1/enhanced_analysis_batch_stream?pmids=${encodeURIComponent(pmids.join(','))}&max_concurrent=1`);
   
-  es.onmessage = event => {
+  // Initialize results display if progressive display is enabled
+  if (progressiveDisplay) {
+    displayResults([]); // Show empty table initially
+  }
+  
+  for (let i = 0; i < pmids.length; i++) {
+    const pmid = pmids[i];
+    const progress = Math.round(((i + 1) / total) * 100);
+    
     try {
-      const data = JSON.parse(event.data);
-      if (data?.pmid) {
-        appendResult(data);
-        results.push(data);
-        processed += 1;
-
-        // Update progress dynamically
-        const percent = Math.min(100, Math.round((processed / total) * 100));
-        showProgress(`Analyzing batch (${processed}/${total})`, percent);
-
-        // Save cache after each item
-        saveCache();
+      showProgress(`Analyzing PMID ${pmid} (${i + 1}/${total})`, progress);
+      console.log(`Processing PMID ${i + 1}/${total}: ${pmid}`);
+      
+      const result = await handleSinglePmid(pmid);
+      if (result && result.length > 0) {
+        results.push(result[0]);
+        console.log(`Successfully analyzed PMID ${pmid}`);
+        
+        // Display results progressively if enabled
+        if (progressiveDisplay) {
+          displayResults(results);
+        }
+      } else {
+        console.warn(`No results for PMID ${pmid}`);
+        // Add a placeholder result for failed analysis
+        const failedResult = {
+          pmid: pmid,
+          title: 'Analysis failed',
+          enhanced_analysis: {
+            host_species: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: 'Analysis failed' },
+            body_site: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: 'Analysis failed' },
+            condition: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: 'Analysis failed' },
+            sequencing_type: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: 'Analysis failed' },
+            taxa_level: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: 'Analysis failed' },
+            sample_size: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: 'Analysis failed' }
+          }
+        };
+        results.push(failedResult);
+        
+        // Display results progressively if enabled
+        if (progressiveDisplay) {
+          displayResults(results);
+        }
       }
-    } catch (e) {
-      console.warn('Failed to parse streaming event:', e);
+      
+      // Small delay between requests to avoid overwhelming the server
+      if (i < pmids.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+    } catch (error) {
+      console.error(`Error analyzing PMID ${pmid}:`, error);
+      // Add a placeholder result for failed analysis
+      const errorResult = {
+        pmid: pmid,
+        title: 'Analysis failed',
+        enhanced_analysis: {
+          host_species: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: `Error: ${error.message}` },
+          body_site: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: `Error: ${error.message}` },
+          condition: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: `Error: ${error.message}` },
+          sequencing_type: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: `Error: ${error.message}` },
+          taxa_level: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: `Error: ${error.message}` },
+          sample_size: { value: null, status: 'ABSENT', confidence: 0.0, reason_if_missing: `Error: ${error.message}` }
+        }
+      };
+      results.push(errorResult);
+      
+      // Display results progressively if enabled
+      if (progressiveDisplay) {
+        displayResults(results);
+      }
     }
-  };
-
-  es.addEventListener('done', () => {
-    es.close();
-    showProgress('Batch analysis complete!', 100);
-    resolve(results);
-  });
-
-  es.onerror = err => {
-    console.warn('Streaming error:', err);
-    try { es.close(); } catch {}
-    resolve(results);
-  };
-});
+  }
+  
+  console.log(`Batch analysis completed. Processed ${results.length} PMIDs`);
+  return results;
+};
 
 // ---------------------------
 // Append result & save cache
@@ -415,22 +536,47 @@ const appendResult = result => {
 // ---------------------------
 const displayResults = results => {
   window.latestResults = Array.isArray(results) ? results.slice() : [];
-  if (!results?.length) return showError('No results to display');
   const resultsContent = document.getElementById('results-content');
   if (!resultsContent) return console.error('Results content element not found');
+  
+  // Handle empty results - show message for progressive display
+  if (!results?.length) {
+    resultsContent.innerHTML = `
+      <div class="text-center py-5">
+        <div class="spinner-border text-primary mb-3" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <h5 class="text-muted">Starting analysis...</h5>
+        <p class="text-muted">Results will appear here as they are processed.</p>
+      </div>
+    `;
+    return;
+  }
+  
   let html = `
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h4 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Analysis Results</h4>
+      <h4 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Analysis Results (${results.length} papers)</h4>
       <div>
         <button class="btn btn-outline-success btn-sm me-2" onclick="exportResults()"><i class="fas fa-download me-2"></i>Export CSV</button>
         <button class="btn btn-outline-secondary btn-sm" onclick="clearResults()"><i class="fas fa-trash me-2"></i>Clear</button>
       </div>
     </div>
-    <div class="row"><div class="col-md-12"><div class="card bg-light"><div class="card-body text-center"><h5 class="card-title">Papers Analyzed</h5><h2 class="text-primary">${results.length}</h2></div></div></div></div>`;
-  results.forEach(r => html += renderResultCard(r));
+    <div class="row mb-4">
+      <div class="col-md-12">
+        <div class="card bg-light">
+          <div class="card-body text-center">
+            <h5 class="card-title">Papers Analyzed</h5>
+            <h2 class="text-primary">${results.length}</h2>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  
+  html += renderResultsTable(results);
   resultsContent.innerHTML = html;
   resultsContent.style.display = 'block';
-  document.getElementById('empty-state')?.style.display = 'none';
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) emptyState.style.display = 'none';
 };
 
 // ---------------------------
@@ -513,7 +659,87 @@ const displayChatMessage = (message, role) => {
 };
 
 // ---------------------------
-// Render result card
+// Render results table
+// ---------------------------
+const renderResultsTable = results => {
+  const fields = [
+    { key: 'host_species', name: 'Host Species', icon: 'dna' },
+    { key: 'body_site', name: 'Body Site', icon: 'map-marker-alt' },
+    { key: 'condition', name: 'Condition', icon: 'stethoscope' },
+    { key: 'sequencing_type', name: 'Sequencing Type', icon: 'microscope' },
+    { key: 'taxa_level', name: 'Taxa Level', icon: 'sitemap' },
+    { key: 'sample_size', name: 'Sample Size', icon: 'hashtag' }
+  ];
+
+  let html = `
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+          <tr>
+            <th style="width: 15%;"><i class="fas fa-hashtag me-1"></i>PMID</th>
+            <th style="width: 35%;"><i class="fas fa-file-alt me-1"></i>Title</th>
+            ${fields.map(f => `
+              <th style="width: 8.33%; text-align: center;">
+                <i class="fas fa-${f.icon} me-1"></i>${f.name}
+              </th>
+            `).join('')}
+          </tr>
+        </thead>
+        <tbody>`;
+
+  results.forEach((result, index) => {
+    const a = result?.enhanced_analysis || {};
+    html += `
+      <tr>
+        <td class="text-center">
+          <strong class="text-primary">${result.pmid || 'N/A'}</strong>
+        </td>
+        <td>
+          <div class="paper-title" title="${escapeHtml(result.title || 'N/A')}">
+            ${escapeHtml(result.title || 'N/A')}
+          </div>
+        </td>`;
+    
+    fields.forEach(field => {
+      const fieldData = a[field.key] || {};
+      const value = fieldData.value || 'Unknown';
+      const status = fieldData.status || 'ABSENT';
+      const confidence = fieldData.confidence || 0;
+      
+      const statusClass = status.toLowerCase().replace('_', '-');
+      const statusColor = status === 'PRESENT' ? 'text-success' : 
+                        status === 'PARTIALLY_PRESENT' ? 'text-warning' : 
+                        'text-danger';
+      
+      html += `
+        <td class="text-center field-cell">
+          <div class="field-content">
+            <div class="field-value mb-2">
+              <strong>${escapeHtml(String(value))}</strong>
+            </div>
+            <div class="field-status mb-2">
+              <span class="badge bg-${statusClass === 'present' ? 'success' : statusClass === 'partially-present' ? 'warning' : 'danger'}">${status}</span>
+            </div>
+            <div class="field-confidence">
+              <small class="text-muted">${confidence.toFixed(2)}</small>
+            </div>
+          </div>
+        </td>`;
+    });
+    
+    html += `</tr>`;
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </div>`;
+
+  return html;
+};
+
+// ---------------------------
+// Render result card (kept for compatibility)
 // ---------------------------
 const renderResultCard = result => {
   const a = result?.enhanced_analysis || {};

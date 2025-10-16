@@ -692,7 +692,7 @@ const renderResultsTable = results => {
     html += `
       <tr>
         <td class="text-center">
-          <strong class="text-primary">${result.pmid || 'N/A'}</strong>
+          <strong class="text-primary">${escapeHtml(result.pmid || 'N/A')}</strong>
         </td>
         <td>
           <div class="paper-title" title="${escapeHtml(result.title || 'N/A')}">

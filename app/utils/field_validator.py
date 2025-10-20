@@ -75,67 +75,48 @@ class EnhancedFieldValidator:
             "ABSENT": (0.0, 0.3)
         }
     
-    def validate_field(self, field_name: str, text: str, extracted_data: Dict) -> FieldValidationResult:
+    def validate_field(self, field_name: str, field_data: Dict, text: Optional[str] = '') -> Dict:
         """
-        Validate a specific field based on extracted data and text content.
+        Validate a specific field based on extracted data and optional text content.
         
         Args:
             field_name: Name of the field to validate
-            text: Full text content for validation
-            extracted_data: Data extracted by the LLM
+            field_data: Data extracted by the LLM for this field
+            text: Optional full text content for validation
             
         Returns:
-            FieldValidationResult with validation details
+            Dict with validation details: {'score': float, 'notes': str}
         """
         try:
             # Get the content value for the field
-            content_value = self._get_field_content(field_name, extracted_data)
+            content_value = field_data.get('value', '') or field_data.get('primary', '') or field_data.get('site', '') or ''
             
             if not content_value or content_value.lower() in ["unknown", "not specified", ""]:
-                return self._create_absent_result(field_name, "No content extracted")
+                return {'score': 0.0, 'notes': "No content extracted"}
             
-            # Validate against patterns
-            pattern_match = self._check_pattern_match(field_name, content_value, text)
+            # Validate against patterns if text provided
+            pattern_match = self._check_pattern_match(field_name, content_value, text) if text else {'confidence': 0.5}
             
             if pattern_match["confidence"] >= 0.8:
                 status = "PRESENT"
-                confidence = min(1.0, pattern_match["confidence"] + 0.1)
+                score = min(1.0, pattern_match["confidence"] + 0.1)
             elif pattern_match["confidence"] >= 0.4:
                 status = "PARTIALLY_PRESENT"
-                confidence = pattern_match["confidence"]
+                score = pattern_match["confidence"]
             else:
                 status = "ABSENT"
-                confidence = 0.0
+                score = 0.0
             
-            # Generate suggestions if needed
-            suggestions = self._generate_suggestions(field_name, status, content_value, text)
+            notes = self._get_validation_notes(field_name, status, content_value, text)
             
-            return FieldValidationResult(
-                is_valid=status == "PRESENT",
-                confidence=confidence,
-                status=status,
-                extracted_value=content_value,
-                reason_if_missing=self._get_reason_if_missing(field_name, status, content_value),
-                suggestions_for_curation=suggestions
-            )
+            return {
+                'score': score,
+                'notes': notes
+            }
             
         except Exception as e:
             logger.error(f"Error validating field {field_name}: {str(e)}")
-            return self._create_absent_result(field_name, f"Validation error: {str(e)}")
-    
-    def _get_field_content(self, field_name: str, extracted_data: Dict) -> str:
-        """Get the content value for a specific field."""
-        content_keys = {
-            "host_species": "primary",
-            "body_site": "site",
-            "condition": "description",
-            "sequencing_type": "method",
-            "taxa_level": "level",
-            "sample_size": "size"
-        }
-        
-        key = content_keys.get(field_name, "value")
-        return extracted_data.get(key, "")
+            return {'score': 0.0, 'notes': f"Validation error: {str(e)}"}
     
     def _check_pattern_match(self, field_name: str, content_value: str, text: str) -> Dict[str, float]:
         """Check how well the content matches expected patterns."""
@@ -165,51 +146,34 @@ class EnhancedFieldValidator:
         
         return best_match
     
-    def _create_absent_result(self, field_name: str, reason: str) -> FieldValidationResult:
-        """Create a result for an absent field."""
-        return FieldValidationResult(
-            is_valid=False,
-            confidence=0.0,
-            status="ABSENT",
-            extracted_value="Unknown",
-            reason_if_missing=reason,
-            suggestions_for_curation=self._get_default_suggestions(field_name)
-        )
-    
-    def _get_reason_if_missing(self, field_name: str, status: str, content_value: str) -> str:
-        """Get the reason why a field is missing or incomplete."""
+    def _get_validation_notes(self, field_name: str, status: str, content_value: str, text: str) -> str:
+        """Get notes for the validation result."""
         if status == "PRESENT":
-            return "Field is complete"
+            return "Field is complete and matches expected patterns"
         elif status == "PARTIALLY_PRESENT":
-            return f"Partial information found: {content_value}"
+            return f"Partial information found: {content_value}. Consider reviewing for additional details"
         else:
-            return f"No clear information found for {field_name}"
-    
-    def _generate_suggestions(self, field_name: str, status: str, content_value: str, text: str) -> str:
-        """Generate suggestions for improving field extraction."""
-        if status == "PRESENT":
-            return "Field is ready for curation"
-        
-        suggestions = {
-            "host_species": "Look for explicit mentions of study organisms in methods, abstract, and study population descriptions",
-            "body_site": "Check sample collection methods, study location descriptions, and abstract for sample source information",
-            "condition": "Review study objectives, hypothesis, and experimental design for disease/condition details",
-            "sequencing_type": "Examine methods section for molecular techniques, sequencing protocols, and platform information",
-            "taxa_level": "Check results section for microbial community descriptions, diversity analysis, and taxonomic classifications",
-            "sample_size": "Look for numbers in methods section, study design descriptions, and sample collection details"
-        }
-        
-        return suggestions.get(field_name, "Review paper for additional information")
-    
-    def _get_default_suggestions(self, field_name: str) -> str:
-        """Get default suggestions for a field."""
-        return self._generate_suggestions(field_name, "ABSENT", "", "")
+            return f"No clear information found for {field_name}. Review paper for additional information"
 
 class FieldExtractionEnhancer:
     """Enhances field extraction with post-processing improvements."""
     
     def __init__(self):
         self.validator = EnhancedFieldValidator()
+    
+    def validate_field(self, field_name: str, field_data: Dict) -> Dict:
+        """
+        Validate a specific field.
+        
+        Args:
+            field_name: Name of the field to validate
+            field_data: Data for this field
+            
+        Returns:
+            Dict with 'score' and 'notes'
+        """
+        # Call the validator's validate_field, passing empty text since it's optional
+        return self.validator.validate_field(field_name, field_data)
     
     def enhance_extraction(self, extracted_data: Dict, full_text: str) -> Dict:
         """
@@ -227,7 +191,7 @@ class FieldExtractionEnhancer:
         for field_name in ["host_species", "body_site", "condition", "sequencing_type", "taxa_level", "sample_size"]:
             if field_name in extracted_data:
                 # Validate the field
-                validation_result = self.validator.validate_field(field_name, full_text, extracted_data[field_name])
+                validation_result = self.validator.validate_field(field_name, extracted_data[field_name], full_text)
                 
                 # Update the field with validation results
                 enhanced_data[field_name] = {
@@ -277,4 +241,4 @@ class FieldExtractionEnhancer:
         elif len(missing_fields) <= 3:
             return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper needs additional review."
         else:
-            return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper requires significant review before curation." 
+            return f"Missing {len(missing_fields)} fields: {', '.join(missing_fields)}. Paper requires significant review before curation."

@@ -184,6 +184,74 @@
                 height: auto;
             }
         }
+        
+        /* Table styles for results */
+        .table {
+            font-size: 0.9rem;
+        }
+        
+        .table th {
+            vertical-align: middle;
+            font-weight: 600;
+            font-size: 0.85rem;
+            padding: 12px 8px;
+            background-color: #343a40;
+            color: white;
+            border: 1px solid #495057;
+        }
+        
+        .table td {
+            vertical-align: middle;
+            padding: 15px 8px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .field-cell {
+            padding: 8px;
+            background-color: #ffffff;
+            border-radius: 4px;
+        }
+        
+        .field-content {
+            text-align: center;
+        }
+        
+        .field-value {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+        
+        .field-status {
+            margin-bottom: 6px;
+        }
+        
+        .field-confidence {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        
+        .paper-title {
+            font-size: 0.85rem;
+            line-height: 1.3;
+            color: #495057;
+        }
+        
+        .badge {
+            font-size: 0.7rem;
+            padding: 4px 8px;
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .table-responsive {
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -196,7 +264,7 @@
                         <h1 class="mb-2">
                             <i class="fas fa-microscope me-3"></i>BioAnalyzer
                         </h1>
-                        <p class="mb-0 fs-5 opacity-75">BugSigDB Analysis System</p>
+                        <p class="mb-0 fs-5 opacity-75">BugSigDB Field Analysis - 6 Essential Fields</p>
                     </div>
 
                 </div>
@@ -227,8 +295,11 @@
         <div class="tab-content" id="mainTabsContent">
             <!-- Browse Papers Tab -->
             <div class="tab-pane fade show active" id="browse" role="tabpanel">
-                <div class="container">
-                    <!-- Input Section -->
+        <div class="container">
+            <!-- Alert Box -->
+            <div id="alert-box" class="mb-3" style="display: none;"></div>
+            
+            <!-- Input Section -->
                     <div class="input-section">
                         <div class="row">
                             <!-- Upload File -->
@@ -267,7 +338,7 @@
                         
                         <!-- Single Analyze Button -->
                         <div class="text-center mt-4">
-                            <button class="btn analyze-button btn-lg" onclick="window.analyzePapers ? analyzePapers() : alert('Please wait for the page to fully load')">
+                            <button class="btn analyze-button btn-lg" id="analyze-btn">
                                 <i class="fas fa-microscope me-2"></i>Analyze Papers
                             </button>
                         </div>
@@ -287,9 +358,26 @@
                         <!-- Empty State -->
                         <div class="empty-state" id="empty-state">
                             <i class="fas fa-chart-bar"></i>
-                            <h4>Ready for Analysis</h4>
-                            <p class="fs-5">Enter a PMID, upload a file, or provide a list of PMIDs above, then click "Analyze Papers" to begin.</p>
-                            <p class="text-muted">The system will analyze the 6 essential fields: Host Species, Body Site, Condition, Sequencing Type, Taxa Level, and Sample Size.</p>
+                            <h4>Ready for BugSigDB Analysis</h4>
+                            <p class="fs-5">Enter a PMID above and click "Analyze Papers" to check for the 6 essential BugSigDB fields.</p>
+                            <div class="row mt-4">
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-dna me-2"></i>Essential Fields:</h6>
+                                    <ul class="list-unstyled">
+                                        <li><i class="fas fa-check text-success me-2"></i>Host Species</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>Body Site</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>Condition</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-microscope me-2"></i>Analysis Fields:</h6>
+                                    <ul class="list-unstyled">
+                                        <li><i class="fas fa-check text-success me-2"></i>Sequencing Type</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>Taxa Level</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>Sample Size</li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                         
                         <!-- Results Content -->
